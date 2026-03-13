@@ -5,12 +5,6 @@ import sys
 from pathlib import Path
 
 from pollyweb import KeyPair
-from cryptography.hazmat.primitives.serialization import (
-    Encoding,
-    NoEncryption,
-    PrivateFormat,
-    PublicFormat,
-)
 
 
 CONFIG_DIR = Path.home() / ".pollyweb"
@@ -49,18 +43,8 @@ def cmd_config(force: bool) -> int:
     CONFIG_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     key_pair = KeyPair()
-    private_pem = key_pair.PrivateKey.private_bytes(
-        encoding=Encoding.PEM,
-        format=PrivateFormat.PKCS8,
-        encryption_algorithm=NoEncryption(),
-    )
-    public_pem = key_pair.PublicKey.public_bytes(
-        encoding=Encoding.PEM,
-        format=PublicFormat.SubjectPublicKeyInfo,
-    )
-
-    PRIVATE_KEY_PATH.write_bytes(private_pem)
-    PUBLIC_KEY_PATH.write_bytes(public_pem)
+    PRIVATE_KEY_PATH.write_bytes(key_pair.private_pem_bytes())
+    PUBLIC_KEY_PATH.write_bytes(key_pair.public_pem_bytes())
     PRIVATE_KEY_PATH.chmod(0o600)
     PUBLIC_KEY_PATH.chmod(0o644)
 
