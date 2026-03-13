@@ -1,0 +1,15 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+if [ ! -d ".venv" ]; then
+  printf '%s\n' "pre-push: missing .venv. Create it and install dev dependencies first." >&2
+  printf '%s\n' "pre-push: python3 -m venv .venv && . .venv/bin/activate && python -m pip install -e '.[dev]'" >&2
+  exit 1
+fi
+
+. .venv/bin/activate
+pytest

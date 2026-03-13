@@ -1,7 +1,6 @@
-node_modules/
-dist/
-.vitest/
-coverage/
-.env
-.DS_Store
-*.log
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+src/*.egg-info/
+src/**/*.egg-info/

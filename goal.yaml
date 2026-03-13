@@ -1,6 +1,10 @@
 Project goal:
   Overall: Create a command line tool similar to AWS CLI, but with the purpose of being a wallet. 
   Subgoals:
+    - call it "pollyweb"
     - add instructions to install and use at ./docs
+      - the installation should be global
     - load the library at https://pypi.org/project/pollyweb/
-    
+    - on "pw config":
+      - create a key pair at >> ~/.pollyweb/public.pem and ~/.pollyweb/private.pem
+      - use the KeyPair class in the pollyweb library to create the key pair
