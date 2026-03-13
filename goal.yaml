@@ -1,0 +1,6 @@
+Project goal:
+  Overall: Create a command line tool similar to AWS CLI, but with the purpose of being a wallet. 
+  Subgoals:
+    - add instructions to install and use at ./docs
+    - load the library at https://pypi.org/project/pollyweb/
+    

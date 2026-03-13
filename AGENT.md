@@ -1,0 +1,1 @@
+Read the goal.yaml file
