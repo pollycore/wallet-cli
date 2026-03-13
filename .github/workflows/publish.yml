@@ -1,0 +1,79 @@
+name: Test and publish
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .[dev]
+
+      - name: Run test suite
+        run: python -m pytest
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build distribution artifacts
+        run: |
+          python -m pip install --upgrade pip build
+          BASE_TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+          if [ -z "$BASE_TAG" ]; then
+            BASE_VERSION="0.1.0"
+            DISTANCE="$(git rev-list HEAD --count)"
+          else
+            BASE_VERSION="${BASE_TAG#v}"
+            DISTANCE="$(git rev-list "${BASE_TAG}..HEAD" --count)"
+          fi
+          IFS='.' read -r MAJOR MINOR PATCH <<EOF
+          $BASE_VERSION
+          EOF
+          if [ "$DISTANCE" -eq 0 ]; then
+            VERSION="$BASE_VERSION"
+          else
+            VERSION="${MAJOR}.${MINOR}.$((PATCH + DISTANCE))"
+          fi
+          echo "Publishing version ${VERSION}"
+          export SETUPTOOLS_SCM_PRETEND_VERSION="$VERSION"
+          python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

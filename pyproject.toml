@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=80", "wheel", "setuptools-scm[toml]>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pollyweb-cli"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Command line wallet tooling built on the pollyweb library."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,8 +12,13 @@ dependencies = [
   "pollyweb==1.0.4",
 ]
 
+[project.urls]
+"Homepage" = "https://pypi.org/project/pollyweb-cli/"
+"Source" = "https://github.com/jorgemf/wallet-cli"
+
 [project.optional-dependencies]
 dev = [
+  "build>=1.2",
   "pytest>=8.0",
 ]
 
@@ -28,3 +33,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools_scm]
+version_scheme = "guess-next-dev"
+local_scheme = "no-local-version"
