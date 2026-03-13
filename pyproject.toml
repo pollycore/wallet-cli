@@ -14,7 +14,7 @@ dependencies = [
 
 [project.urls]
 "Homepage" = "https://pypi.org/project/pollyweb-cli/"
-"Source" = "https://github.com/jorgemf/wallet-cli"
+"Source" = "https://github.com/pollycore/wallet-cli"
 
 [project.optional-dependencies]
 dev = [
