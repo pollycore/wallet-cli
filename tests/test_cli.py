@@ -22,6 +22,21 @@ class DummyResponse:
         return False
 
 
+class FakeReadline:
+    def __init__(self):
+        self.history: list[str] = []
+        self.history_length = None
+
+    def clear_history(self):
+        self.history.clear()
+
+    def add_history(self, item: str):
+        self.history.append(item)
+
+    def set_history_length(self, length: int):
+        self.history_length = length
+
+
 def test_config_creates_keypair_files(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
@@ -158,16 +173,32 @@ def test_bind_sends_signed_message_and_stores_bind(monkeypatch, tmp_path, capsys
     assert request.get_method() == "POST"
     assert request.headers["Content-type"] == "application/json"
     body = request.data.decode()
-    assert '"From":"Anonymous"' in body
+    assert '"From":' not in body
+    assert '"Schema":' not in body
     assert '"To":"vault.example.com"' in body
     assert '"Subject":"Bind@Vault"' in body
-    assert '"PublicKey":"-----BEGIN PUBLIC KEY-----\\n' in body
+    assert "-----BEGIN PUBLIC KEY-----" not in body
+    assert "-----END PUBLIC KEY-----" not in body
+    assert '\\n' not in body.split('"PublicKey":"', 1)[1].split('"', 1)[0]
     assert '"Hash":"' in body
     assert '"Signature":"' in body
 
     captured = capsys.readouterr()
     assert bind_value in captured.out
     assert str(binds_path) in captured.out
+
+
+def test_serialize_public_key_value_strips_pem_wrappers():
+    pem = (
+        "-----BEGIN PUBLIC KEY-----\n"
+        "MCowBQYDK2VwAyEA1234567890abcdefghijklmnopqrstuv==\n"
+        "-----END PUBLIC KEY-----\n"
+    )
+
+    assert (
+        cli.serialize_public_key_value(pem)
+        == "MCowBQYDK2VwAyEA1234567890abcdefghijklmnopqrstuv=="
+    )
 
 
 def test_bind_debug_prints_outbound_and_inbound_payloads(monkeypatch, tmp_path, capsys):
@@ -194,12 +225,50 @@ def test_bind_debug_prints_outbound_and_inbound_payloads(monkeypatch, tmp_path, 
 
     assert exit_code == 0
     captured = capsys.readouterr()
+    assert "\nOutbound payload:\n" in captured.out
     assert "Outbound payload:" in captured.out
-    assert '"Subject":"Bind@Vault"' in captured.out
-    assert '"To":"vault.example.com"' in captured.out
+    assert "Subject: Bind@Vault" in captured.out
+    assert "To: vault.example.com" in captured.out
+    assert "From:" not in captured.out
+    assert "Schema:" not in captured.out
+    assert "\n\nInbound payload:\n" in captured.out
     assert "Inbound payload:" in captured.out
+    assert "Body:" in captured.out
     assert bind_value in captured.out
     assert captured.err == ""
+
+
+def test_print_debug_payload_wraps_long_unbroken_strings_as_literal_blocks(capsys):
+    cli.print_debug_payload(
+        "Outbound payload",
+        {
+            "Body": {"PublicKey": "A" * 96},
+            "Signature": "B" * 96,
+        },
+    )
+
+    captured = capsys.readouterr()
+    assert "PublicKey: |" in captured.out
+    assert "Signature: |" in captured.out
+    assert "A" * 64 in captured.out
+    assert "A" * 32 in captured.out
+    assert "B" * 64 in captured.out
+    assert "B" * 32 in captured.out
+
+
+def test_print_debug_payload_wraps_public_key_even_when_shorter_than_width(capsys):
+    cli.print_debug_payload(
+        "Outbound payload",
+        {
+            "Body": {
+                "PublicKey": "MCowBQYDK2VwAyEA1234567890abcdefghijklmnopqrstuv=="
+            }
+        },
+    )
+
+    captured = capsys.readouterr()
+    assert "PublicKey: |" in captured.out
+    assert "MCowBQYDK2VwAyEA1234567890abcdefghijklmnopqrstuv==" in captured.out
 
 
 def test_bind_appends_without_overwriting_existing_binds(monkeypatch, tmp_path):
@@ -230,6 +299,133 @@ def test_bind_appends_without_overwriting_existing_binds(monkeypatch, tmp_path):
     assert cli.yaml.safe_load(binds_path.read_text()) == [
         {"Bind": "Bind:existing", "Domain": "old.example.com"},
         {"Bind": bind_value, "Domain": "vault.example.com"},
+    ]
+
+
+def test_bind_replaces_existing_bind_for_same_domain(monkeypatch, tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    bind_value = f"Bind:{uuid.uuid4()}"
+    binds_path.write_text(
+        cli.yaml.safe_dump([{"Bind": "Bind:existing", "Domain": "vault.example.com"}]),
+    )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(
+        cli.urllib.request, "urlopen", lambda request: DummyResponse(bind_value.encode())
+    )
+
+    exit_code = cli.main(["bind", "vault.example.com"])
+
+    assert exit_code == 0
+    assert cli.yaml.safe_load(binds_path.read_text()) == [
+        {"Bind": bind_value, "Domain": "vault.example.com"}
+    ]
+
+
+def test_bind_keeps_distinct_schema_entries_for_same_domain(monkeypatch, tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    bind_value = f"Bind:{uuid.uuid4()}"
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [
+                {
+                    "Bind": "Bind:existing",
+                    "Domain": "vault.example.com",
+                    "Schema": "schema:one",
+                }
+            ]
+        ),
+    )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(
+        cli.urllib.request,
+        "urlopen",
+        lambda request: DummyResponse(
+            cli.json.dumps({"Bind": bind_value, "Schema": "schema:two"}).encode()
+        ),
+    )
+
+    exit_code = cli.main(["bind", "vault.example.com"])
+
+    assert exit_code == 0
+    assert cli.yaml.safe_load(binds_path.read_text()) == [
+        {
+            "Bind": "Bind:existing",
+            "Domain": "vault.example.com",
+            "Schema": "schema:one",
+        },
+        {
+            "Bind": bind_value,
+            "Schema": "schema:two",
+            "Domain": "vault.example.com",
+        },
+    ]
+
+
+def test_bind_replaces_existing_bind_with_matching_schema(monkeypatch, tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    bind_value = f"Bind:{uuid.uuid4()}"
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [
+                {
+                    "Bind": "Bind:existing",
+                    "Domain": "vault.example.com",
+                    "Schema": "schema:one",
+                }
+            ]
+        ),
+    )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(
+        cli.urllib.request,
+        "urlopen",
+        lambda request: DummyResponse(
+            cli.json.dumps({"Bind": bind_value, "Schema": "schema:one"}).encode()
+        ),
+    )
+
+    exit_code = cli.main(["bind", "vault.example.com"])
+
+    assert exit_code == 0
+    assert cli.yaml.safe_load(binds_path.read_text()) == [
+        {
+            "Bind": bind_value,
+            "Domain": "vault.example.com",
+            "Schema": "schema:one",
+        }
     ]
 
 
@@ -298,7 +494,7 @@ def test_shell_debug_prints_outbound_and_inbound_payloads(
     def fake_urlopen(request):
         return DummyResponse(b'{"ok":true}')
 
-    commands = iter(["status", EOFError()])
+    commands = iter(["status --json target=prod", EOFError()])
 
     def fake_input(prompt):
         result = next(commands)
@@ -317,11 +513,17 @@ def test_shell_debug_prints_outbound_and_inbound_payloads(
 
     assert exit_code == 0
     captured = capsys.readouterr()
+    assert "\nOutbound payload:\n" in captured.out
     assert "Outbound payload:" in captured.out
-    assert '"Subject":"Shell@Domain"' in captured.out
-    assert '"Command":"status"' in captured.out
+    assert "Subject: Shell@Domain" in captured.out
+    assert "From: Bind:existing" in captured.out
+    assert "Command: status" in captured.out
+    assert "Arguments:" in captured.out
+    assert "json: target=prod" in captured.out
+    assert "Binds:" not in captured.out
+    assert "\n\nInbound payload:\n" in captured.out
     assert "Inbound payload:" in captured.out
-    assert '{"ok":true}' in captured.out
+    assert "ok: true" in captured.out
     assert captured.err == ""
 
 
@@ -372,13 +574,53 @@ def test_shell_sends_signed_messages_until_eof(monkeypatch, tmp_path, capsys):
     first_body = requests[0].data.decode("utf-8")
     second_body = requests[1].data.decode("utf-8")
     assert '"Subject":"Shell@Domain"' in first_body
+    assert '"From":"Bind:123e4567-e89b-12d3-a456-426614174000"' in first_body
     assert '"Command":"balance"' in first_body
-    assert '"Binds":[{"Bind":"Bind:123e4567-e89b-12d3-a456-426614174000","Domain":"vault.example.com"}]' in first_body
-    assert '"Command":"send 10 alice"' in second_body
+    assert '"Arguments":{}' in first_body
+    assert '"Binds":' not in first_body
+    assert '"Command":"send"' in second_body
+    assert '"Arguments":{"0":"10","1":"alice"}' in second_body
+    assert '"From":"Bind:123e4567-e89b-12d3-a456-426614174000"' in second_body
 
     captured = capsys.readouterr()
     assert captured.out == "ok:1\nok:2\n\n"
     assert captured.err == ""
+
+
+def test_parse_shell_command_splits_command_and_arguments():
+    assert cli.parse_shell_command("balance") == ("balance", [])
+    assert cli.parse_shell_command('send --amount 10 user=alice "two words"') == (
+        "send",
+        ["--amount", "10", "user=alice", "two words"],
+    )
+
+
+def test_build_shell_arguments_maps_long_flag_to_dictionary_entry():
+    assert cli.build_shell_arguments(["--all", "123"]) == {"all": "123"}
+
+
+def test_build_shell_arguments_maps_short_flag_to_dictionary_entry():
+    assert cli.build_shell_arguments(["-a", "123"]) == {"a": "123"}
+
+
+def test_build_shell_arguments_maps_equals_token_to_dictionary_entry():
+    assert cli.build_shell_arguments(["a=123"]) == {"a": "123"}
+
+
+def test_build_shell_arguments_keeps_positional_arguments_indexed():
+    assert cli.build_shell_arguments(["10", "alice"]) == {
+        "0": "10",
+        "1": "alice",
+    }
+
+
+def test_parse_shell_command_rejects_invalid_quoting():
+    try:
+        cli.parse_shell_command('"unterminated')
+    except cli.UserFacingError as exc:
+        assert "Invalid shell command" in str(exc)
+    else:
+        raise AssertionError("Expected UserFacingError for invalid shell command")
 
 
 def test_shell_ignores_blank_commands_and_exits_on_keyboard_interrupt(
@@ -392,7 +634,10 @@ def test_shell_ignores_blank_commands_and_exits_on_keyboard_interrupt(
     key_pair = cli.KeyPair()
     private_key_path.write_bytes(key_pair.private_pem_bytes())
     public_key_path.write_bytes(key_pair.public_pem_bytes())
-    binds_path.write_text("[]", encoding="utf-8")
+    binds_path.write_text(
+        cli.yaml.safe_dump([{"Bind": "Bind:existing", "Domain": "vault.example.com"}]),
+        encoding="utf-8",
+    )
     user_inputs = iter(["   ", KeyboardInterrupt()])
     requests = []
 
@@ -431,7 +676,10 @@ def test_shell_stops_on_request_error(monkeypatch, tmp_path, capsys):
     key_pair = cli.KeyPair()
     private_key_path.write_bytes(key_pair.private_pem_bytes())
     public_key_path.write_bytes(key_pair.public_pem_bytes())
-    binds_path.write_text("[]", encoding="utf-8")
+    binds_path.write_text(
+        cli.yaml.safe_dump([{"Bind": "Bind:existing", "Domain": "vault.example.com"}]),
+        encoding="utf-8",
+    )
     user_inputs = iter(["balance"])
 
     def fake_input(_prompt):
@@ -455,3 +703,136 @@ def test_shell_stops_on_request_error(monkeypatch, tmp_path, capsys):
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "Shell request to vault.example.com failed: connection dropped" in captured.err
+
+
+def test_shell_requires_bind_for_target_domain(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    binds_path.write_text(
+        cli.yaml.safe_dump([{"Bind": "Bind:other", "Domain": "other.example.com"}]),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+
+    exit_code = cli.main(["shell", "vault.example.com"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "No bind stored for vault.example.com." in captured.err
+    assert "Run `pw bind vault.example.com` first." in captured.err
+
+
+def test_shell_loads_and_updates_domain_history(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    history_dir = config_dir / "history"
+    history_path = history_dir / "vault.example.com.txt"
+    config_dir.mkdir()
+    history_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    binds_path.write_text(
+        cli.yaml.safe_dump([{"Bind": "Bind:existing", "Domain": "vault.example.com"}]),
+        encoding="utf-8",
+    )
+    history_path.write_text("older balance\nolder send bob\n", encoding="utf-8")
+    fake_readline = FakeReadline()
+    user_inputs = iter(["fresh status", EOFError()])
+
+    def fake_input(_prompt):
+        value = next(user_inputs)
+        if isinstance(value, BaseException):
+            raise value
+        return value
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(cli, "readline", fake_readline)
+    monkeypatch.setattr(builtins, "input", fake_input)
+    monkeypatch.setattr(
+        cli.urllib.request, "urlopen", lambda request: DummyResponse(b"ok")
+    )
+
+    exit_code = cli.main(["shell", "vault.example.com"])
+
+    assert exit_code == 0
+    assert fake_readline.history_length == cli.SHELL_HISTORY_LIMIT
+    assert fake_readline.history == [
+        "older balance",
+        "older send bob",
+        "fresh status",
+    ]
+    assert history_path.read_text(encoding="utf-8") == (
+        "older balance\nolder send bob\nfresh status\n"
+    )
+    captured = capsys.readouterr()
+    assert captured.out == "ok\n\n"
+
+
+def test_shell_history_is_scoped_per_domain_and_trimmed_to_last_twenty(monkeypatch, tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    history_dir = config_dir / "history"
+    config_dir.mkdir()
+    history_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    binds_path.write_text(
+        cli.yaml.safe_dump([{"Bind": "Bind:existing", "Domain": "vault.example.com"}]),
+        encoding="utf-8",
+    )
+    vault_history_path = history_dir / "vault.example.com.txt"
+    other_history_path = history_dir / "other.example.com.txt"
+    vault_history_path.write_text(
+        "\n".join(f"cmd-{index}" for index in range(19)) + "\n",
+        encoding="utf-8",
+    )
+    other_history_path.write_text("other-cmd\n", encoding="utf-8")
+    fake_readline = FakeReadline()
+    user_inputs = iter(["cmd-19", "cmd-20", EOFError()])
+
+    def fake_input(_prompt):
+        value = next(user_inputs)
+        if isinstance(value, BaseException):
+            raise value
+        return value
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(cli, "readline", fake_readline)
+    monkeypatch.setattr(builtins, "input", fake_input)
+    monkeypatch.setattr(
+        cli.urllib.request, "urlopen", lambda request: DummyResponse(b"ok")
+    )
+
+    exit_code = cli.main(["shell", "vault.example.com"])
+
+    assert exit_code == 0
+    assert vault_history_path.read_text(encoding="utf-8").splitlines() == [
+        *(f"cmd-{index}" for index in range(1, 19)),
+        "cmd-19",
+        "cmd-20",
+    ]
+    assert other_history_path.read_text(encoding="utf-8") == "other-cmd\n"

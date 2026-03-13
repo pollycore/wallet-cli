@@ -1,24 +1,38 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import json
 import re
+import shlex
 import sys
+import textwrap
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
 import yaml
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from pollyweb import KeyPair, Msg
+from rich.console import Console
+from rich.text import Text
+
+try:
+    import readline
+except ImportError:  # pragma: no cover - platform-dependent fallback
+    readline = None
 
 
 CONFIG_DIR = Path.home() / ".pollyweb"
 PRIVATE_KEY_PATH = CONFIG_DIR / "private.pem"
 PUBLIC_KEY_PATH = CONFIG_DIR / "public.pem"
 BINDS_PATH = CONFIG_DIR / "binds.yaml"
+HISTORY_DIR = CONFIG_DIR / "history"
 BIND_SUBJECT = "Bind@Vault"
 SHELL_SUBJECT = "Shell@Domain"
+SHELL_HISTORY_LIMIT = 20
 BIND_PATTERN = re.compile(
     r"Bind:[0-9a-fA-F]{8}-"
     r"[0-9a-fA-F]{4}-"
@@ -26,10 +40,37 @@ BIND_PATTERN = re.compile(
     r"[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{12}"
 )
+BIND_SCHEMA_KEY = "Schema"
 
 
 class UserFacingError(Exception):
     """A concise error intended to be shown directly to CLI users."""
+
+
+DEBUG_CONSOLE = Console()
+DEBUG_WRAP_WIDTH = 64
+DEBUG_LITERAL_KEYS = frozenset({"PublicKey", "Signature", "Hash"})
+DEBUG_KEY_STYLE = "bold #0f62fe"
+DEBUG_VALUE_STYLE = "#d0e2ff"
+DEBUG_LITERAL_STYLE = "#08bdba"
+DEBUG_PUNCTUATION_STYLE = "dim"
+
+
+class _LiteralDebugString(str):
+    """Marker type for YAML literal block rendering in debug output."""
+
+
+class _DebugDumper(yaml.SafeDumper):
+    """YAML dumper for debug output formatting."""
+
+
+def _represent_literal_debug_string(
+    dumper: yaml.SafeDumper, data: _LiteralDebugString
+) -> yaml.nodes.ScalarNode:
+    return dumper.represent_scalar("tag:yaml.org,2002:str", str(data), style="|")
+
+
+_DebugDumper.add_representer(_LiteralDebugString, _represent_literal_debug_string)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -88,25 +129,128 @@ def load_signing_key_pair() -> KeyPair:
     return KeyPair(PrivateKey=private_key)
 
 
-def send_bind_message(domain: str, key_pair: KeyPair, debug: bool = False) -> str:
-    public_key = PUBLIC_KEY_PATH.read_text(encoding="utf-8")
-    payload = post_signed_message(
-        domain=domain,
-        subject=BIND_SUBJECT,
-        body={"PublicKey": public_key},
-        key_pair=key_pair,
-        debug=debug,
-    )
+def _parse_debug_payload(payload: str) -> object:
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError:
+        return {"Body": payload}
 
+
+def _format_debug_value(value: object, key: str | None = None) -> object:
+    if isinstance(value, dict):
+        return {
+            child_key: _format_debug_value(item, key=child_key)
+            for child_key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_format_debug_value(item, key=key) for item in value]
+    if (
+        isinstance(value, str)
+        and not any(character.isspace() for character in value)
+        and (
+            key in DEBUG_LITERAL_KEYS or len(value) > DEBUG_WRAP_WIDTH
+        )
+    ):
+        return _LiteralDebugString("\n".join(textwrap.wrap(value, DEBUG_WRAP_WIDTH)))
+    return value
+
+
+def print_debug_payload(title: str, payload: object) -> None:
+    yaml_payload = yaml.dump(
+        _format_debug_value(payload),
+        sort_keys=False,
+        allow_unicode=False,
+        default_flow_style=False,
+        Dumper=_DebugDumper,
+    ).rstrip()
+    print()
+    print(f"{title}:")
+    DEBUG_CONSOLE.print(_render_debug_yaml(yaml_payload), overflow="fold")
+    print()
+
+
+def _render_debug_yaml(yaml_payload: str) -> Text:
+    rendered = Text()
+    literal_indent: int | None = None
+
+    for line in yaml_payload.splitlines():
+        if rendered:
+            rendered.append("\n")
+
+        if not line:
+            continue
+
+        indent_width = len(line) - len(line.lstrip(" "))
+        stripped = line[indent_width:]
+        indent = line[:indent_width]
+
+        if literal_indent is not None and (
+            indent_width > literal_indent or not stripped
+        ):
+            rendered.append(indent, style=DEBUG_PUNCTUATION_STYLE)
+            rendered.append(stripped, style=DEBUG_LITERAL_STYLE)
+            continue
+        literal_indent = None
+
+        match = re.match(r"([^:]+):(.*)", stripped)
+        if match is None:
+            rendered.append(indent, style=DEBUG_PUNCTUATION_STYLE)
+            rendered.append(stripped, style=DEBUG_LITERAL_STYLE)
+            continue
+
+        key, remainder = match.groups()
+        rendered.append(indent, style=DEBUG_PUNCTUATION_STYLE)
+        rendered.append(key, style=DEBUG_KEY_STYLE)
+        rendered.append(":", style=DEBUG_PUNCTUATION_STYLE)
+        if remainder:
+            rendered.append(remainder, style=DEBUG_VALUE_STYLE)
+        if remainder.strip() == "|":
+            literal_indent = indent_width
+
+    return rendered
+
+
+def serialize_public_key_value(public_key_pem: str) -> str:
+    lines = [line.strip() for line in public_key_pem.splitlines() if line.strip()]
+    return "".join(line for line in lines if not line.startswith("-----"))
+
+
+def _parse_bind_response(payload: str) -> dict[str, str]:
     match = BIND_PATTERN.search(payload)
-    if match is None:
+    bind_value = match.group(0) if match is not None else None
+    schema_value: str | None = None
+
+    try:
+        parsed = json.loads(payload)
+    except json.JSONDecodeError:
+        parsed = None
+
+    if isinstance(parsed, dict):
+        bind_candidate = parsed.get("Bind")
+        if isinstance(bind_candidate, str) and BIND_PATTERN.fullmatch(bind_candidate):
+            bind_value = bind_candidate
+
+        schema_candidate = parsed.get(BIND_SCHEMA_KEY)
+        if isinstance(schema_candidate, str):
+            schema_value = schema_candidate
+
+        body = parsed.get("Body")
+        if isinstance(body, dict):
+            bind_candidate = body.get("Bind")
+            if isinstance(bind_candidate, str) and BIND_PATTERN.fullmatch(bind_candidate):
+                bind_value = bind_candidate
+            schema_candidate = body.get(BIND_SCHEMA_KEY)
+            if isinstance(schema_candidate, str):
+                schema_value = schema_candidate
+
+    if bind_value is None:
         preview = " ".join(payload.split())
         if len(preview) > 160:
             preview = preview[:157] + "..."
         raise UserFacingError(
             "\n".join(
                 [
-                    f"Could not bind {domain}.",
+                    f"Could not bind {{domain}}.",
                     "The server replied, but it did not include a bind token.",
                     "Expected a value like `Bind:<UUID>` in the response body.",
                     (
@@ -118,7 +262,31 @@ def send_bind_message(domain: str, key_pair: KeyPair, debug: bool = False) -> st
                 ]
             )
         )
-    return match.group(0)
+
+    entry = {"Bind": bind_value}
+    if schema_value is not None:
+        entry[BIND_SCHEMA_KEY] = schema_value
+    return entry
+
+
+def send_bind_message(domain: str, key_pair: KeyPair, debug: bool = False) -> dict[str, str]:
+    public_key = serialize_public_key_value(
+        PUBLIC_KEY_PATH.read_text(encoding="utf-8")
+    )
+    payload = post_signed_message(
+        domain=domain,
+        subject=BIND_SUBJECT,
+        body={"PublicKey": public_key},
+        key_pair=key_pair,
+        debug=debug,
+        from_value=None,
+        schema_value=None,
+    )
+
+    try:
+        return _parse_bind_response(payload)
+    except UserFacingError as exc:
+        raise UserFacingError(str(exc).replace("{domain}", domain)) from None
 
 
 def post_signed_message(
@@ -127,18 +295,56 @@ def post_signed_message(
     body: dict[str, object],
     key_pair: KeyPair,
     debug: bool = False,
+    from_value: str | None = "Anonymous",
+    schema_value: str | None = "pollyweb.org/MSG:1.0",
 ) -> str:
-    message = Msg(
-        From="Anonymous",
-        To=domain,
-        Subject=subject,
-        Body=body,
-    ).sign(key_pair.PrivateKey)
-    request_payload = json.dumps(message.to_dict(), separators=(",", ":"))
+    message_kwargs: dict[str, str | dict[str, object]] = {
+        "To": domain,
+        "Subject": subject,
+        "Body": body,
+    }
+    if from_value is not None:
+        message_kwargs["From"] = from_value
+    if schema_value is not None:
+        message_kwargs["Schema"] = schema_value
+
+    if from_value is None or schema_value is None:
+        template_message = Msg(**message_kwargs)
+        header = {
+            "To": template_message.To,
+            "Subject": template_message.Subject,
+            "Correlation": template_message.Correlation,
+            "Timestamp": template_message.Timestamp,
+        }
+        if from_value is not None:
+            header["From"] = template_message.From
+        if schema_value is not None:
+            header["Schema"] = template_message.Schema
+
+        signed_payload = {
+            "Header": header,
+            "Body": template_message.Body,
+        }
+        canonical = json.dumps(
+            signed_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        request_message = {
+            **signed_payload,
+            "Hash": hashlib.sha256(canonical).hexdigest(),
+            "Signature": base64.b64encode(
+                key_pair.PrivateKey.sign(canonical)
+            ).decode("ascii"),
+        }
+    else:
+        message = Msg(**message_kwargs).sign(key_pair.PrivateKey)
+        request_message = message.to_dict()
+    request_payload = json.dumps(request_message, separators=(",", ":"))
 
     if debug:
-        print("Outbound payload:")
-        print(request_payload)
+        print_debug_payload("Outbound payload", request_message)
 
     request = urllib.request.Request(
         f"https://pw.{domain}/inbox",
@@ -150,8 +356,7 @@ def post_signed_message(
         response_payload = response.read().decode("utf-8")
 
     if debug:
-        print("Inbound payload:")
-        print(response_payload)
+        print_debug_payload("Inbound payload", _parse_debug_payload(response_payload))
 
     return response_payload
 
@@ -173,17 +378,138 @@ def load_binds() -> list[dict[str, str]]:
         domain = item.get("Domain")
         if not isinstance(bind, str) or not isinstance(domain, str):
             raise ValueError(f"{BINDS_PATH} entries must contain string Bind and Domain.")
-        binds.append({"Bind": bind, "Domain": domain})
+        entry = {"Bind": bind, "Domain": domain}
+        schema = item.get(BIND_SCHEMA_KEY)
+        if schema is not None:
+            if not isinstance(schema, str):
+                raise ValueError(
+                    f"{BINDS_PATH} Schema values must be strings when present."
+                )
+            entry[BIND_SCHEMA_KEY] = schema
+        binds.append(entry)
     return binds
 
 
-def save_bind(bind_value: str, domain: str) -> None:
+def save_bind(bind_entry: dict[str, str], domain: str) -> None:
     binds = load_binds()
-    entry = {"Bind": bind_value, "Domain": domain}
-    if entry not in binds:
-        binds.append(entry)
+    entry = {**bind_entry, "Domain": domain}
+    schema = entry.get(BIND_SCHEMA_KEY)
+    binds = [
+        existing
+        for existing in binds
+        if not (
+            existing["Domain"] == domain
+            and existing.get(BIND_SCHEMA_KEY) == schema
+        )
+    ]
+    binds.append(entry)
     BINDS_PATH.write_text(yaml.safe_dump(binds, sort_keys=False), encoding="utf-8")
     BINDS_PATH.chmod(0o600)
+
+
+def get_first_bind_for_domain(domain: str, binds: list[dict[str, str]]) -> str | None:
+    for bind in binds:
+        if bind["Domain"] == domain:
+            return bind["Bind"]
+    return None
+
+
+def parse_shell_command(command_line: str) -> tuple[str, list[str]]:
+    try:
+        parts = shlex.split(command_line)
+    except ValueError as exc:
+        raise UserFacingError(f"Invalid shell command: {exc}") from None
+
+    if not parts:
+        raise UserFacingError("Shell command cannot be empty.")
+
+    return parts[0], parts[1:]
+
+
+def build_shell_arguments(command_args: list[str]) -> dict[str, str]:
+    arguments: dict[str, str] = {}
+    positional_index = 0
+    index = 0
+
+    while index < len(command_args):
+        argument = command_args[index]
+
+        if argument.startswith("--") and len(argument) > 2:
+            key = argument[2:]
+            next_index = index + 1
+            if next_index < len(command_args):
+                arguments[key] = command_args[next_index]
+                index += 2
+                continue
+
+        if argument.startswith("-") and len(argument) == 2:
+            key = argument[1:]
+            next_index = index + 1
+            if next_index < len(command_args):
+                arguments[key] = command_args[next_index]
+                index += 2
+                continue
+
+        if "=" in argument:
+            key, value = argument.split("=", 1)
+            if key:
+                arguments[key] = value
+                index += 1
+                continue
+
+        arguments[str(positional_index)] = argument
+        positional_index += 1
+        index += 1
+
+    return arguments
+
+
+def get_shell_history_path(domain: str) -> Path:
+    encoded_domain = urllib.parse.quote(domain, safe="")
+    return HISTORY_DIR / f"{encoded_domain}.txt"
+
+
+def load_shell_history(domain: str) -> list[str]:
+    history_path = get_shell_history_path(domain)
+    if not history_path.exists():
+        return []
+    return [
+        line
+        for line in history_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ][-SHELL_HISTORY_LIMIT:]
+
+
+def save_shell_history(domain: str, commands: list[str]) -> None:
+    HISTORY_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    history_path = get_shell_history_path(domain)
+    trimmed_commands = commands[-SHELL_HISTORY_LIMIT:]
+    trailing_newline = "\n" if trimmed_commands else ""
+    history_path.write_text(
+        "\n".join(trimmed_commands) + trailing_newline,
+        encoding="utf-8",
+    )
+    history_path.chmod(0o600)
+
+
+def configure_shell_history(domain: str) -> list[str]:
+    history = load_shell_history(domain)
+    if readline is None:
+        return history
+
+    readline.clear_history()
+    for command in history:
+        readline.add_history(command)
+    readline.set_history_length(SHELL_HISTORY_LIMIT)
+    return history
+
+
+def record_shell_history(domain: str, history: list[str], command: str) -> list[str]:
+    updated_history = [*history, command][-SHELL_HISTORY_LIMIT:]
+    save_shell_history(domain, updated_history)
+    if readline is not None:
+        readline.add_history(command)
+    return updated_history
 
 
 def cmd_config(force: bool) -> int:
@@ -221,8 +547,8 @@ def cmd_bind(domain: str, debug: bool = False) -> int:
     try:
         require_configured_keys()
         key_pair = load_signing_key_pair()
-        bind_value = send_bind_message(domain, key_pair, debug=debug)
-        save_bind(bind_value, domain)
+        bind_entry = send_bind_message(domain, key_pair, debug=debug)
+        save_bind(bind_entry, domain)
     except FileNotFoundError:
         raise UserFacingError(
             f"Missing PollyWeb keys in {CONFIG_DIR}. Run `pw config` first."
@@ -237,7 +563,7 @@ def cmd_bind(domain: str, debug: bool = False) -> int:
             f"Could not bind {domain}. Network request failed: {reason}"
         ) from None
 
-    print(f"Stored bind for {domain}: {bind_value}")
+    print(f"Stored bind for {domain}: {bind_entry['Bind']}")
     print(f"Updated {BINDS_PATH}")
     return 0
 
@@ -254,6 +580,14 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
     except ValueError as exc:
         raise UserFacingError(str(exc)) from None
 
+    from_value = get_first_bind_for_domain(domain, binds)
+    if from_value is None:
+        raise UserFacingError(
+            f"No bind stored for {domain}. Run `pw bind {domain}` first."
+        ) from None
+
+    history = configure_shell_history(domain)
+
     while True:
         try:
             command = input(f"pw:{domain}> ")
@@ -267,13 +601,20 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
         if not command.strip():
             continue
 
+        command_name, command_args = parse_shell_command(command)
+        history = record_shell_history(domain, history, command)
+
         try:
             response = post_signed_message(
                 domain=domain,
                 subject=SHELL_SUBJECT,
-                body={"Binds": binds, "Command": command},
+                body={
+                    "Command": command_name,
+                    "Arguments": build_shell_arguments(command_args),
+                },
                 key_pair=key_pair,
                 debug=debug,
+                from_value=from_value,
             )
         except urllib.error.HTTPError as exc:
             raise UserFacingError(
