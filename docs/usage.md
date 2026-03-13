@@ -29,6 +29,12 @@ pw bind vault.example.com
 
 This sends a signed `Bind@Vault` message to `vault.example.com` with your configured public key in the body. When the domain replies with a payload like `Bind:123e4567-e89b-12d3-a456-426614174000`, the CLI appends it to `~/.pollyweb/binds.yaml` as a YAML list item with `Bind` and `Domain` fields.
 
+To print the raw outbound request payload and inbound response body during bind:
+
+```bash
+pw bind --debug vault.example.com
+```
+
 Open an interactive shell against a domain:
 
 ```bash

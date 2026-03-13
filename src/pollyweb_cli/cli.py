@@ -54,6 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bind the configured wallet key to a domain.",
     )
     bind_parser.add_argument("domain", help="Domain that will receive the bind request.")
+    bind_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print outbound and inbound bind payloads.",
+    )
 
     shell_parser = subparsers.add_parser(
         "shell",
@@ -78,13 +83,14 @@ def load_signing_key_pair() -> KeyPair:
     return KeyPair(PrivateKey=private_key)
 
 
-def send_bind_message(domain: str, key_pair: KeyPair) -> str:
+def send_bind_message(domain: str, key_pair: KeyPair, debug: bool = False) -> str:
     public_key = PUBLIC_KEY_PATH.read_text(encoding="utf-8")
     payload = post_signed_message(
         domain=domain,
         subject=BIND_SUBJECT,
         body={"PublicKey": public_key},
         key_pair=key_pair,
+        debug=debug,
     )
 
     match = BIND_PATTERN.search(payload)
@@ -115,6 +121,7 @@ def post_signed_message(
     subject: str,
     body: dict[str, object],
     key_pair: KeyPair,
+    debug: bool = False,
 ) -> str:
     message = Msg(
         From="Anonymous",
@@ -122,15 +129,26 @@ def post_signed_message(
         Subject=subject,
         Body=body,
     ).sign(key_pair.PrivateKey)
+    request_payload = json.dumps(message.to_dict(), separators=(",", ":"))
+
+    if debug:
+        print("Outbound payload:")
+        print(request_payload)
 
     request = urllib.request.Request(
         f"https://pw.{domain}/inbox",
-        data=json.dumps(message.to_dict(), separators=(",", ":")).encode("utf-8"),
+        data=request_payload.encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
     with urllib.request.urlopen(request) as response:
-        return response.read().decode("utf-8")
+        response_payload = response.read().decode("utf-8")
+
+    if debug:
+        print("Inbound payload:")
+        print(response_payload)
+
+    return response_payload
 
 
 def load_binds() -> list[dict[str, str]]:
@@ -194,11 +212,11 @@ def cmd_config(force: bool) -> int:
     return 0
 
 
-def cmd_bind(domain: str) -> int:
+def cmd_bind(domain: str, debug: bool = False) -> int:
     try:
         require_configured_keys()
         key_pair = load_signing_key_pair()
-        bind_value = send_bind_message(domain, key_pair)
+        bind_value = send_bind_message(domain, key_pair, debug=debug)
         save_bind(bind_value, domain)
     except FileNotFoundError:
         raise UserFacingError(
@@ -272,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "config":
             return cmd_config(force=args.force)
         if args.command == "bind":
-            return cmd_bind(domain=args.domain)
+            return cmd_bind(domain=args.domain, debug=args.debug)
         if args.command == "shell":
             return cmd_shell(domain=args.domain)
     except UserFacingError as exc:

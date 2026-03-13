@@ -170,6 +170,38 @@ def test_bind_sends_signed_message_and_stores_bind(monkeypatch, tmp_path, capsys
     assert str(binds_path) in captured.out
 
 
+def test_bind_debug_prints_outbound_and_inbound_payloads(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    bind_value = f"Bind:{uuid.uuid4()}"
+
+    def fake_urlopen(request):
+        return DummyResponse(bind_value.encode("utf-8"))
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["bind", "--debug", "vault.example.com"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Outbound payload:" in captured.out
+    assert '"Subject":"Bind@Vault"' in captured.out
+    assert '"To":"vault.example.com"' in captured.out
+    assert "Inbound payload:" in captured.out
+    assert bind_value in captured.out
+    assert captured.err == ""
+
+
 def test_bind_appends_without_overwriting_existing_binds(monkeypatch, tmp_path):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
