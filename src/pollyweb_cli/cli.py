@@ -33,9 +33,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_config(force: bool) -> int:
-    if not force and (PRIVATE_KEY_PATH.exists() or PUBLIC_KEY_PATH.exists()):
+    private_exists = PRIVATE_KEY_PATH.exists()
+    public_exists = PUBLIC_KEY_PATH.exists()
+
+    if not force and private_exists and public_exists:
+        print(f"Using existing {PRIVATE_KEY_PATH}")
+        print(f"Using existing {PUBLIC_KEY_PATH}")
+        return 0
+
+    if not force and (private_exists or public_exists):
         print(
-            "Key files already exist. Re-run with --force to overwrite them.",
+            "Key files are only partially configured. Re-run with --force to recreate them.",
             file=sys.stderr,
         )
         return 1

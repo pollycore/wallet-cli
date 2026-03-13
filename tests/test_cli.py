@@ -28,7 +28,7 @@ def test_config_creates_keypair_files(monkeypatch, tmp_path, capsys):
     assert str(public_key_path) in captured.out
 
 
-def test_config_refuses_to_overwrite_existing_keys(monkeypatch, tmp_path, capsys):
+def test_config_is_idempotent_when_keys_already_exist(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     config_dir.mkdir()
     private_key_path = config_dir / "private.pem"
@@ -42,12 +42,35 @@ def test_config_refuses_to_overwrite_existing_keys(monkeypatch, tmp_path, capsys
 
     exit_code = cli.main(["config"])
 
-    assert exit_code == 1
+    assert exit_code == 0
     assert private_key_path.read_text() == "existing-private"
     assert public_key_path.read_text() == "existing-public"
 
     captured = capsys.readouterr()
-    assert "already exist" in captured.err
+    assert str(private_key_path) in captured.out
+    assert str(public_key_path) in captured.out
+    assert captured.err == ""
+
+
+def test_config_refuses_partial_configuration_without_force(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    config_dir.mkdir()
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    private_key_path.write_text("existing-private")
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+
+    exit_code = cli.main(["config"])
+
+    assert exit_code == 1
+    assert private_key_path.read_text() == "existing-private"
+    assert not public_key_path.exists()
+
+    captured = capsys.readouterr()
+    assert "partially configured" in captured.err
 
 
 def test_config_force_overwrites_existing_keys(monkeypatch, tmp_path):
