@@ -51,3 +51,9 @@ Command: balance
 ```
 
 The CLI prints the response body and waits for the next command. Empty commands are ignored. Shell mode exits when you press `Ctrl+D`, press `Ctrl+C`, or when a request error occurs.
+
+To print the raw outbound request payload and inbound response body for each shell command:
+
+```bash
+pw shell --debug vault.example.com
+```

@@ -67,6 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
     shell_parser.add_argument(
         "domain", help="Domain that will receive shell commands."
     )
+    shell_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print outbound and inbound shell payloads.",
+    )
 
     return parser
 
@@ -237,7 +242,7 @@ def cmd_bind(domain: str, debug: bool = False) -> int:
     return 0
 
 
-def cmd_shell(domain: str) -> int:
+def cmd_shell(domain: str, debug: bool = False) -> int:
     try:
         require_configured_keys()
         key_pair = load_signing_key_pair()
@@ -268,6 +273,7 @@ def cmd_shell(domain: str) -> int:
                 subject=SHELL_SUBJECT,
                 body={"Binds": binds, "Command": command},
                 key_pair=key_pair,
+                debug=debug,
             )
         except urllib.error.HTTPError as exc:
             raise UserFacingError(
@@ -292,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "bind":
             return cmd_bind(domain=args.domain, debug=args.debug)
         if args.command == "shell":
-            return cmd_shell(domain=args.domain)
+            return cmd_shell(domain=args.domain, debug=args.debug)
     except UserFacingError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

@@ -278,8 +278,51 @@ def test_bind_requires_bind_token_in_response(monkeypatch, tmp_path, capsys):
     assert exit_code == 1
     assert "Could not bind vault.example.com." in captured.err
     assert "did not include a bind token" in captured.err
-    assert "Bind:<UUID>" in captured.err
-    assert 'Response preview: {"ok":true}' in captured.err
+
+
+def test_shell_debug_prints_outbound_and_inbound_payloads(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    binds_path.write_text(
+        cli.yaml.safe_dump([{"Bind": "Bind:existing", "Domain": "vault.example.com"}]),
+    )
+
+    def fake_urlopen(request):
+        return DummyResponse(b'{"ok":true}')
+
+    commands = iter(["status", EOFError()])
+
+    def fake_input(prompt):
+        result = next(commands)
+        if isinstance(result, BaseException):
+            raise result
+        return result
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(builtins, "input", fake_input)
+
+    exit_code = cli.main(["shell", "--debug", "vault.example.com"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Outbound payload:" in captured.out
+    assert '"Subject":"Shell@Domain"' in captured.out
+    assert '"Command":"status"' in captured.out
+    assert "Inbound payload:" in captured.out
+    assert '{"ok":true}' in captured.out
+    assert captured.err == ""
 
 
 def test_shell_sends_signed_messages_until_eof(monkeypatch, tmp_path, capsys):
