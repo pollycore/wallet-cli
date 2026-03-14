@@ -58,8 +58,6 @@ DEBUG_KEY_STYLE = "bold #0f62fe"
 DEBUG_VALUE_STYLE = "#d0e2ff"
 DEBUG_LITERAL_STYLE = "#08bdba"
 DEBUG_PUNCTUATION_STYLE = "dim"
-ERROR_STYLE = "\033[1;31m"
-ERROR_STYLE_RESET = "\033[0m"
 HTTP_CODE_STYLES = {
     1: "cyan",
     2: "green",
@@ -149,13 +147,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def print_error(message: str) -> None:
-    if sys.stderr.isatty():
-        print(f"{ERROR_STYLE}{message}{ERROR_STYLE_RESET}", file=sys.stderr)
-        return
-    print(message, file=sys.stderr)
-
-
 def _get_cli_version() -> str:
     try:
         return get_installed_version("pollyweb-cli")
@@ -212,18 +203,16 @@ def _parse_shell_response_body(payload: str) -> tuple[str | None, str | None]:
     if not isinstance(parsed, dict):
         return None, None
 
-    rendered_text = parsed.get("Body")
-    if not isinstance(rendered_text, str):
-        rendered_text = parsed.get("Message")
-    if not isinstance(rendered_text, str):
+    body = parsed.get("Body")
+    if not isinstance(body, str):
         return None, None
 
     code = parsed.get("Code")
     if isinstance(code, int):
-        return rendered_text, _get_http_code_style(code)
+        return body, _get_http_code_style(code)
     if isinstance(code, str) and code.isdigit():
-        return rendered_text, _get_http_code_style(int(code))
-    return rendered_text, None
+        return body, _get_http_code_style(int(code))
+    return body, None
 
 
 def print_shell_response(payload: str) -> None:
@@ -610,21 +599,6 @@ def parse_shell_command(command_line: str) -> tuple[str, list[str]]:
     return parts[0], parts[1:]
 
 
-def is_shell_exit_command(command: str) -> bool:
-    normalized = command.strip().lower()
-    if normalized in {"exit", "quit"}:
-        return True
-
-    if normalized.startswith(("!", ":")):
-        normalized = normalized[1:]
-        if normalized.endswith("!"):
-            normalized = normalized[:-1]
-        if normalized in {"q", "quit", "qa", "qall", "wq", "x"}:
-            return True
-
-    return False
-
-
 def build_shell_arguments(command_args: list[str]) -> dict[str, str]:
     arguments: dict[str, str] = {}
     positional_index = 0
@@ -827,12 +801,24 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
         ) from None
     from_value = get_shell_from_value(bind_value)
 
-
     history = configure_shell_history(domain)
 
-    available_commands = []
+    while True:
+        try:
+            command = input(f"pw:{domain}> ")
+        except EOFError:
+            print()
+            return 0
+        except KeyboardInterrupt:
+            print()
+            return 0
 
-    def send_shell_command(command_name: str, command_args: list[str], capture_response: bool = False):
+        if not command.strip():
+            continue
+
+        command_name, command_args = parse_shell_command(command)
+        history = record_shell_history(domain, history, command)
+
         try:
             response = post_signed_message(
                 domain=domain,
@@ -855,54 +841,7 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
                 f"Shell request to {domain} failed: {reason}"
             ) from None
 
-        if capture_response:
-            return response
         print_shell_response(response)
-
-    # Send help silently to extract available commands for autocomplete
-    try:
-        help_response = send_shell_command("help", [], capture_response=True)
-        help_json = json.loads(help_response)
-        shell_data = help_json.get("Shell")
-        if isinstance(shell_data, dict):
-            commands_list = shell_data.get("commands", [])
-            if isinstance(commands_list, list):
-                available_commands = [
-                    cmd["name"] for cmd in commands_list 
-                    if isinstance(cmd, dict) and "name" in cmd
-                ]
-    except Exception:
-        available_commands = []
-
-    # Setup readline completer if available
-    if readline is not None and available_commands:
-        def completer(text, state):
-            matches = [cmd for cmd in available_commands if cmd.startswith(text)]
-            if state < len(matches):
-                return matches[state]
-            return None
-        readline.set_completer(completer)
-        readline.parse_and_bind("tab: complete")
-
-    while True:
-        try:
-            command = input(f"pw:{domain}> ")
-        except EOFError:
-            print()
-            return 0
-        except KeyboardInterrupt:
-            print()
-            return 0
-
-        if not command.strip():
-            continue
-
-        if is_shell_exit_command(command):
-            return 0
-
-        command_name, command_args = parse_shell_command(command)
-        history = record_shell_history(domain, history, command)
-        send_shell_command(command_name, command_args)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -919,7 +858,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "shell":
             return cmd_shell(domain=args.domain, debug=args.debug)
     except UserFacingError as exc:
-        print_error(f"Error: {exc}")
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
     parser.print_help()

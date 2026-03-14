@@ -509,7 +509,7 @@ def test_echo_sends_signed_message_and_verifies_response(
         payload = cli.json.loads(request.data.decode("utf-8"))
         assert payload["Header"]["To"] == "vault.example.com"
         assert payload["Header"]["Subject"] == "Echo@Domain"
-        assert "From" not in payload["Header"]
+        assert payload["Header"]["From"] == "vault.example.com"
         response = cli.Msg(
             From="vault.example.com",
             To="vault.example.com",
@@ -578,6 +578,59 @@ def test_echo_fails_when_signature_does_not_verify(monkeypatch, tmp_path, capsys
     captured = capsys.readouterr()
     assert "did not verify" in captured.err
     assert "Invalid signature" in captured.err
+
+
+def test_main_renders_user_facing_errors_in_red(monkeypatch):
+    monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: True)
+    monkeypatch.setattr(cli, "cmd_echo", lambda domain, debug: (_ for _ in ()).throw(cli.UserFacingError("boom")))
+    printed = []
+
+    def fake_print(*args, **kwargs):
+        printed.append((args, kwargs))
+
+    monkeypatch.setattr(builtins, "print", fake_print)
+
+    exit_code = cli.main(["echo", "vault.example.com"])
+
+    assert exit_code == 1
+    assert printed == [
+        (
+            (f"{cli.ERROR_STYLE}Error: boom{cli.ERROR_STYLE_RESET}",),
+            {"file": cli.sys.stderr},
+        )
+    ]
+
+
+def test_main_renders_bind_errors_in_red(monkeypatch):
+    monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: True)
+    monkeypatch.setattr(
+        cli,
+        "cmd_bind",
+        lambda domain, debug: (_ for _ in ()).throw(
+            cli.UserFacingError(
+                f"Could not bind {domain}. The server returned HTTP 500."
+            )
+        ),
+    )
+    printed = []
+
+    def fake_print(*args, **kwargs):
+        printed.append((args, kwargs))
+
+    monkeypatch.setattr(builtins, "print", fake_print)
+
+    exit_code = cli.main(["bind", "any-hoster.pollyweb.org"])
+
+    assert exit_code == 1
+    assert printed == [
+        (
+            (
+                f"{cli.ERROR_STYLE}Error: Could not bind any-hoster.pollyweb.org. "
+                f"The server returned HTTP 500.{cli.ERROR_STYLE_RESET}",
+            ),
+            {"file": cli.sys.stderr},
+        )
+    ]
 
 
 def test_echo_fails_when_response_headers_do_not_make_sense(
@@ -763,9 +816,15 @@ def test_shell_sends_signed_messages_until_eof(monkeypatch, tmp_path, capsys):
         "pw:vault.example.com> ",
         "pw:vault.example.com> ",
     ]
-    assert len(requests) == 2
-    first_body = requests[0].data.decode("utf-8")
-    second_body = requests[1].data.decode("utf-8")
+    assert len(requests) == 3
+    init_body = requests[0].data.decode("utf-8")
+    first_body = requests[1].data.decode("utf-8")
+    second_body = requests[2].data.decode("utf-8")
+    assert '"Subject":"Shell@Domain"' in init_body
+    assert '"From":"123e4567-e89b-12d3-a456-426614174000"' in init_body
+    assert '"Command":"help"' in init_body
+    assert '"Arguments":{}' in init_body
+    assert '"Binds":' not in init_body
     assert '"Subject":"Shell@Domain"' in first_body
     assert '"From":"123e4567-e89b-12d3-a456-426614174000"' in first_body
     assert '"Command":"balance"' in first_body
@@ -776,7 +835,7 @@ def test_shell_sends_signed_messages_until_eof(monkeypatch, tmp_path, capsys):
     assert '"From":"123e4567-e89b-12d3-a456-426614174000"' in second_body
 
     captured = capsys.readouterr()
-    assert captured.out == "ok:1\nok:2\n\n"
+    assert captured.out == "ok:1\nok:2\nok:3\n\n"
     assert captured.err == ""
 
 
@@ -791,7 +850,10 @@ def test_print_shell_response_colors_success_codes(monkeypatch):
 
     cli.print_shell_response('{"Code":200,"Message":"ok"}')
 
-    assert printed == [('{"Code":200,"Message":"ok"}', "green")]
+    assert len(printed) == 1
+    rendered, style = printed[0]
+    assert isinstance(rendered, cli.Markdown)
+    assert style == "green"
 
 
 def test_print_shell_response_colors_error_codes(monkeypatch):
@@ -805,7 +867,10 @@ def test_print_shell_response_colors_error_codes(monkeypatch):
 
     cli.print_shell_response('{"Code":"503","Message":"down"}')
 
-    assert printed == [('{"Code":"503","Message":"down"}', "bold red")]
+    assert len(printed) == 1
+    rendered, style = printed[0]
+    assert isinstance(rendered, cli.Markdown)
+    assert style == "bold red"
 
 
 def test_print_shell_response_renders_string_body_as_markdown(monkeypatch):
@@ -823,6 +888,23 @@ def test_print_shell_response_renders_string_body_as_markdown(monkeypatch):
     rendered, style = printed[0]
     assert isinstance(rendered, cli.Markdown)
     assert style == "green"
+
+
+def test_print_shell_response_renders_string_message_as_markdown(monkeypatch):
+    printed = []
+
+    class FakeConsole:
+        def print(self, payload, style=None):
+            printed.append((payload, style))
+
+    monkeypatch.setattr(cli, "SHELL_CONSOLE", FakeConsole())
+
+    cli.print_shell_response('{"Code":404,"Message":"# Missing\\n\\n- help"}')
+
+    assert len(printed) == 1
+    rendered, style = printed[0]
+    assert isinstance(rendered, cli.Markdown)
+    assert style == "yellow"
 
 
 def test_print_shell_response_prints_raw_payload_when_body_is_not_a_string(
@@ -900,6 +982,24 @@ def test_parse_shell_command_rejects_invalid_quoting():
         raise AssertionError("Expected UserFacingError for invalid shell command")
 
 
+def test_is_shell_exit_command_matches_supported_aliases():
+    for command in [
+        "exit",
+        "quit",
+        "!q",
+        "!quit",
+        "!qa",
+        "!qall",
+        "!wq",
+        "!x",
+        "!quit!",
+    ]:
+        assert cli.is_shell_exit_command(command) is True
+
+    assert cli.is_shell_exit_command("balance") is False
+    assert cli.is_shell_exit_command("!status") is False
+
+
 def test_shell_ignores_blank_commands_and_exits_on_keyboard_interrupt(
     monkeypatch, tmp_path, capsys
 ):
@@ -938,9 +1038,61 @@ def test_shell_ignores_blank_commands_and_exits_on_keyboard_interrupt(
     exit_code = cli.main(["shell", "vault.example.com"])
 
     assert exit_code == 0
-    assert requests == []
+    assert len(requests) == 1
+    init_body = requests[0].data.decode("utf-8")
+    assert '"Command":"help"' in init_body
+    assert '"Arguments":{}' in init_body
     captured = capsys.readouterr()
-    assert captured.out == "\n"
+    assert captured.out == "unexpected\n\n"
+    assert captured.err == ""
+
+
+def test_shell_exits_without_sending_user_command_for_exit_aliases(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    history_dir = config_dir / "history"
+    history_path = history_dir / "vault.example.com.txt"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    binds_path.write_text(
+        cli.yaml.safe_dump([{"Bind": VALID_BIND, "Domain": "vault.example.com"}]),
+        encoding="utf-8",
+    )
+    user_inputs = iter(["!q"])
+    requests = []
+
+    def fake_input(_prompt):
+        value = next(user_inputs)
+        if isinstance(value, BaseException):
+            raise value
+        return value
+
+    def fake_urlopen(request):
+        requests.append(request)
+        return DummyResponse(b"ok")
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(builtins, "input", fake_input)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["shell", "vault.example.com"])
+
+    assert exit_code == 0
+    assert len(requests) == 1
+    assert '"Command":"init"' in requests[0].data.decode("utf-8")
+    assert not history_path.exists()
+    captured = capsys.readouterr()
+    assert captured.out == "ok\n"
     assert captured.err == ""
 
 
@@ -1059,7 +1211,7 @@ def test_shell_loads_and_updates_domain_history(monkeypatch, tmp_path, capsys):
         "older balance\nolder send bob\nfresh status\n"
     )
     captured = capsys.readouterr()
-    assert captured.out == "ok\n\n"
+    assert captured.out == "ok\nok\n\n"
 
 
 def test_shell_history_is_scoped_per_domain_and_trimmed_to_last_twenty(monkeypatch, tmp_path):
