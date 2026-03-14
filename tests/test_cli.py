@@ -509,7 +509,7 @@ def test_echo_sends_signed_message_and_verifies_response(
         payload = cli.json.loads(request.data.decode("utf-8"))
         assert payload["Header"]["To"] == "vault.example.com"
         assert payload["Header"]["Subject"] == "Echo@Domain"
-        assert payload["Header"]["From"] == "vault.example.com"
+        assert "From" not in payload["Header"]
         response = cli.Msg(
             From="vault.example.com",
             To="vault.example.com",
@@ -724,6 +724,7 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
     assert "\nOutbound payload to https://pw.vault.example.com/inbox:\n" in captured.out
     assert "Subject: Echo@Domain" in captured.out
     assert "To: vault.example.com" in captured.out
+    assert "From:" not in captured.out.split("\n\nInbound payload:\n", 1)[0]
     assert "\n\nInbound payload:\n" in captured.out
     assert "From: vault.example.com" in captured.out
     assert "Echo: ok" in captured.out

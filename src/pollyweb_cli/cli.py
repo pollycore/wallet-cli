@@ -784,7 +784,7 @@ def cmd_echo(domain: str, debug: bool = False) -> int:
             body={},
             key_pair=key_pair,
             domain=domain,
-            from_value=domain,
+            from_value=None,
         )
         response_payload = send_request_message(
             domain=domain, request_message=request_message, debug=debug
