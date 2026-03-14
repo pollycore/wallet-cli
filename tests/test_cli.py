@@ -527,7 +527,7 @@ def test_echo_sends_signed_message_and_verifies_response(
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
-        lambda domain, selector: remote_key_pair.PublicKey,
+        lambda domain, selector: (remote_key_pair.PublicKey, "ed25519"),
     )
 
     exit_code = cli.main(["echo", "vault.example.com"])
@@ -569,7 +569,7 @@ def test_echo_fails_when_signature_does_not_verify(monkeypatch, tmp_path, capsys
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
-        lambda domain, selector: wrong_key_pair.PublicKey,
+        lambda domain, selector: (wrong_key_pair.PublicKey, "ed25519"),
     )
 
     exit_code = cli.main(["echo", "vault.example.com"])
@@ -664,7 +664,7 @@ def test_echo_fails_when_response_headers_do_not_make_sense(
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
-        lambda domain, selector: remote_key_pair.PublicKey,
+        lambda domain, selector: (remote_key_pair.PublicKey, "ed25519"),
     )
 
     exit_code = cli.main(["echo", "vault.example.com"])
@@ -705,7 +705,7 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
-        lambda domain, selector: remote_key_pair.PublicKey,
+        lambda domain, selector: (remote_key_pair.PublicKey, "ed25519"),
     )
 
     exit_code = cli.main(["echo", "--debug", "vault.example.com"])
@@ -835,7 +835,7 @@ def test_shell_sends_signed_messages_until_eof(monkeypatch, tmp_path, capsys):
     assert '"From":"123e4567-e89b-12d3-a456-426614174000"' in second_body
 
     captured = capsys.readouterr()
-    assert captured.out == "ok:1\nok:2\nok:3\n\n"
+    assert captured.out == "ok:2\nok:3\n\n"
     assert captured.err == ""
 
 
@@ -932,10 +932,10 @@ def test_print_shell_response_falls_back_to_plain_print_for_non_http_payloads(
     monkeypatch.setattr(cli, "SHELL_CONSOLE", FakeConsole())
 
     cli.print_shell_response("ok:1")
-    cli.print_shell_response('{"Message":"ok"}')
+    cli.print_shell_response('{"Other":"data"}')
 
     captured = capsys.readouterr()
-    assert captured.out == 'ok:1\n{"Message":"ok"}\n'
+    assert captured.out == 'ok:1\n{"Other":"data"}\n'
 
 
 def test_parse_shell_command_splits_command_and_arguments():
@@ -1043,7 +1043,7 @@ def test_shell_ignores_blank_commands_and_exits_on_keyboard_interrupt(
     assert '"Command":"help"' in init_body
     assert '"Arguments":{}' in init_body
     captured = capsys.readouterr()
-    assert captured.out == "unexpected\n\n"
+    assert captured.out == "\n"
     assert captured.err == ""
 
 
@@ -1089,10 +1089,10 @@ def test_shell_exits_without_sending_user_command_for_exit_aliases(
 
     assert exit_code == 0
     assert len(requests) == 1
-    assert '"Command":"init"' in requests[0].data.decode("utf-8")
+    assert '"Command":"help"' in requests[0].data.decode("utf-8")
     assert not history_path.exists()
     captured = capsys.readouterr()
-    assert captured.out == "ok\n"
+    assert captured.out == ""
     assert captured.err == ""
 
 
@@ -1211,7 +1211,7 @@ def test_shell_loads_and_updates_domain_history(monkeypatch, tmp_path, capsys):
         "older balance\nolder send bob\nfresh status\n"
     )
     captured = capsys.readouterr()
-    assert captured.out == "ok\nok\n\n"
+    assert captured.out == "ok\n\n"
 
 
 def test_shell_history_is_scoped_per_domain_and_trimmed_to_last_twenty(monkeypatch, tmp_path):
