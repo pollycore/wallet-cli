@@ -242,8 +242,8 @@ def test_bind_debug_prints_outbound_and_inbound_payloads(monkeypatch, tmp_path, 
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert "\nOutbound payload:\n" in captured.out
-    assert "Outbound payload:" in captured.out
+    assert "\nOutbound payload to https://pw.vault.example.com/inbox:\n" in captured.out
+    assert "Outbound payload to https://pw.vault.example.com/inbox:" in captured.out
     assert "Subject: Bind@Vault" in captured.out
     assert "To: vault.example.com" in captured.out
     assert "From:" not in captured.out
@@ -509,7 +509,7 @@ def test_echo_sends_signed_message_and_verifies_response(
         payload = cli.json.loads(request.data.decode("utf-8"))
         assert payload["Header"]["To"] == "vault.example.com"
         assert payload["Header"]["Subject"] == "Echo@Domain"
-        assert payload["Header"]["From"] == "Anonymous"
+        assert "From" not in payload["Header"]
         response = cli.Msg(
             From="vault.example.com",
             To="vault.example.com",
@@ -659,7 +659,7 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert "\nOutbound payload:\n" in captured.out
+    assert "\nOutbound payload to https://pw.vault.example.com/inbox:\n" in captured.out
     assert "Subject: Echo@Domain" in captured.out
     assert "To: vault.example.com" in captured.out
     assert "\n\nInbound payload:\n" in captured.out
@@ -706,8 +706,8 @@ def test_shell_debug_prints_outbound_and_inbound_payloads(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert "\nOutbound payload:\n" in captured.out
-    assert "Outbound payload:" in captured.out
+    assert "\nOutbound payload to https://pw.vault.example.com/inbox:\n" in captured.out
+    assert "Outbound payload to https://pw.vault.example.com/inbox:" in captured.out
     assert "Subject: Shell@Domain" in captured.out
     assert "From: 123e4567-e89b-12d3-a456-426614174000" in captured.out
     assert "Command: status" in captured.out
