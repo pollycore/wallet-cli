@@ -448,12 +448,13 @@ def send_request_message(
     debug: bool = False,
 ) -> str:
     request_payload = json.dumps(request_message, separators=(",", ":"))
+    request_url = f"https://pw.{domain}/inbox"
 
     if debug:
-        print_debug_payload("Outbound payload", request_message)
+        print_debug_payload(f"Outbound payload to {request_url}", request_message)
 
     request = urllib.request.Request(
-        f"https://pw.{domain}/inbox",
+        request_url,
         data=request_payload.encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -749,6 +750,7 @@ def cmd_echo(domain: str, debug: bool = False) -> int:
             body={},
             key_pair=key_pair,
             domain=domain,
+            from_value=None,
         )
         response_payload = send_request_message(
             domain=domain, request_message=request_message, debug=debug
