@@ -58,6 +58,8 @@ DEBUG_KEY_STYLE = "bold #0f62fe"
 DEBUG_VALUE_STYLE = "#d0e2ff"
 DEBUG_LITERAL_STYLE = "#08bdba"
 DEBUG_PUNCTUATION_STYLE = "dim"
+ERROR_STYLE = "\033[1;31m"
+ERROR_STYLE_RESET = "\033[0m"
 HTTP_CODE_STYLES = {
     1: "cyan",
     2: "green",
@@ -147,6 +149,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def print_error(message: str) -> None:
+    if sys.stderr.isatty():
+        print(f"{ERROR_STYLE}{message}{ERROR_STYLE_RESET}", file=sys.stderr)
+        return
+    print(message, file=sys.stderr)
+
+
 def _get_cli_version() -> str:
     try:
         return get_installed_version("pollyweb-cli")
@@ -203,16 +212,18 @@ def _parse_shell_response_body(payload: str) -> tuple[str | None, str | None]:
     if not isinstance(parsed, dict):
         return None, None
 
-    body = parsed.get("Body")
-    if not isinstance(body, str):
+    rendered_text = parsed.get("Body")
+    if not isinstance(rendered_text, str):
+        rendered_text = parsed.get("Message")
+    if not isinstance(rendered_text, str):
         return None, None
 
     code = parsed.get("Code")
     if isinstance(code, int):
-        return body, _get_http_code_style(code)
+        return rendered_text, _get_http_code_style(code)
     if isinstance(code, str) and code.isdigit():
-        return body, _get_http_code_style(int(code))
-    return body, None
+        return rendered_text, _get_http_code_style(int(code))
+    return rendered_text, None
 
 
 def print_shell_response(payload: str) -> None:
@@ -227,6 +238,10 @@ def print_shell_response(payload: str) -> None:
         print(payload)
         return
     SHELL_CONSOLE.print(payload, style=style)
+
+
+def print_echo_response(payload: str) -> None:
+    print_debug_payload("Echo response", _parse_debug_payload(payload))
 
 
 def _format_debug_value(value: object, key: str | None = None) -> object:
@@ -493,7 +508,7 @@ def parse_and_verify_echo_response(
     *,
     domain: str,
     request_correlation: str,
-) -> Msg:
+) -> tuple[Msg, object | None]:
     try:
         response = Msg.parse(payload)
     except Exception as exc:
@@ -502,7 +517,11 @@ def parse_and_verify_echo_response(
         ) from None
 
     try:
-        response.verify()
+        verification = None
+        if hasattr(response, "verify_details"):
+            verification = response.verify_details()
+        else:
+            response.verify()
     except Exception as exc:
         raise UserFacingError(
             f"Echo response from {domain} did not verify: {exc}"
@@ -525,7 +544,7 @@ def parse_and_verify_echo_response(
             f"Echo response from {domain} had an unexpected Correlation: {response.Correlation}"
         ) from None
 
-    return response
+    return response, verification
 
 
 def load_binds() -> list[dict[str, str]]:
@@ -597,6 +616,21 @@ def parse_shell_command(command_line: str) -> tuple[str, list[str]]:
         raise UserFacingError("Shell command cannot be empty.")
 
     return parts[0], parts[1:]
+
+
+def is_shell_exit_command(command: str) -> bool:
+    normalized = command.strip().lower()
+    if normalized in {"exit", "quit"}:
+        return True
+
+    if normalized.startswith(("!", ":")):
+        normalized = normalized[1:]
+        if normalized.endswith("!"):
+            normalized = normalized[:-1]
+        if normalized in {"q", "quit", "qa", "qall", "wq", "x"}:
+            return True
+
+    return False
 
 
 def build_shell_arguments(command_args: list[str]) -> dict[str, str]:
@@ -750,12 +784,12 @@ def cmd_echo(domain: str, debug: bool = False) -> int:
             body={},
             key_pair=key_pair,
             domain=domain,
-            from_value=domain,
+            from_value=None,
         )
         response_payload = send_request_message(
             domain=domain, request_message=request_message, debug=debug
         )
-        response = parse_and_verify_echo_response(
+        response, verification = parse_and_verify_echo_response(
             response_payload,
             domain=domain,
             request_correlation=str(request_message["Header"]["Correlation"]),
@@ -774,11 +808,31 @@ def cmd_echo(domain: str, debug: bool = False) -> int:
             f"Echo request to {domain} failed: {reason}"
         ) from None
 
-    print(response_payload)
-    print(
-        f"Verified echo response from {domain} "
-        f"(From={response.From}, To={response.To})."
-    )
+    print_echo_response(response_payload)
+    print(f"Verified echo response from {domain}:")
+    if verification is not None:
+        print(f" - Schema validated: {verification.schema}")
+        print(" - Required signed headers were present")
+        print(" - Canonical payload hash matched the signed content")
+        if verification.dns_lookup_used:
+            print(
+                f" - Signature verified via DKIM lookup for selector "
+                f"{verification.selector} on {verification.from_value}"
+            )
+        else:
+            print(" - Signature verified with the provided public key")
+    else:
+        print(f" - Schema validated: {response.Schema}")
+        print(" - Required signed headers were present")
+        print(" - Canonical payload hash matched the signed content")
+        print(
+            f" - Signature verified via DKIM lookup for selector {response.Selector} "
+            f"on {response.From}"
+        )
+    print(f" - From matched expected domain: {response.From}")
+    print(f" - To matched expected domain: {response.To}")
+    print(f" - Subject matched expected echo subject: {response.Subject}")
+    print(f" - Correlation matched the request: {response.Correlation}")
     return 0
 
 
@@ -801,24 +855,12 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
         ) from None
     from_value = get_shell_from_value(bind_value)
 
+
     history = configure_shell_history(domain)
 
-    while True:
-        try:
-            command = input(f"pw:{domain}> ")
-        except EOFError:
-            print()
-            return 0
-        except KeyboardInterrupt:
-            print()
-            return 0
+    available_commands = []
 
-        if not command.strip():
-            continue
-
-        command_name, command_args = parse_shell_command(command)
-        history = record_shell_history(domain, history, command)
-
+    def send_shell_command(command_name: str, command_args: list[str], capture_response: bool = False):
         try:
             response = post_signed_message(
                 domain=domain,
@@ -841,7 +883,54 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
                 f"Shell request to {domain} failed: {reason}"
             ) from None
 
+        if capture_response:
+            return response
         print_shell_response(response)
+
+    # Send help silently to extract available commands for autocomplete
+    try:
+        help_response = send_shell_command("help", [], capture_response=True)
+        help_json = json.loads(help_response)
+        shell_data = help_json.get("Shell")
+        if isinstance(shell_data, dict):
+            commands_list = shell_data.get("commands", [])
+            if isinstance(commands_list, list):
+                available_commands = [
+                    cmd["name"] for cmd in commands_list 
+                    if isinstance(cmd, dict) and "name" in cmd
+                ]
+    except Exception:
+        available_commands = []
+
+    # Setup readline completer if available
+    if readline is not None and available_commands:
+        def completer(text, state):
+            matches = [cmd for cmd in available_commands if cmd.startswith(text)]
+            if state < len(matches):
+                return matches[state]
+            return None
+        readline.set_completer(completer)
+        readline.parse_and_bind("tab: complete")
+
+    while True:
+        try:
+            command = input(f"pw:{domain}> ")
+        except EOFError:
+            print()
+            return 0
+        except KeyboardInterrupt:
+            print()
+            return 0
+
+        if not command.strip():
+            continue
+
+        if is_shell_exit_command(command):
+            return 0
+
+        command_name, command_args = parse_shell_command(command)
+        history = record_shell_history(domain, history, command)
+        send_shell_command(command_name, command_args)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -858,7 +947,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "shell":
             return cmd_shell(domain=args.domain, debug=args.debug)
     except UserFacingError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        print_error(f"Error: {exc}")
         return 1
 
     parser.print_help()

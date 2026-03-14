@@ -56,7 +56,7 @@ Bind your wallet to a domain:
 pw bind vault.example.com
 ```
 
-This sends a signed `Bind@Vault` request to `https://pw.vault.example.com/inbox` using the compact public-key value in the request body. The bind request now relies on PollyWeb's optional message fields, so it omits explicit `From` and `Schema` values, and stores the returned bind token in `~/.pollyweb/binds.yaml`. Rebinding the same domain replaces the existing bind for that domain unless the server returns a different `Schema`, in which case both entries are kept.
+This sends a signed `Bind@Vault` request to `https://pw.vault.example.com/inbox` using the compact public-key value in the request body. When there is no wallet-specific sender yet, the CLI sends `From: Anonymous` and still omits `Schema`, then stores the returned bind token in `~/.pollyweb/binds.yaml`. Rebinding the same domain replaces the existing bind for that domain unless the server returns a different `Schema`, in which case both entries are kept.
 
 Open an interactive shell against a domain:
 

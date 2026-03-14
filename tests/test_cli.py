@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import builtins
+import base64
+import hashlib
+import json
 import stat
 import uuid
 import urllib.error
@@ -25,6 +28,39 @@ class DummyResponse:
 
     def __exit__(self, exc_type, exc, tb):
         return False
+
+
+def make_echo_response_payload(
+    *,
+    from_value: str,
+    to_value: str,
+    correlation: str,
+    private_key,
+    selector: str = "default",
+    body: dict[str, object] | None = None,
+) -> bytes:
+    header = {
+        "From": from_value,
+        "To": to_value,
+        "Subject": "Echo@Domain",
+        "Correlation": correlation,
+        "Timestamp": "2026-03-14T00:00:00.000Z",
+        "Schema": "pollyweb.org/MSG:1.0",
+        "Selector": selector,
+    }
+    payload = {
+        "Header": header,
+        "Body": body or {"Echo": "ok"},
+    }
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    payload["Hash"] = hashlib.sha256(canonical).hexdigest()
+    payload["Signature"] = base64.b64encode(private_key.sign(canonical)).decode("ascii")
+    return json.dumps(payload).encode("utf-8")
 
 
 class FakeReadline:
@@ -190,7 +226,7 @@ def test_bind_sends_signed_message_and_stores_bind(monkeypatch, tmp_path, capsys
     assert request.get_method() == "POST"
     assert request.headers["Content-type"] == "application/json"
     body = request.data.decode()
-    assert '"From":' not in body
+    assert '"From":"Anonymous"' in body
     assert '"Schema":' not in body
     assert '"To":"vault.example.com"' in body
     assert '"Subject":"Bind@Vault"' in body
@@ -246,7 +282,7 @@ def test_bind_debug_prints_outbound_and_inbound_payloads(monkeypatch, tmp_path, 
     assert "Outbound payload to https://pw.vault.example.com/inbox:" in captured.out
     assert "Subject: Bind@Vault" in captured.out
     assert "To: vault.example.com" in captured.out
-    assert "From:" not in captured.out
+    assert "From: Anonymous" in captured.out
     assert "Schema:" not in captured.out
     assert "\n\nInbound payload:\n" in captured.out
     assert "Inbound payload:" in captured.out
@@ -509,16 +545,15 @@ def test_echo_sends_signed_message_and_verifies_response(
         payload = cli.json.loads(request.data.decode("utf-8"))
         assert payload["Header"]["To"] == "vault.example.com"
         assert payload["Header"]["Subject"] == "Echo@Domain"
-        assert "From" not in payload["Header"]
-        response = cli.Msg(
-            From="vault.example.com",
-            To="vault.example.com",
-            Subject="Echo@Domain",
-            Selector="default",
-            Body={"Echo": "ok"},
-            Correlation=payload["Header"]["Correlation"],
-        ).sign(remote_key_pair.PrivateKey)
-        return DummyResponse(cli.json.dumps(response.to_dict()).encode("utf-8"))
+        assert payload["Header"]["From"] == "Anonymous"
+        return DummyResponse(
+            make_echo_response_payload(
+                from_value="vault.example.com",
+                to_value="Anonymous",
+                correlation=payload["Header"]["Correlation"],
+                private_key=remote_key_pair.PrivateKey,
+            )
+        )
 
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
@@ -537,14 +572,9 @@ def test_echo_sends_signed_message_and_verifies_response(
     assert "\nEcho response:\n" in captured.out
     assert "Subject: Echo@Domain" in captured.out
     assert "Echo: ok" in captured.out
-    assert "Verified echo response from vault.example.com:" in captured.out
-    assert " - Schema validated: pollyweb.org/MSG:1.0" in captured.out
-    assert " - Required signed headers were present" in captured.out
-    assert " - Canonical payload hash matched the signed content" in captured.out
-    assert " - Signature verified via DKIM lookup for selector default on vault.example.com" in captured.out
-    assert " - From matched expected domain: vault.example.com" in captured.out
-    assert " - To matched expected domain: vault.example.com" in captured.out
-    assert " - Subject matched expected echo subject: Echo@Domain" in captured.out
+    assert "Verified echo response: ✅" in captured.out
+    assert "Verified echo response from vault.example.com:" not in captured.out
+    assert " - Schema validated: pollyweb.org/MSG:1.0" not in captured.out
     assert captured.err == ""
 
 
@@ -561,15 +591,14 @@ def test_echo_fails_when_signature_does_not_verify(monkeypatch, tmp_path, capsys
 
     def fake_urlopen(request):
         payload = cli.json.loads(request.data.decode("utf-8"))
-        response = cli.Msg(
-            From="vault.example.com",
-            To="vault.example.com",
-            Subject="Echo@Domain",
-            Selector="default",
-            Body={"Echo": "ok"},
-            Correlation=payload["Header"]["Correlation"],
-        ).sign(remote_key_pair.PrivateKey)
-        return DummyResponse(cli.json.dumps(response.to_dict()).encode("utf-8"))
+        return DummyResponse(
+            make_echo_response_payload(
+                from_value="vault.example.com",
+                to_value="Anonymous",
+                correlation=payload["Header"]["Correlation"],
+                private_key=remote_key_pair.PrivateKey,
+            )
+        )
 
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
@@ -656,15 +685,14 @@ def test_echo_fails_when_response_headers_do_not_make_sense(
 
     def fake_urlopen(request):
         payload = cli.json.loads(request.data.decode("utf-8"))
-        response = cli.Msg(
-            From="other.example.com",
-            To="vault.example.com",
-            Subject="Echo@Domain",
-            Selector="default",
-            Body={"Echo": "ok"},
-            Correlation=payload["Header"]["Correlation"],
-        ).sign(remote_key_pair.PrivateKey)
-        return DummyResponse(cli.json.dumps(response.to_dict()).encode("utf-8"))
+        return DummyResponse(
+            make_echo_response_payload(
+                from_value="other.example.com",
+                to_value="Anonymous",
+                correlation=payload["Header"]["Correlation"],
+                private_key=remote_key_pair.PrivateKey,
+            )
+        )
 
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
@@ -697,15 +725,14 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
 
     def fake_urlopen(request):
         payload = cli.json.loads(request.data.decode("utf-8"))
-        response = cli.Msg(
-            From="vault.example.com",
-            To="vault.example.com",
-            Subject="Echo@Domain",
-            Selector="default",
-            Body={"Echo": "ok"},
-            Correlation=payload["Header"]["Correlation"],
-        ).sign(remote_key_pair.PrivateKey)
-        return DummyResponse(cli.json.dumps(response.to_dict()).encode("utf-8"))
+        return DummyResponse(
+            make_echo_response_payload(
+                from_value="vault.example.com",
+                to_value="Anonymous",
+                correlation=payload["Header"]["Correlation"],
+                private_key=remote_key_pair.PrivateKey,
+            )
+        )
 
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
@@ -724,7 +751,7 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
     assert "\nOutbound payload to https://pw.vault.example.com/inbox:\n" in captured.out
     assert "Subject: Echo@Domain" in captured.out
     assert "To: vault.example.com" in captured.out
-    assert "From:" not in captured.out.split("\n\nInbound payload:\n", 1)[0]
+    assert "From: Anonymous" in captured.out.split("\n\nInbound payload:\n", 1)[0]
     assert "\n\nInbound payload:\n" in captured.out
     assert "From: vault.example.com" in captured.out
     assert "Echo: ok" in captured.out
@@ -734,7 +761,7 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
     assert " - Canonical payload hash matched the signed content" in captured.out
     assert " - Signature verified via DKIM lookup for selector default on vault.example.com" in captured.out
     assert " - From matched expected domain: vault.example.com" in captured.out
-    assert " - To matched expected domain: vault.example.com" in captured.out
+    assert " - To matched expected sender: Anonymous" in captured.out
     assert " - Subject matched expected echo subject: Echo@Domain" in captured.out
     assert captured.err == ""
 

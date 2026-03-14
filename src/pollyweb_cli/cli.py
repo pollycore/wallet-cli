@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from dataclasses import dataclass
 import hashlib
 from importlib.metadata import PackageNotFoundError, version as get_installed_version
 import json
@@ -17,6 +18,7 @@ from pathlib import Path
 import yaml
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from pollyweb import KeyPair, Msg
+import pollyweb.msg as pollyweb_msg
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.text import Text
@@ -48,6 +50,17 @@ BIND_SCHEMA_KEY = "Schema"
 
 class UserFacingError(Exception):
     """A concise error intended to be shown directly to CLI users."""
+
+
+@dataclass(frozen=True)
+class EchoResponse:
+    From: str
+    To: str
+    Subject: str
+    Correlation: str
+    Schema: str
+    Selector: str = ""
+    Algorithm: str = ""
 
 
 DEBUG_CONSOLE = Console()
@@ -393,7 +406,6 @@ def send_bind_message(domain: str, key_pair: KeyPair, debug: bool = False) -> di
         body={"PublicKey": public_key},
         key_pair=key_pair,
         debug=debug,
-        from_value=None,
         schema_value=None,
     )
 
@@ -508,43 +520,121 @@ def parse_and_verify_echo_response(
     *,
     domain: str,
     request_correlation: str,
-) -> tuple[Msg, object | None]:
+    expected_to: str,
+) -> tuple[EchoResponse, object | None]:
     try:
         response = Msg.parse(payload)
-    except Exception as exc:
+    except Exception as parse_exc:
+        try:
+            loaded = json.loads(payload)
+            header = loaded["Header"]
+            body = loaded.get("Body", {})
+            signature_b64 = loaded["Signature"]
+            payload_hash = loaded["Hash"]
+            canonical_payload = {"Body": body, "Header": header}
+            canonical = json.dumps(
+                canonical_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        except Exception:
+            raise UserFacingError(
+                f"Could not parse the echo response from {domain}: {parse_exc}"
+            ) from None
+        try:
+            if payload_hash != hashlib.sha256(canonical).hexdigest():
+                raise UserFacingError(
+                    f"Echo response from {domain} did not verify: Hash mismatch"
+                ) from None
+
+            public_key, key_type = pollyweb_msg._resolve_dkim_public_key(
+                header["From"], header["Selector"]
+            )
+            signature_algorithm = header.get("Algorithm") or None
+            if public_key is not None and signature_algorithm is None:
+                signature_algorithm = pollyweb_msg.signature_algorithm_for_public_key(
+                    public_key
+                )
+            pollyweb_msg.verify_signature(
+                public_key,
+                base64.b64decode(signature_b64),
+                canonical,
+                signature_algorithm=signature_algorithm,
+                key_type=key_type,
+            )
+        except UserFacingError:
+            raise
+        except Exception as exc:
+            details = str(exc) or (
+                "Invalid signature"
+                if exc.__class__.__name__ == "InvalidSignature"
+                else exc.__class__.__name__
+            )
+            raise UserFacingError(
+                f"Echo response from {domain} did not verify: {details}"
+            ) from None
+        parsed_response = EchoResponse(
+            From=header["From"],
+            To=header["To"],
+            Subject=header["Subject"],
+            Correlation=header["Correlation"],
+            Schema=str(header["Schema"]),
+            Selector=header.get("Selector", ""),
+            Algorithm=header.get("Algorithm", ""),
+        )
+        verification = pollyweb_msg.VerificationDetails(
+            schema=str(header["Schema"]),
+            required_headers_present=True,
+            hash_valid=True,
+            signature_valid=True,
+            dns_lookup_used=True,
+            from_value=header["From"],
+            to_value=header["To"],
+            subject=header["Subject"],
+            correlation=header["Correlation"],
+            selector=header.get("Selector", ""),
+            algorithm=signature_algorithm or "",
+        )
+    else:
+        parsed_response = EchoResponse(
+            From=response.From,
+            To=response.To,
+            Subject=response.Subject,
+            Correlation=response.Correlation,
+            Schema=str(response.Schema),
+            Selector=response.Selector,
+            Algorithm=response.Algorithm,
+        )
+        try:
+            verification = (
+                response.verify_details() if hasattr(response, "verify_details") else None
+            )
+            if verification is None:
+                response.verify()
+        except Exception as exc:
+            raise UserFacingError(
+                f"Echo response from {domain} did not verify: {exc}"
+            ) from None
+
+    if parsed_response.From != domain:
         raise UserFacingError(
-            f"Could not parse the echo response from {domain}: {exc}"
+            f"Echo response from {domain} had an unexpected From value: {parsed_response.From}"
+        ) from None
+    if parsed_response.Subject != ECHO_SUBJECT:
+        raise UserFacingError(
+            f"Echo response from {domain} had an unexpected Subject: {parsed_response.Subject}"
+        ) from None
+    if parsed_response.Correlation != request_correlation:
+        raise UserFacingError(
+            f"Echo response from {domain} had an unexpected Correlation: {parsed_response.Correlation}"
+        ) from None
+    if parsed_response.To != expected_to:
+        raise UserFacingError(
+            f"Echo response from {domain} had an unexpected To value: {parsed_response.To}"
         ) from None
 
-    try:
-        verification = None
-        if hasattr(response, "verify_details"):
-            verification = response.verify_details()
-        else:
-            response.verify()
-    except Exception as exc:
-        raise UserFacingError(
-            f"Echo response from {domain} did not verify: {exc}"
-        ) from None
-
-    if response.From != domain:
-        raise UserFacingError(
-            f"Echo response from {domain} had an unexpected From value: {response.From}"
-        ) from None
-    if response.To != domain:
-        raise UserFacingError(
-            f"Echo response from {domain} had an unexpected To value: {response.To}"
-        ) from None
-    if response.Subject != ECHO_SUBJECT:
-        raise UserFacingError(
-            f"Echo response from {domain} had an unexpected Subject: {response.Subject}"
-        ) from None
-    if response.Correlation != request_correlation:
-        raise UserFacingError(
-            f"Echo response from {domain} had an unexpected Correlation: {response.Correlation}"
-        ) from None
-
-    return response, verification
+    return parsed_response, verification
 
 
 def load_binds() -> list[dict[str, str]]:
@@ -784,7 +874,6 @@ def cmd_echo(domain: str, debug: bool = False) -> int:
             body={},
             key_pair=key_pair,
             domain=domain,
-            from_value=None,
         )
         response_payload = send_request_message(
             domain=domain, request_message=request_message, debug=debug
@@ -793,6 +882,7 @@ def cmd_echo(domain: str, debug: bool = False) -> int:
             response_payload,
             domain=domain,
             request_correlation=str(request_message["Header"]["Correlation"]),
+            expected_to=str(request_message["Header"].get("From", "Anonymous")),
         )
     except FileNotFoundError:
         raise UserFacingError(
@@ -809,6 +899,10 @@ def cmd_echo(domain: str, debug: bool = False) -> int:
         ) from None
 
     print_echo_response(response_payload)
+    if not debug:
+        print("Verified echo response: ✅")
+        return 0
+
     print(f"Verified echo response from {domain}:")
     if verification is not None:
         print(f" - Schema validated: {verification.schema}")
@@ -830,7 +924,7 @@ def cmd_echo(domain: str, debug: bool = False) -> int:
             f"on {response.From}"
         )
     print(f" - From matched expected domain: {response.From}")
-    print(f" - To matched expected domain: {response.To}")
+    print(f" - To matched expected sender: {response.To}")
     print(f" - Subject matched expected echo subject: {response.Subject}")
     print(f" - Correlation matched the request: {response.Correlation}")
     return 0
