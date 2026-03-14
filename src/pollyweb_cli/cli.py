@@ -18,6 +18,7 @@ import yaml
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from pollyweb import KeyPair, Msg
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.text import Text
 
 try:
@@ -32,6 +33,7 @@ PUBLIC_KEY_PATH = CONFIG_DIR / "public.pem"
 BINDS_PATH = CONFIG_DIR / "binds.yaml"
 HISTORY_DIR = CONFIG_DIR / "history"
 BIND_SUBJECT = "Bind@Vault"
+ECHO_SUBJECT = "Echo@Domain"
 SHELL_SUBJECT = "Shell@Domain"
 SHELL_HISTORY_LIMIT = 20
 BIND_PATTERN = re.compile(
@@ -116,6 +118,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print outbound and inbound bind payloads.",
     )
 
+    echo_parser = subparsers.add_parser(
+        "echo",
+        help="Send an echo request to a domain and verify the signed response.",
+    )
+    echo_parser.add_argument(
+        "domain", help="Domain that will receive the echo request."
+    )
+    echo_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print outbound and inbound echo payloads.",
+    )
+
     shell_parser = subparsers.add_parser(
         "shell",
         help="Open an interactive shell against a domain.",
@@ -179,7 +194,33 @@ def _get_http_code_style(code: int) -> str | None:
     return HTTP_CODE_STYLES.get(code // 100)
 
 
+def _parse_shell_response_body(payload: str) -> tuple[str | None, str | None]:
+    try:
+        parsed = json.loads(payload)
+    except json.JSONDecodeError:
+        return None, None
+
+    if not isinstance(parsed, dict):
+        return None, None
+
+    body = parsed.get("Body")
+    if not isinstance(body, str):
+        return None, None
+
+    code = parsed.get("Code")
+    if isinstance(code, int):
+        return body, _get_http_code_style(code)
+    if isinstance(code, str) and code.isdigit():
+        return body, _get_http_code_style(int(code))
+    return body, None
+
+
 def print_shell_response(payload: str) -> None:
+    body, body_style = _parse_shell_response_body(payload)
+    if body is not None:
+        SHELL_CONSOLE.print(Markdown(body), style=body_style)
+        return
+
     code = _extract_http_code(payload)
     style = _get_http_code_style(code) if code is not None else None
     if style is None:
@@ -196,6 +237,12 @@ def _format_debug_value(value: object, key: str | None = None) -> object:
         }
     if isinstance(value, list):
         return [_format_debug_value(item, key=key) for item in value]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str) and type(value) is not str:
+        value = str(value)
+    elif not isinstance(value, str):
+        value = str(value)
     if (
         isinstance(value, str)
         and not any(character.isspace() for character in value)
@@ -341,15 +388,14 @@ def send_bind_message(domain: str, key_pair: KeyPair, debug: bool = False) -> di
         raise UserFacingError(str(exc).replace("{domain}", domain)) from None
 
 
-def post_signed_message(
-    domain: str,
+def build_signed_message(
     subject: str,
     body: dict[str, object],
     key_pair: KeyPair,
-    debug: bool = False,
+    domain: str,
     from_value: str | None = "Anonymous",
     schema_value: str | None = "pollyweb.org/MSG:1.0",
-) -> str:
+) -> dict[str, object]:
     message_kwargs: dict[str, str | dict[str, object]] = {
         "To": domain,
         "Subject": subject,
@@ -393,6 +439,14 @@ def post_signed_message(
     else:
         message = Msg(**message_kwargs).sign(key_pair.PrivateKey)
         request_message = message.to_dict()
+    return request_message
+
+
+def send_request_message(
+    domain: str,
+    request_message: dict[str, object],
+    debug: bool = False,
+) -> str:
     request_payload = json.dumps(request_message, separators=(",", ":"))
 
     if debug:
@@ -411,6 +465,66 @@ def post_signed_message(
         print_debug_payload("Inbound payload", _parse_debug_payload(response_payload))
 
     return response_payload
+
+
+def post_signed_message(
+    domain: str,
+    subject: str,
+    body: dict[str, object],
+    key_pair: KeyPair,
+    debug: bool = False,
+    from_value: str | None = "Anonymous",
+    schema_value: str | None = "pollyweb.org/MSG:1.0",
+) -> str:
+    request_message = build_signed_message(
+        subject=subject,
+        body=body,
+        key_pair=key_pair,
+        domain=domain,
+        from_value=from_value,
+        schema_value=schema_value,
+    )
+    return send_request_message(domain=domain, request_message=request_message, debug=debug)
+
+
+def parse_and_verify_echo_response(
+    payload: str,
+    *,
+    domain: str,
+    request_correlation: str,
+) -> Msg:
+    try:
+        response = Msg.parse(payload)
+    except Exception as exc:
+        raise UserFacingError(
+            f"Could not parse the echo response from {domain}: {exc}"
+        ) from None
+
+    try:
+        response.verify()
+    except Exception as exc:
+        raise UserFacingError(
+            f"Echo response from {domain} did not verify: {exc}"
+        ) from None
+
+    if response.From != domain:
+        raise UserFacingError(
+            f"Echo response from {domain} had an unexpected From value: {response.From}"
+        ) from None
+    if response.To != domain:
+        raise UserFacingError(
+            f"Echo response from {domain} had an unexpected To value: {response.To}"
+        ) from None
+    if response.Subject != ECHO_SUBJECT:
+        raise UserFacingError(
+            f"Echo response from {domain} had an unexpected Subject: {response.Subject}"
+        ) from None
+    if response.Correlation != request_correlation:
+        raise UserFacingError(
+            f"Echo response from {domain} had an unexpected Correlation: {response.Correlation}"
+        ) from None
+
+    return response
 
 
 def load_binds() -> list[dict[str, str]]:
@@ -626,6 +740,46 @@ def cmd_bind(domain: str, debug: bool = False) -> int:
     return 0
 
 
+def cmd_echo(domain: str, debug: bool = False) -> int:
+    try:
+        require_configured_keys()
+        key_pair = load_signing_key_pair()
+        request_message = build_signed_message(
+            subject=ECHO_SUBJECT,
+            body={},
+            key_pair=key_pair,
+            domain=domain,
+        )
+        response_payload = send_request_message(
+            domain=domain, request_message=request_message, debug=debug
+        )
+        response = parse_and_verify_echo_response(
+            response_payload,
+            domain=domain,
+            request_correlation=str(request_message["Header"]["Correlation"]),
+        )
+    except FileNotFoundError:
+        raise UserFacingError(
+            f"Missing PollyWeb keys in {CONFIG_DIR}. Run `pw config` first."
+        ) from None
+    except urllib.error.HTTPError as exc:
+        raise UserFacingError(
+            f"Echo request to {domain} failed with HTTP {exc.code}."
+        ) from None
+    except urllib.error.URLError as exc:
+        reason = exc.reason if isinstance(exc.reason, str) else repr(exc.reason)
+        raise UserFacingError(
+            f"Echo request to {domain} failed: {reason}"
+        ) from None
+
+    print(response_payload)
+    print(
+        f"Verified echo response from {domain} "
+        f"(From={response.From}, To={response.To})."
+    )
+    return 0
+
+
 def cmd_shell(domain: str, debug: bool = False) -> int:
     try:
         require_configured_keys()
@@ -697,6 +851,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_config(force=args.force)
         if args.command == "bind":
             return cmd_bind(domain=args.domain, debug=args.debug)
+        if args.command == "echo":
+            return cmd_echo(domain=args.domain, debug=args.debug)
         if args.command == "shell":
             return cmd_shell(domain=args.domain, debug=args.debug)
     except UserFacingError as exc:

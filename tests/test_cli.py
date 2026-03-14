@@ -5,9 +5,12 @@ import stat
 import uuid
 import urllib.error
 
+import pollyweb.msg as pollyweb_msg
 import pytest
 
 from pollyweb_cli import cli
+
+VALID_BIND = "Bind:123e4567-e89b-12d3-a456-426614174000"
 
 
 class DummyResponse:
@@ -490,6 +493,182 @@ def test_bind_requires_bind_token_in_response(monkeypatch, tmp_path, capsys):
     assert "did not include a bind token" in captured.err
 
 
+def test_echo_sends_signed_message_and_verifies_response(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        assert payload["Header"]["To"] == "vault.example.com"
+        assert payload["Header"]["Subject"] == "Echo@Domain"
+        assert payload["Header"]["From"] == "Anonymous"
+        response = cli.Msg(
+            From="vault.example.com",
+            To="vault.example.com",
+            Subject="Echo@Domain",
+            Selector="default",
+            Body={"Echo": "ok"},
+            Correlation=payload["Header"]["Correlation"],
+        ).sign(remote_key_pair.PrivateKey)
+        return DummyResponse(cli.json.dumps(response.to_dict()).encode("utf-8"))
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: remote_key_pair.PublicKey,
+    )
+
+    exit_code = cli.main(["echo", "vault.example.com"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert '"Subject": "Echo@Domain"' in captured.out
+    assert "Verified echo response from vault.example.com" in captured.out
+    assert captured.err == ""
+
+
+def test_echo_fails_when_signature_does_not_verify(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    wrong_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        response = cli.Msg(
+            From="vault.example.com",
+            To="vault.example.com",
+            Subject="Echo@Domain",
+            Selector="default",
+            Body={"Echo": "ok"},
+            Correlation=payload["Header"]["Correlation"],
+        ).sign(remote_key_pair.PrivateKey)
+        return DummyResponse(cli.json.dumps(response.to_dict()).encode("utf-8"))
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: wrong_key_pair.PublicKey,
+    )
+
+    exit_code = cli.main(["echo", "vault.example.com"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "did not verify" in captured.err
+    assert "Invalid signature" in captured.err
+
+
+def test_echo_fails_when_response_headers_do_not_make_sense(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        response = cli.Msg(
+            From="other.example.com",
+            To="vault.example.com",
+            Subject="Echo@Domain",
+            Selector="default",
+            Body={"Echo": "ok"},
+            Correlation=payload["Header"]["Correlation"],
+        ).sign(remote_key_pair.PrivateKey)
+        return DummyResponse(cli.json.dumps(response.to_dict()).encode("utf-8"))
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: remote_key_pair.PublicKey,
+    )
+
+    exit_code = cli.main(["echo", "vault.example.com"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "unexpected From value: other.example.com" in captured.err
+
+
+def test_echo_debug_prints_outbound_and_inbound_payloads(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        response = cli.Msg(
+            From="vault.example.com",
+            To="vault.example.com",
+            Subject="Echo@Domain",
+            Selector="default",
+            Body={"Echo": "ok"},
+            Correlation=payload["Header"]["Correlation"],
+        ).sign(remote_key_pair.PrivateKey)
+        return DummyResponse(cli.json.dumps(response.to_dict()).encode("utf-8"))
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: remote_key_pair.PublicKey,
+    )
+
+    exit_code = cli.main(["echo", "--debug", "vault.example.com"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "\nOutbound payload:\n" in captured.out
+    assert "Subject: Echo@Domain" in captured.out
+    assert "To: vault.example.com" in captured.out
+    assert "\n\nInbound payload:\n" in captured.out
+    assert "From: vault.example.com" in captured.out
+    assert "Echo: ok" in captured.out
+    assert "Verified echo response from vault.example.com" in captured.out
+    assert captured.err == ""
+
+
 def test_shell_debug_prints_outbound_and_inbound_payloads(
     monkeypatch, tmp_path, capsys
 ):
@@ -502,7 +681,7 @@ def test_shell_debug_prints_outbound_and_inbound_payloads(
     private_key_path.write_bytes(key_pair.private_pem_bytes())
     public_key_path.write_bytes(key_pair.public_pem_bytes())
     binds_path.write_text(
-        cli.yaml.safe_dump([{"Bind": "Bind:existing", "Domain": "vault.example.com"}]),
+        cli.yaml.safe_dump([{"Bind": VALID_BIND, "Domain": "vault.example.com"}]),
     )
 
     def fake_urlopen(request):
@@ -530,7 +709,7 @@ def test_shell_debug_prints_outbound_and_inbound_payloads(
     assert "\nOutbound payload:\n" in captured.out
     assert "Outbound payload:" in captured.out
     assert "Subject: Shell@Domain" in captured.out
-    assert "From: existing" in captured.out
+    assert "From: 123e4567-e89b-12d3-a456-426614174000" in captured.out
     assert "Command: status" in captured.out
     assert "Arguments:" in captured.out
     assert "json: target=prod" in captured.out
@@ -629,6 +808,38 @@ def test_print_shell_response_colors_error_codes(monkeypatch):
     assert printed == [('{"Code":"503","Message":"down"}', "bold red")]
 
 
+def test_print_shell_response_renders_string_body_as_markdown(monkeypatch):
+    printed = []
+
+    class FakeConsole:
+        def print(self, payload, style=None):
+            printed.append((payload, style))
+
+    monkeypatch.setattr(cli, "SHELL_CONSOLE", FakeConsole())
+
+    cli.print_shell_response('{"Code":200,"Body":"# Hello\\n\\n- item"}')
+
+    assert len(printed) == 1
+    rendered, style = printed[0]
+    assert isinstance(rendered, cli.Markdown)
+    assert style == "green"
+
+
+def test_print_shell_response_prints_raw_payload_when_body_is_not_a_string(
+    monkeypatch, capsys
+):
+    class FakeConsole:
+        def print(self, payload, style=None):
+            raise AssertionError("console rendering should not be used")
+
+    monkeypatch.setattr(cli, "SHELL_CONSOLE", FakeConsole())
+
+    cli.print_shell_response('{"Body":{"ok":true}}')
+
+    captured = capsys.readouterr()
+    assert captured.out == '{"Body":{"ok":true}}\n'
+
+
 def test_print_shell_response_falls_back_to_plain_print_for_non_http_payloads(
     monkeypatch, capsys
 ):
@@ -701,7 +912,7 @@ def test_shell_ignores_blank_commands_and_exits_on_keyboard_interrupt(
     private_key_path.write_bytes(key_pair.private_pem_bytes())
     public_key_path.write_bytes(key_pair.public_pem_bytes())
     binds_path.write_text(
-        cli.yaml.safe_dump([{"Bind": "Bind:existing", "Domain": "vault.example.com"}]),
+        cli.yaml.safe_dump([{"Bind": VALID_BIND, "Domain": "vault.example.com"}]),
         encoding="utf-8",
     )
     user_inputs = iter(["   ", KeyboardInterrupt()])
@@ -743,7 +954,7 @@ def test_shell_stops_on_request_error(monkeypatch, tmp_path, capsys):
     private_key_path.write_bytes(key_pair.private_pem_bytes())
     public_key_path.write_bytes(key_pair.public_pem_bytes())
     binds_path.write_text(
-        cli.yaml.safe_dump([{"Bind": "Bind:existing", "Domain": "vault.example.com"}]),
+        cli.yaml.safe_dump([{"Bind": VALID_BIND, "Domain": "vault.example.com"}]),
         encoding="utf-8",
     )
     user_inputs = iter(["balance"])
@@ -811,7 +1022,7 @@ def test_shell_loads_and_updates_domain_history(monkeypatch, tmp_path, capsys):
     private_key_path.write_bytes(key_pair.private_pem_bytes())
     public_key_path.write_bytes(key_pair.public_pem_bytes())
     binds_path.write_text(
-        cli.yaml.safe_dump([{"Bind": "Bind:existing", "Domain": "vault.example.com"}]),
+        cli.yaml.safe_dump([{"Bind": VALID_BIND, "Domain": "vault.example.com"}]),
         encoding="utf-8",
     )
     history_path.write_text("older balance\nolder send bob\n", encoding="utf-8")
@@ -863,7 +1074,7 @@ def test_shell_history_is_scoped_per_domain_and_trimmed_to_last_twenty(monkeypat
     private_key_path.write_bytes(key_pair.private_pem_bytes())
     public_key_path.write_bytes(key_pair.public_pem_bytes())
     binds_path.write_text(
-        cli.yaml.safe_dump([{"Bind": "Bind:existing", "Domain": "vault.example.com"}]),
+        cli.yaml.safe_dump([{"Bind": VALID_BIND, "Domain": "vault.example.com"}]),
         encoding="utf-8",
     )
     vault_history_path = history_dir / "vault.example.com.txt"
