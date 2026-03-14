@@ -1,5 +1,11 @@
 # Usage
 
+Show the installed CLI version:
+
+```bash
+pw --version
+```
+
 Create your PollyWeb key pair:
 
 ```bash

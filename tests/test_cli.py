@@ -5,6 +5,8 @@ import stat
 import uuid
 import urllib.error
 
+import pytest
+
 from pollyweb_cli import cli
 
 
@@ -35,6 +37,18 @@ class FakeReadline:
 
     def set_history_length(self, length: int):
         self.history_length = length
+
+
+def test_version_flag_prints_installed_version(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "get_installed_version", lambda _: "1.2.3")
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--version"])
+
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "pw 1.2.3"
+    assert captured.err == ""
 
 
 def test_config_creates_keypair_files(monkeypatch, tmp_path, capsys):
@@ -585,6 +599,50 @@ def test_shell_sends_signed_messages_until_eof(monkeypatch, tmp_path, capsys):
     captured = capsys.readouterr()
     assert captured.out == "ok:1\nok:2\n\n"
     assert captured.err == ""
+
+
+def test_print_shell_response_colors_success_codes(monkeypatch):
+    printed = []
+
+    class FakeConsole:
+        def print(self, payload, style=None):
+            printed.append((payload, style))
+
+    monkeypatch.setattr(cli, "SHELL_CONSOLE", FakeConsole())
+
+    cli.print_shell_response('{"Code":200,"Message":"ok"}')
+
+    assert printed == [('{"Code":200,"Message":"ok"}', "green")]
+
+
+def test_print_shell_response_colors_error_codes(monkeypatch):
+    printed = []
+
+    class FakeConsole:
+        def print(self, payload, style=None):
+            printed.append((payload, style))
+
+    monkeypatch.setattr(cli, "SHELL_CONSOLE", FakeConsole())
+
+    cli.print_shell_response('{"Code":"503","Message":"down"}')
+
+    assert printed == [('{"Code":"503","Message":"down"}', "bold red")]
+
+
+def test_print_shell_response_falls_back_to_plain_print_for_non_http_payloads(
+    monkeypatch, capsys
+):
+    class FakeConsole:
+        def print(self, payload, style=None):
+            raise AssertionError("console rendering should not be used")
+
+    monkeypatch.setattr(cli, "SHELL_CONSOLE", FakeConsole())
+
+    cli.print_shell_response("ok:1")
+    cli.print_shell_response('{"Message":"ok"}')
+
+    captured = capsys.readouterr()
+    assert captured.out == 'ok:1\n{"Message":"ok"}\n'
 
 
 def test_parse_shell_command_splits_command_and_arguments():

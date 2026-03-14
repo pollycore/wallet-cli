@@ -28,6 +28,12 @@ After installation, the CLI is available as:
 pw --help
 ```
 
+To confirm which release is installed:
+
+```bash
+pw --version
+```
+
 For more setup details, see [docs/install.md](docs/install.md).
 
 ## Quick Start
@@ -84,5 +90,6 @@ This is useful when you want to inspect the exact message contents being sent or
 - `pw shell <domain>` starts an interactive remote shell session
 - `pw shell <domain>` remembers the last 20 commands per domain for arrow-key navigation
 - `pw shell --debug <domain>` shows shell request and response payloads as colorized YAML
+- `pw --version` prints the installed CLI version
 
 For more examples and command behavior, see [docs/usage.md](docs/usage.md).

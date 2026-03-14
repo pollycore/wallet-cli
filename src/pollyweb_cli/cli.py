@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+from importlib.metadata import PackageNotFoundError, version as get_installed_version
 import json
 import re
 import shlex
@@ -48,12 +49,20 @@ class UserFacingError(Exception):
 
 
 DEBUG_CONSOLE = Console()
+SHELL_CONSOLE = Console()
 DEBUG_WRAP_WIDTH = 64
 DEBUG_LITERAL_KEYS = frozenset({"PublicKey", "Signature", "Hash"})
 DEBUG_KEY_STYLE = "bold #0f62fe"
 DEBUG_VALUE_STYLE = "#d0e2ff"
 DEBUG_LITERAL_STYLE = "#08bdba"
 DEBUG_PUNCTUATION_STYLE = "dim"
+HTTP_CODE_STYLES = {
+    1: "cyan",
+    2: "green",
+    3: "blue",
+    4: "yellow",
+    5: "bold red",
+}
 
 
 class _LiteralDebugString(str):
@@ -77,6 +86,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pw",
         description="PollyWeb command line wallet.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {_get_cli_version()}",
+        help="Show the installed CLI version and exit.",
     )
     subparsers = parser.add_subparsers(dest="command")
 
@@ -116,6 +131,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     return parser
 
+
+def _get_cli_version() -> str:
+    try:
+        return get_installed_version("pollyweb-cli")
+    except PackageNotFoundError:
+        return "0+unknown"
+
 def require_configured_keys() -> None:
     if PRIVATE_KEY_PATH.exists() and PUBLIC_KEY_PATH.exists():
         return
@@ -134,6 +156,36 @@ def _parse_debug_payload(payload: str) -> object:
         return json.loads(payload)
     except json.JSONDecodeError:
         return {"Body": payload}
+
+
+def _extract_http_code(payload: str) -> int | None:
+    try:
+        parsed = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(parsed, dict):
+        return None
+
+    code_value = parsed.get("Code")
+    if isinstance(code_value, int):
+        return code_value
+    if isinstance(code_value, str) and code_value.isdigit():
+        return int(code_value)
+    return None
+
+
+def _get_http_code_style(code: int) -> str | None:
+    return HTTP_CODE_STYLES.get(code // 100)
+
+
+def print_shell_response(payload: str) -> None:
+    code = _extract_http_code(payload)
+    style = _get_http_code_style(code) if code is not None else None
+    if style is None:
+        print(payload)
+        return
+    SHELL_CONSOLE.print(payload, style=style)
 
 
 def _format_debug_value(value: object, key: str | None = None) -> object:
@@ -633,7 +685,7 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
                 f"Shell request to {domain} failed: {reason}"
             ) from None
 
-        print(response)
+        print_shell_response(response)
 
 
 def main(argv: list[str] | None = None) -> int:
