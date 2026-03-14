@@ -240,6 +240,10 @@ def print_shell_response(payload: str) -> None:
     SHELL_CONSOLE.print(payload, style=style)
 
 
+def print_echo_response(payload: str) -> None:
+    print_debug_payload("Echo response", _parse_debug_payload(payload))
+
+
 def _format_debug_value(value: object, key: str | None = None) -> object:
     if isinstance(value, dict):
         return {
@@ -504,7 +508,7 @@ def parse_and_verify_echo_response(
     *,
     domain: str,
     request_correlation: str,
-) -> Msg:
+) -> tuple[Msg, object | None]:
     try:
         response = Msg.parse(payload)
     except Exception as exc:
@@ -513,7 +517,11 @@ def parse_and_verify_echo_response(
         ) from None
 
     try:
-        response.verify()
+        verification = None
+        if hasattr(response, "verify_details"):
+            verification = response.verify_details()
+        else:
+            response.verify()
     except Exception as exc:
         raise UserFacingError(
             f"Echo response from {domain} did not verify: {exc}"
@@ -536,7 +544,7 @@ def parse_and_verify_echo_response(
             f"Echo response from {domain} had an unexpected Correlation: {response.Correlation}"
         ) from None
 
-    return response
+    return response, verification
 
 
 def load_binds() -> list[dict[str, str]]:
@@ -781,7 +789,7 @@ def cmd_echo(domain: str, debug: bool = False) -> int:
         response_payload = send_request_message(
             domain=domain, request_message=request_message, debug=debug
         )
-        response = parse_and_verify_echo_response(
+        response, verification = parse_and_verify_echo_response(
             response_payload,
             domain=domain,
             request_correlation=str(request_message["Header"]["Correlation"]),
@@ -800,11 +808,31 @@ def cmd_echo(domain: str, debug: bool = False) -> int:
             f"Echo request to {domain} failed: {reason}"
         ) from None
 
-    print(response_payload)
-    print(
-        f"Verified echo response from {domain} "
-        f"(From={response.From}, To={response.To})."
-    )
+    print_echo_response(response_payload)
+    print(f"Verified echo response from {domain}:")
+    if verification is not None:
+        print(f" - Schema validated: {verification.schema}")
+        print(" - Required signed headers were present")
+        print(" - Canonical payload hash matched the signed content")
+        if verification.dns_lookup_used:
+            print(
+                f" - Signature verified via DKIM lookup for selector "
+                f"{verification.selector} on {verification.from_value}"
+            )
+        else:
+            print(" - Signature verified with the provided public key")
+    else:
+        print(f" - Schema validated: {response.Schema}")
+        print(" - Required signed headers were present")
+        print(" - Canonical payload hash matched the signed content")
+        print(
+            f" - Signature verified via DKIM lookup for selector {response.Selector} "
+            f"on {response.From}"
+        )
+    print(f" - From matched expected domain: {response.From}")
+    print(f" - To matched expected domain: {response.To}")
+    print(f" - Subject matched expected echo subject: {response.Subject}")
+    print(f" - Correlation matched the request: {response.Correlation}")
     return 0
 
 

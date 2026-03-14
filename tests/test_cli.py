@@ -534,8 +534,17 @@ def test_echo_sends_signed_message_and_verifies_response(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert '"Subject": "Echo@Domain"' in captured.out
-    assert "Verified echo response from vault.example.com" in captured.out
+    assert "\nEcho response:\n" in captured.out
+    assert "Subject: Echo@Domain" in captured.out
+    assert "Echo: ok" in captured.out
+    assert "Verified echo response from vault.example.com:" in captured.out
+    assert " - Schema validated: pollyweb.org/MSG:1.0" in captured.out
+    assert " - Required signed headers were present" in captured.out
+    assert " - Canonical payload hash matched the signed content" in captured.out
+    assert " - Signature verified via DKIM lookup for selector default on vault.example.com" in captured.out
+    assert " - From matched expected domain: vault.example.com" in captured.out
+    assert " - To matched expected domain: vault.example.com" in captured.out
+    assert " - Subject matched expected echo subject: Echo@Domain" in captured.out
     assert captured.err == ""
 
 
@@ -718,8 +727,26 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
     assert "\n\nInbound payload:\n" in captured.out
     assert "From: vault.example.com" in captured.out
     assert "Echo: ok" in captured.out
-    assert "Verified echo response from vault.example.com" in captured.out
+    assert "Verified echo response from vault.example.com:" in captured.out
+    assert " - Schema validated: pollyweb.org/MSG:1.0" in captured.out
+    assert " - Required signed headers were present" in captured.out
+    assert " - Canonical payload hash matched the signed content" in captured.out
+    assert " - Signature verified via DKIM lookup for selector default on vault.example.com" in captured.out
+    assert " - From matched expected domain: vault.example.com" in captured.out
+    assert " - To matched expected domain: vault.example.com" in captured.out
+    assert " - Subject matched expected echo subject: Echo@Domain" in captured.out
     assert captured.err == ""
+
+
+def test_print_echo_response_formats_payload(capsys):
+    cli.print_echo_response(
+        '{"Header":{"Subject":"Echo@Domain"},"Body":{"Echo":"ok"}}'
+    )
+
+    captured = capsys.readouterr()
+    assert "\nEcho response:\n" in captured.out
+    assert "Subject: Echo@Domain" in captured.out
+    assert "Echo: ok" in captured.out
 
 
 def test_shell_debug_prints_outbound_and_inbound_payloads(
