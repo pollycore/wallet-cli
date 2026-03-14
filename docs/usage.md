@@ -35,7 +35,7 @@ pw bind vault.example.com
 
 This sends a signed `Bind@Vault` message to `vault.example.com` with your configured public key in the body. The key is stored locally as PEM in `~/.pollyweb/public.pem`, but the outbound message sends only the compact key value without the PEM `BEGIN/END` wrapper lines. Because `From` and `Schema` are now optional on PollyWeb messages, the bind request leaves both out. When the domain replies with a payload like `Bind:123e4567-e89b-12d3-a456-426614174000`, the CLI stores it in `~/.pollyweb/binds.yaml` as a YAML list item with `Bind` and `Domain` fields, replacing any existing bind for that domain unless the reply includes a different `Schema`.
 
-To print the outbound request payload and inbound response body during bind as colorized, indented YAML:
+To print the outbound request payload, the full inbox URL the POST is sent to, and the inbound response body during bind as colorized, indented YAML:
 
 ```bash
 pw bind --debug vault.example.com
@@ -49,7 +49,7 @@ pw echo vault.example.com
 
 This sends a signed `Echo@Domain` message to the target domain, parses the synchronous response as a PollyWeb message, verifies the response signature using the domain's DKIM key, and checks that the response `From`, `To`, `Subject`, and `Correlation` headers match the expected echo flow.
 
-To print the outbound echo payload and inbound signed response while keeping the same verification checks:
+To print the outbound echo payload, the full inbox URL the POST is sent to, and the inbound signed response while keeping the same verification checks:
 
 ```bash
 pw echo --debug vault.example.com
@@ -75,7 +75,7 @@ Inputs like `--amount 10` become `amount: "10"`, short flags like `-n 5` become 
 
 Shell mode also stores the last 20 non-blank commands for that exact domain in `~/.pollyweb/history/<domain>.txt` and loads them when the session starts, so the terminal's up/down arrows can navigate recent commands for that domain only. Commands are written to history before the request is sent, so even a command that fails on the server is still available in history.
 
-To print the outbound request payload and inbound response body for each shell command as colorized, indented YAML:
+To print the outbound request payload, the full inbox URL the POST is sent to, and the inbound response body for each shell command as colorized, indented YAML:
 
 ```bash
 pw shell --debug vault.example.com
