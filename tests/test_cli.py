@@ -516,7 +516,7 @@ def test_shell_debug_prints_outbound_and_inbound_payloads(
     assert "\nOutbound payload:\n" in captured.out
     assert "Outbound payload:" in captured.out
     assert "Subject: Shell@Domain" in captured.out
-    assert "From: Bind:existing" in captured.out
+    assert "From: existing" in captured.out
     assert "Command: status" in captured.out
     assert "Arguments:" in captured.out
     assert "json: target=prod" in captured.out
@@ -574,13 +574,13 @@ def test_shell_sends_signed_messages_until_eof(monkeypatch, tmp_path, capsys):
     first_body = requests[0].data.decode("utf-8")
     second_body = requests[1].data.decode("utf-8")
     assert '"Subject":"Shell@Domain"' in first_body
-    assert '"From":"Bind:123e4567-e89b-12d3-a456-426614174000"' in first_body
+    assert '"From":"123e4567-e89b-12d3-a456-426614174000"' in first_body
     assert '"Command":"balance"' in first_body
     assert '"Arguments":{}' in first_body
     assert '"Binds":' not in first_body
     assert '"Command":"send"' in second_body
     assert '"Arguments":{"0":"10","1":"alice"}' in second_body
-    assert '"From":"Bind:123e4567-e89b-12d3-a456-426614174000"' in second_body
+    assert '"From":"123e4567-e89b-12d3-a456-426614174000"' in second_body
 
     captured = capsys.readouterr()
     assert captured.out == "ok:1\nok:2\n\n"
@@ -593,6 +593,14 @@ def test_parse_shell_command_splits_command_and_arguments():
         "send",
         ["--amount", "10", "user=alice", "two words"],
     )
+
+
+def test_get_shell_from_value_strips_bind_prefix():
+    assert (
+        cli.get_shell_from_value("Bind:123e4567-e89b-12d3-a456-426614174000")
+        == "123e4567-e89b-12d3-a456-426614174000"
+    )
+    assert cli.get_shell_from_value("existing") == "existing"
 
 
 def test_build_shell_arguments_maps_long_flag_to_dictionary_entry():

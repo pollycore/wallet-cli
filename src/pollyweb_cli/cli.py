@@ -414,6 +414,12 @@ def get_first_bind_for_domain(domain: str, binds: list[dict[str, str]]) -> str |
     return None
 
 
+def get_shell_from_value(bind_value: str) -> str:
+    if bind_value.startswith("Bind:"):
+        return bind_value.split(":", 1)[1]
+    return bind_value
+
+
 def parse_shell_command(command_line: str) -> tuple[str, list[str]]:
     try:
         parts = shlex.split(command_line)
@@ -580,11 +586,12 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
     except ValueError as exc:
         raise UserFacingError(str(exc)) from None
 
-    from_value = get_first_bind_for_domain(domain, binds)
-    if from_value is None:
+    bind_value = get_first_bind_for_domain(domain, binds)
+    if bind_value is None:
         raise UserFacingError(
             f"No bind stored for {domain}. Run `pw bind {domain}` first."
         ) from None
+    from_value = get_shell_from_value(bind_value)
 
     history = configure_shell_history(domain)
 
