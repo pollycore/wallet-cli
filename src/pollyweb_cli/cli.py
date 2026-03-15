@@ -34,9 +34,11 @@ PRIVATE_KEY_PATH = CONFIG_DIR / "private.pem"
 PUBLIC_KEY_PATH = CONFIG_DIR / "public.pem"
 BINDS_PATH = CONFIG_DIR / "binds.yaml"
 HISTORY_DIR = CONFIG_DIR / "history"
+SYNC_DIR = CONFIG_DIR / "sync"
 BIND_SUBJECT = "Bind@Vault"
 ECHO_SUBJECT = "Echo@Domain"
 SHELL_SUBJECT = "Shell@Domain"
+SYNC_SUBJECT = "Map@Filer"
 SHELL_HISTORY_LIMIT = 20
 BIND_PATTERN = re.compile(
     r"Bind:[0-9a-fA-F]{8}-"
@@ -157,6 +159,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--debug",
         action="store_true",
         help="Print outbound and inbound shell payloads.",
+    )
+
+    sync_parser = subparsers.add_parser(
+        "sync",
+        help="Sync files from ~/.pollyweb/sync/{domain} to a domain.",
+    )
+    sync_parser.add_argument(
+        "domain", help="Domain that will receive the sync request."
+    )
+    sync_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print outbound and inbound sync payloads.",
     )
 
     return parser
@@ -1027,6 +1042,80 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
         send_shell_command(command_name, command_args)
 
 
+def build_sync_files_map(domain: str) -> dict[str, dict[str, str]]:
+    sync_domain_dir = SYNC_DIR / domain
+    if not sync_domain_dir.exists():
+        raise UserFacingError(
+            f"Sync directory {sync_domain_dir} does not exist."
+        )
+    files: dict[str, dict[str, str]] = {}
+    for file_path in sorted(sync_domain_dir.rglob("*")):
+        if file_path.is_file():
+            relative = "/" + file_path.relative_to(sync_domain_dir).as_posix()
+            sha1 = hashlib.sha1(file_path.read_bytes()).hexdigest()
+            files[relative] = {"Hash": sha1}
+    return files
+
+
+def cmd_sync(domain: str, debug: bool = False) -> int:
+    try:
+        require_configured_keys()
+        key_pair = load_signing_key_pair()
+        binds = load_binds()
+    except FileNotFoundError:
+        raise UserFacingError(
+            f"Missing PollyWeb keys in {CONFIG_DIR}. Run `pw config` first."
+        ) from None
+    except ValueError as exc:
+        raise UserFacingError(str(exc)) from None
+
+    bind_value = get_first_bind_for_domain(domain, binds)
+    if bind_value is None:
+        raise UserFacingError(
+            f"No bind stored for {domain}. Run `pw bind {domain}` first."
+        ) from None
+    from_value = get_shell_from_value(bind_value)
+
+    files = build_sync_files_map(domain)
+
+    try:
+        response_payload = post_signed_message(
+            domain=domain,
+            subject=SYNC_SUBJECT,
+            body={"Files": files},
+            key_pair=key_pair,
+            debug=debug,
+            from_value=from_value,
+        )
+    except urllib.error.HTTPError as exc:
+        raise UserFacingError(
+            f"Sync request to {domain} failed with HTTP {exc.code}."
+        ) from None
+    except urllib.error.URLError as exc:
+        reason = exc.reason if isinstance(exc.reason, str) else repr(exc.reason)
+        raise UserFacingError(
+            f"Sync request to {domain} failed: {reason}"
+        ) from None
+
+    try:
+        response = json.loads(response_payload)
+    except json.JSONDecodeError:
+        raise UserFacingError(
+            f"Could not parse sync response from {domain}."
+        ) from None
+
+    map_id = response.get("Map")
+    response_files = response.get("Files", {})
+
+    if map_id:
+        print(f"Map: {map_id}")
+    for file_path, file_info in response_files.items():
+        action = file_info.get("Action", "")
+        print(f"{action}: {file_path}")
+
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -1040,6 +1129,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_echo(domain=args.domain, debug=args.debug)
         if args.command == "shell":
             return cmd_shell(domain=args.domain, debug=args.debug)
+        if args.command == "sync":
+            return cmd_sync(domain=args.domain, debug=args.debug)
     except UserFacingError as exc:
         print_error(f"Error: {exc}")
         return 1

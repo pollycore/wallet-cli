@@ -1320,3 +1320,223 @@ def test_shell_history_is_scoped_per_domain_and_trimmed_to_last_twenty(monkeypat
         "cmd-20",
     ]
     assert other_history_path.read_text(encoding="utf-8") == "other-cmd\n"
+
+
+# --- sync tests ---
+
+
+def _setup_sync_env(monkeypatch, tmp_path):
+    """Set up config dir with keys and a bind for vault.example.com."""
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    sync_dir = config_dir / "sync"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    binds_path.write_text(
+        cli.yaml.safe_dump([{"Bind": VALID_BIND, "Domain": "vault.example.com"}]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli, "SYNC_DIR", sync_dir)
+    return config_dir, sync_dir
+
+
+def test_build_sync_files_map_returns_sha1_hashes(tmp_path, monkeypatch):
+    sync_dir = tmp_path / "sync"
+    domain_dir = sync_dir / "vault.example.com"
+    domain_dir.mkdir(parents=True)
+    (domain_dir / "file.txt").write_bytes(b"hello")
+    sub = domain_dir / "sub"
+    sub.mkdir()
+    (sub / "data.yaml").write_bytes(b"key: value")
+    monkeypatch.setattr(cli, "SYNC_DIR", sync_dir)
+
+    result = cli.build_sync_files_map("vault.example.com")
+
+    import hashlib as _hashlib
+    assert result["/file.txt"] == {"Hash": _hashlib.sha1(b"hello").hexdigest()}
+    assert result["/sub/data.yaml"] == {"Hash": _hashlib.sha1(b"key: value").hexdigest()}
+
+
+def test_build_sync_files_map_raises_when_directory_missing(tmp_path, monkeypatch):
+    sync_dir = tmp_path / "sync"
+    sync_dir.mkdir()
+    monkeypatch.setattr(cli, "SYNC_DIR", sync_dir)
+
+    try:
+        cli.build_sync_files_map("vault.example.com")
+    except cli.UserFacingError as exc:
+        assert "does not exist" in str(exc)
+    else:
+        raise AssertionError("Expected UserFacingError for missing sync directory")
+
+
+def test_sync_sends_map_filer_message_with_correct_body(monkeypatch, tmp_path, capsys):
+    config_dir, sync_dir = _setup_sync_env(monkeypatch, tmp_path)
+    domain_dir = sync_dir / "vault.example.com"
+    domain_dir.mkdir(parents=True)
+    content = b"hello world"
+    (domain_dir / "index.html").write_bytes(content)
+
+    requests = []
+
+    def fake_urlopen(request):
+        requests.append(request)
+        return DummyResponse(
+            cli.json.dumps({"Map": "map-uuid-123", "Files": {"/index.html": {"Action": "UPLOAD"}}}).encode()
+        )
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["sync", "vault.example.com"])
+
+    assert exit_code == 0
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.full_url == "https://pw.vault.example.com/inbox"
+    assert request.get_method() == "POST"
+
+    body = cli.json.loads(request.data.decode("utf-8"))
+    assert body["Header"]["Subject"] == "Map@Filer"
+    assert body["Header"]["To"] == "vault.example.com"
+    assert body["Header"]["From"] == "123e4567-e89b-12d3-a456-426614174000"
+
+    import hashlib as _hashlib
+    expected_hash = _hashlib.sha1(content).hexdigest()
+    assert body["Body"]["Files"] == {"/index.html": {"Hash": expected_hash}}
+
+    captured = capsys.readouterr()
+    assert "Map: map-uuid-123" in captured.out
+    assert "UPLOAD: /index.html" in captured.out
+
+
+def test_sync_prints_all_file_actions(monkeypatch, tmp_path, capsys):
+    config_dir, sync_dir = _setup_sync_env(monkeypatch, tmp_path)
+    domain_dir = sync_dir / "vault.example.com"
+    domain_dir.mkdir(parents=True)
+    (domain_dir / "a.txt").write_bytes(b"a")
+    (domain_dir / "b.txt").write_bytes(b"b")
+
+    response_body = cli.json.dumps({
+        "Map": "map-abc",
+        "Files": {
+            "/a.txt": {"Action": "UPLOAD"},
+            "/b.txt": {"Action": "REMOVE"},
+        },
+    }).encode()
+
+    monkeypatch.setattr(
+        cli.urllib.request, "urlopen", lambda r: DummyResponse(response_body)
+    )
+
+    exit_code = cli.main(["sync", "vault.example.com"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Map: map-abc" in captured.out
+    assert "UPLOAD: /a.txt" in captured.out
+    assert "REMOVE: /b.txt" in captured.out
+
+
+def test_sync_requires_bind_for_domain(monkeypatch, tmp_path, capsys):
+    config_dir, sync_dir = _setup_sync_env(monkeypatch, tmp_path)
+
+    exit_code = cli.main(["sync", "other.example.com"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "No bind stored for other.example.com" in captured.err
+
+
+def test_sync_requires_configured_keys(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    config_dir.mkdir()
+    sync_dir = config_dir / "sync"
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", config_dir / "private.pem")
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", config_dir / "public.pem")
+    monkeypatch.setattr(cli, "BINDS_PATH", config_dir / "binds.yaml")
+    monkeypatch.setattr(cli, "SYNC_DIR", sync_dir)
+
+    exit_code = cli.main(["sync", "vault.example.com"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "pw config" in captured.err
+
+
+def test_sync_raises_user_error_when_sync_dir_missing(monkeypatch, tmp_path, capsys):
+    config_dir, sync_dir = _setup_sync_env(monkeypatch, tmp_path)
+    # sync_dir exists but no domain subdirectory
+
+    exit_code = cli.main(["sync", "vault.example.com"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "does not exist" in captured.err
+
+
+def test_sync_handles_http_error(monkeypatch, tmp_path, capsys):
+    config_dir, sync_dir = _setup_sync_env(monkeypatch, tmp_path)
+    domain_dir = sync_dir / "vault.example.com"
+    domain_dir.mkdir(parents=True)
+    (domain_dir / "f.txt").write_bytes(b"data")
+
+    def fake_urlopen(_request):
+        raise urllib.error.HTTPError(None, 503, "Service Unavailable", {}, None)
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["sync", "vault.example.com"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Sync request to vault.example.com failed with HTTP 503" in captured.err
+
+
+def test_sync_handles_url_error(monkeypatch, tmp_path, capsys):
+    config_dir, sync_dir = _setup_sync_env(monkeypatch, tmp_path)
+    domain_dir = sync_dir / "vault.example.com"
+    domain_dir.mkdir(parents=True)
+    (domain_dir / "f.txt").write_bytes(b"data")
+
+    def fake_urlopen(_request):
+        raise urllib.error.URLError("timed out")
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["sync", "vault.example.com"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Sync request to vault.example.com failed: timed out" in captured.err
+
+
+def test_sync_debug_prints_outbound_and_inbound_payloads(monkeypatch, tmp_path, capsys):
+    config_dir, sync_dir = _setup_sync_env(monkeypatch, tmp_path)
+    domain_dir = sync_dir / "vault.example.com"
+    domain_dir.mkdir(parents=True)
+    (domain_dir / "f.txt").write_bytes(b"data")
+
+    monkeypatch.setattr(
+        cli.urllib.request,
+        "urlopen",
+        lambda r: DummyResponse(
+            cli.json.dumps({"Map": "m1", "Files": {}}).encode()
+        ),
+    )
+
+    exit_code = cli.main(["sync", "--debug", "vault.example.com"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Outbound payload to https://pw.vault.example.com/inbox:" in captured.out
+    assert "Subject: Map@Filer" in captured.out
+    assert "Inbound payload:" in captured.out
