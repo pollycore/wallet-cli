@@ -103,4 +103,4 @@ This is useful when you want to inspect the exact message contents being sent or
 - `pw shell --debug <domain>` shows the target inbox URL plus shell request and response payloads as colorized YAML
 - `pw --version` prints the installed CLI version
 
-For more examples and command behavior, see [docs/usage.md](docs/usage.md).
+For more examples and command behavior, see [docs/usage.md](docs/usage.md) and the command-specific guides in `docs/`.
