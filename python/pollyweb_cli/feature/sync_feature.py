@@ -7,9 +7,9 @@ import json
 import urllib.error
 from pathlib import Path
 
-from pollyweb_cli.bind_feature import get_first_bind_for_domain, load_binds
+from pollyweb_cli.feature.bind_feature import get_first_bind_for_domain, load_binds
 from pollyweb_cli.errors import UserFacingError
-from pollyweb_cli.shell_feature import get_shell_from_value
+from pollyweb_cli.feature.shell_feature import get_shell_from_value
 from pollyweb_cli.transport import post_signed_message
 
 

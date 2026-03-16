@@ -82,22 +82,29 @@ def test_config_creates_keypair_files(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
     public_key_path = config_dir / "public.pem"
+    config_path = config_dir / "config.yaml"
 
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
     exit_code = cli.main(["config"])
 
     assert exit_code == 0
     assert private_key_path.exists()
     assert public_key_path.exists()
+    assert config_path.exists()
     assert private_key_path.read_text().startswith("-----BEGIN PRIVATE KEY-----")
     assert public_key_path.read_text().startswith("-----BEGIN PUBLIC KEY-----")
+    assert cli.yaml.safe_load(config_path.read_text()) == {
+        "Helpers": {"Notifier": "any-notifier.pollyweb.org"}
+    }
 
     captured = capsys.readouterr()
     assert str(private_key_path) in captured.out
     assert str(public_key_path) in captured.out
+    assert str(config_path) in captured.out
 
 
 def test_config_is_idempotent_when_keys_already_exist(monkeypatch, tmp_path, capsys):
@@ -105,21 +112,26 @@ def test_config_is_idempotent_when_keys_already_exist(monkeypatch, tmp_path, cap
     config_dir.mkdir()
     private_key_path = config_dir / "private.pem"
     public_key_path = config_dir / "public.pem"
+    config_path = config_dir / "config.yaml"
     private_key_path.write_text("existing-private")
     public_key_path.write_text("existing-public")
+    config_path.write_text("Helpers:\n  Notifier: any-notifier.pollyweb.org\n")
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
     exit_code = cli.main(["config"])
 
     assert exit_code == 0
     assert private_key_path.read_text() == "existing-private"
     assert public_key_path.read_text() == "existing-public"
+    assert config_path.read_text() == "Helpers:\n  Notifier: any-notifier.pollyweb.org\n"
 
     captured = capsys.readouterr()
     assert str(private_key_path) in captured.out
     assert str(public_key_path) in captured.out
+    assert str(config_path) in captured.out
     assert captured.err == ""
 
 
@@ -128,11 +140,13 @@ def test_config_refuses_partial_configuration_without_force(monkeypatch, tmp_pat
     config_dir.mkdir()
     private_key_path = config_dir / "private.pem"
     public_key_path = config_dir / "public.pem"
+    config_path = config_dir / "config.yaml"
     private_key_path.write_text("existing-private")
 
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
     exit_code = cli.main(["config"])
 
@@ -149,33 +163,73 @@ def test_config_force_overwrites_existing_keys(monkeypatch, tmp_path):
     config_dir.mkdir()
     private_key_path = config_dir / "private.pem"
     public_key_path = config_dir / "public.pem"
+    config_path = config_dir / "config.yaml"
     private_key_path.write_text("existing-private")
     public_key_path.write_text("existing-public")
+    config_path.write_text("Helpers:\n  Notifier: old.example.com\n")
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
     exit_code = cli.main(["config", "--force"])
 
     assert exit_code == 0
     assert private_key_path.read_text() != "existing-private"
     assert public_key_path.read_text() != "existing-public"
+    assert cli.yaml.safe_load(config_path.read_text()) == {
+        "Helpers": {"Notifier": "any-notifier.pollyweb.org"}
+    }
 
 
 def test_config_sets_expected_permissions(monkeypatch, tmp_path):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
     public_key_path = config_dir / "public.pem"
+    config_path = config_dir / "config.yaml"
 
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
     exit_code = cli.main(["config"])
 
     assert exit_code == 0
     assert stat.S_IMODE(private_key_path.stat().st_mode) == 0o600
     assert stat.S_IMODE(public_key_path.stat().st_mode) == 0o644
+    assert stat.S_IMODE(config_path.stat().st_mode) == 0o600
+
+
+def test_config_onboards_with_configured_notifier(monkeypatch, tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_path = config_dir / "config.yaml"
+    send_calls: list[tuple[bytes, str]] = []
+
+    def fake_send_onboard_message(
+        public_key: bytes,
+        notifier_domain: str,
+        debug: bool = False
+    ) -> dict[str, object]:
+        """Capture notifier onboarding requests without performing I/O."""
+
+        send_calls.append((public_key, notifier_domain))
+        return {}
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(cli, "send_onboard_message", fake_send_onboard_message)
+
+    exit_code = cli.main(["config"])
+
+    assert exit_code == 0
+    assert len(send_calls) == 1
+    assert send_calls[0][1] == "any-notifier.pollyweb.org"
+    assert send_calls[0][0] == public_key_path.read_bytes()
 
 
 def test_bind_sends_signed_message_and_stores_bind(monkeypatch, tmp_path, capsys):
@@ -1545,7 +1599,10 @@ def test_send_onboard_message_posts_to_notifier_inbox(monkeypatch):
     # Call with a fake PEM-encoded public key
     public_key_pem = b"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAtest==\n-----END PUBLIC KEY-----\n"
 
-    result = cli.send_onboard_message(public_key_pem)
+    result = cli.send_onboard_message(
+        public_key_pem,
+        "any-notifier.pollyweb.org",
+    )
 
     # Verify the request was sent to the correct URL
     assert len(captured_requests) == 1
@@ -1566,13 +1623,41 @@ def test_send_onboard_message_posts_to_notifier_inbox(monkeypatch):
     assert result == {"Wallet": "wallet-abc-123"}
 
 
+def test_send_onboard_message_debug_prints_payloads(monkeypatch, capsys):
+    """send_onboard_message prints outbound and inbound payloads in debug mode."""
+
+    def fake_urlopen(request):
+        """Return a stable notifier payload for debug output verification."""
+
+        return DummyResponse(
+            cli.json.dumps({"Wallet": "wallet-abc-123"}).encode("utf-8")
+        )
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    cli.send_onboard_message(
+        b"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAtest==\n-----END PUBLIC KEY-----\n",
+        "any-notifier.pollyweb.org",
+        debug=True,
+    )
+
+    captured = capsys.readouterr()
+    assert "Outbound payload to https://pw.any-notifier.pollyweb.org/inbox:" in captured.out
+    assert "Subject: Onboard@Notifier" in captured.out
+    assert "Inbound payload:" in captured.out
+    assert "Wallet: wallet-abc-123" in captured.out
+
+
 def test_send_onboard_message_returns_empty_dict_for_empty_response(monkeypatch):
     """send_onboard_message returns an empty dict when the server returns no body."""
     monkeypatch.setattr(
         cli.urllib.request, "urlopen", lambda r: DummyResponse(b"")
     )
 
-    result = cli.send_onboard_message(b"-----BEGIN PUBLIC KEY-----\ntest==\n-----END PUBLIC KEY-----\n")
+    result = cli.send_onboard_message(
+        b"-----BEGIN PUBLIC KEY-----\ntest==\n-----END PUBLIC KEY-----\n",
+        "any-notifier.pollyweb.org",
+    )
 
     assert result == {}
 
@@ -1584,7 +1669,10 @@ def test_send_onboard_message_raises_for_non_dict_json_response(monkeypatch):
     )
 
     with pytest.raises(ValueError, match="must be a JSON object"):
-        cli.send_onboard_message(b"-----BEGIN PUBLIC KEY-----\ntest==\n-----END PUBLIC KEY-----\n")
+        cli.send_onboard_message(
+            b"-----BEGIN PUBLIC KEY-----\ntest==\n-----END PUBLIC KEY-----\n",
+            "any-notifier.pollyweb.org",
+        )
 
 
 def test_cmd_config_prints_wallet_from_onboard_response(monkeypatch, tmp_path, capsys):
@@ -1592,16 +1680,18 @@ def test_cmd_config_prints_wallet_from_onboard_response(monkeypatch, tmp_path, c
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
     public_key_path = config_dir / "public.pem"
+    config_path = config_dir / "config.yaml"
 
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
     # Simulate the notifier returning a wallet address
     monkeypatch.setattr(
         cli,
         "send_onboard_message",
-        lambda public_key: {"Wallet": "wallet-xyz-999"},
+        lambda public_key, notifier_domain, debug=False: {"Wallet": "wallet-xyz-999"},
     )
 
     exit_code = cli.main(["config"])
@@ -1616,12 +1706,14 @@ def test_cmd_config_silently_ignores_onboard_network_error(monkeypatch, tmp_path
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
     public_key_path = config_dir / "public.pem"
+    config_path = config_dir / "config.yaml"
 
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
-    def failing_onboard(_public_key):
+    def failing_onboard(_public_key, _notifier_domain, debug=False):
         raise cli.urllib.error.URLError("connection refused")
 
     monkeypatch.setattr(cli, "send_onboard_message", failing_onboard)
@@ -1642,12 +1734,14 @@ def test_cmd_config_silently_ignores_onboard_value_error(monkeypatch, tmp_path, 
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
     public_key_path = config_dir / "public.pem"
+    config_path = config_dir / "config.yaml"
 
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
-    def bad_onboard(_public_key):
+    def bad_onboard(_public_key, _notifier_domain, debug=False):
         raise ValueError("Notifier onboard response must be a JSON object.")
 
     monkeypatch.setattr(cli, "send_onboard_message", bad_onboard)
@@ -1666,16 +1760,18 @@ def test_cmd_config_does_not_print_wallet_when_absent_from_response(monkeypatch,
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
     public_key_path = config_dir / "public.pem"
+    config_path = config_dir / "config.yaml"
 
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
     # Notifier responds but without a Wallet field
     monkeypatch.setattr(
         cli,
         "send_onboard_message",
-        lambda public_key: {"Status": "ok"},
+        lambda public_key, notifier_domain, debug=False: {"Status": "ok"},
     )
 
     exit_code = cli.main(["config"])
@@ -1683,3 +1779,33 @@ def test_cmd_config_does_not_print_wallet_when_absent_from_response(monkeypatch,
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "Wallet" not in captured.out
+
+
+def test_cmd_config_debug_prints_notifier_payloads(monkeypatch, tmp_path, capsys):
+    """cmd_config --debug prints the notifier request and response payloads."""
+
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_path = config_dir / "config.yaml"
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(
+        cli.urllib.request,
+        "urlopen",
+        lambda request: DummyResponse(
+            cli.json.dumps({"Wallet": "wallet-debug-123"}).encode("utf-8")
+        ),
+    )
+
+    exit_code = cli.main(["config", "--debug"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Outbound payload to https://pw.any-notifier.pollyweb.org/inbox:" in captured.out
+    assert "Subject: Onboard@Notifier" in captured.out
+    assert "Inbound payload:" in captured.out
+    assert "Wallet: wallet-debug-123" in captured.out
