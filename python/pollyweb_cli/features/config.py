@@ -11,6 +11,7 @@ import yaml
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from pollyweb import KeyPair, Msg
 
+from pollyweb_cli.features.bind import serialize_public_key_value
 from pollyweb_cli.tools.debug import parse_debug_payload, print_debug_payload
 
 
@@ -31,6 +32,44 @@ def write_config_file(
             "Notifier": NOTIFIER_DOMAIN,
         }
     }
+    config_path.write_text(
+        yaml.safe_dump(
+            config_payload,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    config_path.chmod(0o600)
+
+
+def save_onboarded_wallet_config(
+    config_path: Path,
+    broker_domain: str | None = None,
+    wallet_id: str | None = None
+) -> None:
+    """Persist onboarding metadata in the wallet configuration file."""
+
+    if not broker_domain and not wallet_id:
+        return
+
+    # Load the existing YAML so notifier settings stay intact.
+    config_payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(config_payload, dict):
+        config_payload = {}
+
+    helpers = config_payload.get("Helpers")
+    if not isinstance(helpers, dict):
+        helpers = {}
+        config_payload["Helpers"] = helpers
+
+    # Record the broker returned by onboarding for later wallet commands.
+    if broker_domain:
+        helpers["Broker"] = broker_domain
+
+    # Store the assigned wallet ID so later commands can reuse it.
+    if wallet_id:
+        config_payload["Wallet"] = wallet_id
+
     config_path.write_text(
         yaml.safe_dump(
             config_payload,
@@ -87,21 +126,26 @@ def load_signing_key_pair(private_key_path: Path) -> KeyPair:
 
 
 def send_onboard_message(
+    key_pair: KeyPair,
     public_key: bytes,
     notifier_domain: str,
     debug: bool = False
 ) -> dict[str, object]:
     """Send an onboarding request for the wallet public key."""
 
+    # Send only the compact public key value, not the PEM envelope lines.
+    public_key_value = serialize_public_key_value(public_key.decode("ascii"))
+
     msg = Msg(
+        From="Anonymous",
         To=notifier_domain,
         Subject=NOTIFIER_SUBJECT,
         Body={
             "Language": NOTIFIER_LANGUAGE,
-            "PublicKey": public_key.decode("ascii"),
+            "PublicKey": public_key_value,
         },
     )
-    payload = msg.to_dict()
+    payload = msg.sign(key_pair.PrivateKey).to_dict()
 
     if debug:
         print_debug_payload(
@@ -180,11 +224,26 @@ def cmd_config(
     try:
         notifier_domain = load_notifier_domain(config_path)
         onboard_response = send_onboard_message(
+            key_pair,
             public_pem,
             notifier_domain,
             debug=debug,
         )
-        if wallet := onboard_response.get("Wallet"):
+        broker_domain = onboard_response.get("Broker")
+        wallet = onboard_response.get("Wallet")
+        if (
+            isinstance(broker_domain, str)
+            and broker_domain
+        ) or (
+            isinstance(wallet, str)
+            and wallet
+        ):
+            save_onboarded_wallet_config(
+                config_path,
+                broker_domain=broker_domain if isinstance(broker_domain, str) else None,
+                wallet_id=wallet if isinstance(wallet, str) else None,
+            )
+        if wallet:
             print(f"Wallet: {wallet}")
     except Exception:
         pass

@@ -14,12 +14,12 @@ import pollyweb.msg as pollyweb_msg
 from rich.markdown import Markdown
 from rich.text import Text
 
-import pollyweb_cli.bind_feature as bind_feature
-import pollyweb_cli.config_feature as config_feature
+import pollyweb_cli.feature.bind_feature as bind_feature
+import pollyweb_cli.feature.config_feature as config_feature
 import pollyweb_cli.debug_tools as debug_tools
-import pollyweb_cli.echo_feature as echo_feature
-import pollyweb_cli.sync_feature as sync_feature
-from pollyweb_cli.bind_feature import (
+import pollyweb_cli.feature.echo_feature as echo_feature
+import pollyweb_cli.feature.sync_feature as sync_feature
+from pollyweb_cli.feature.bind_feature import (
     BIND_PATTERN,
     BIND_SCHEMA_KEY,
     BIND_SUBJECT,
@@ -30,7 +30,7 @@ from pollyweb_cli.bind_feature import (
     send_bind_message,
     serialize_public_key_value,
 )
-from pollyweb_cli.config_feature import (
+from pollyweb_cli.feature.config_feature import (
     cmd_config as _cmd_config,
     load_signing_key_pair as _load_signing_key_pair,
     NOTIFIER_DOMAIN,
@@ -58,7 +58,7 @@ from pollyweb_cli.debug_tools import (
     print_shell_response,
     render_debug_yaml as _render_debug_yaml_impl,
 )
-from pollyweb_cli.echo_feature import (
+from pollyweb_cli.feature.echo_feature import (
     ECHO_SUBJECT,
     EchoResponse,
     cmd_echo as _cmd_echo,
@@ -66,7 +66,7 @@ from pollyweb_cli.echo_feature import (
 )
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.parser import build_parser as _build_parser
-from pollyweb_cli.shell_feature import (
+from pollyweb_cli.feature.shell_feature import (
     SHELL_HISTORY_LIMIT,
     SHELL_SUBJECT,
     build_shell_arguments,
@@ -80,7 +80,7 @@ from pollyweb_cli.shell_feature import (
     record_shell_history,
     save_shell_history,
 )
-from pollyweb_cli.sync_feature import (
+from pollyweb_cli.feature.sync_feature import (
     SYNC_SUBJECT,
     build_sync_files_map as _build_sync_files_map,
     cmd_sync as _cmd_sync,
@@ -100,6 +100,7 @@ except ImportError:  # pragma: no cover - platform-dependent fallback
 CONFIG_DIR = Path.home() / ".pollyweb"
 PRIVATE_KEY_PATH = CONFIG_DIR / "private.pem"
 PUBLIC_KEY_PATH = CONFIG_DIR / "public.pem"
+CONFIG_PATH = CONFIG_DIR / "config.yaml"
 BINDS_PATH = CONFIG_DIR / "binds.yaml"
 HISTORY_DIR = CONFIG_DIR / "history"
 SYNC_DIR = CONFIG_DIR / "sync"
@@ -197,10 +198,18 @@ def print_echo_response(payload: str) -> None:
     debug_tools.print_echo_response(payload)
 
 
-def send_onboard_message(public_key: bytes) -> dict[str, object]:
+def send_onboard_message(
+    public_key: bytes,
+    notifier_domain: str,
+    debug: bool = False
+) -> dict[str, object]:
     """Send the onboarding request using the compatibility facade."""
 
-    return _send_onboard_message_impl(public_key)
+    return _send_onboard_message_impl(
+        public_key,
+        notifier_domain,
+        debug=debug,
+    )
 
 
 def build_sync_files_map(domain: str) -> dict[str, dict[str, str]]:
@@ -209,15 +218,20 @@ def build_sync_files_map(domain: str) -> dict[str, dict[str, str]]:
     return _build_sync_files_map(domain, SYNC_DIR)
 
 
-def cmd_config(force: bool) -> int:
+def cmd_config(
+    force: bool,
+    debug: bool = False
+) -> int:
     """Run the configuration command with the current filesystem paths."""
 
     _sync_runtime_dependencies()
     return _cmd_config(
         force=force,
+        debug=debug,
         config_dir=CONFIG_DIR,
         private_key_path=PRIVATE_KEY_PATH,
         public_key_path=PUBLIC_KEY_PATH,
+        config_path=CONFIG_PATH,
     )
 
 
@@ -288,7 +302,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "config":
-            return cmd_config(force=args.force)
+            return cmd_config(
+                force=args.force,
+                debug=args.debug,
+            )
         if args.command == "bind":
             return cmd_bind(domain=args.domain, debug=args.debug)
         if args.command == "echo":

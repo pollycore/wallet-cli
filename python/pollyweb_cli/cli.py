@@ -199,6 +199,7 @@ def print_echo_response(payload: str) -> None:
 
 
 def send_onboard_message(
+    key_pair: KeyPair,
     public_key: bytes,
     notifier_domain: str,
     debug: bool = False
@@ -206,6 +207,7 @@ def send_onboard_message(
     """Send the onboarding request using the compatibility facade."""
 
     return _send_onboard_message_impl(
+        key_pair,
         public_key,
         notifier_domain,
         debug=debug,

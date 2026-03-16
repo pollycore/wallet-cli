@@ -22,6 +22,8 @@ Helpers:
 The CLI uses `KeyPair.private_pem_bytes()` and `KeyPair.public_pem_bytes()` internally, so consumers do not need to handle PEM serialization themselves.
 
 After writing the local files, `pw config` also sends an `Onboard@Notifier` message to the configured notifier helper on a best-effort basis.
+When the notifier response includes a `Broker`, the CLI stores it in `~/.pollyweb/config.yaml` as `Helpers.Broker`.
+When the notifier response includes a `Wallet`, the CLI stores it in `~/.pollyweb/config.yaml` as `Wallet`.
 
 If all three files already exist, `pw config` leaves them unchanged and exits successfully.
 
