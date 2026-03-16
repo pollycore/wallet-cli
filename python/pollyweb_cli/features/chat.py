@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
 import json
-import os
 from pathlib import Path
 import secrets
 
+from pollyweb import KeyPair, Msg
 import yaml
-from botocore.auth import SigV4Auth
-from botocore.awsrequest import AWSRequest
-from botocore.session import Session
 from websocket import WebSocket
 from websocket import WebSocketConnectionClosedException
 from websocket import create_connection
@@ -20,19 +16,8 @@ from websocket import create_connection
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.features.config import load_notifier_domain
 
-
-CHAT_STATE_FILE_NAME = "chat.yaml"
 DEFAULT_CHANNEL_NAMESPACE = "default"
-APP_SYNC_SERVICE = "appsync"
-APP_SYNC_REGION = "us-east-1"
-
-
-@dataclass
-class SignedHeaders:
-    """Store the IAM authorization headers used by AppSync Events."""
-
-    host: str
-    headers: dict[str, str]
+CONNECT_SUBJECT = "Connect@Notifier"
 
 
 class AppSyncConnection:
@@ -42,8 +27,8 @@ class AppSyncConnection:
         self,
         notifier_domain: str,
         wallet_id: str,
-        websocket_factory = create_connection,
-        aws_session_factory = Session
+        auth_token: str,
+        websocket_factory = create_connection
     ) -> None:
         """Initialize the connection dependencies for a notifier chat session."""
 
@@ -53,11 +38,11 @@ class AppSyncConnection:
         # Reuse the wallet identifier as the subscription channel suffix.
         self.wallet_id = wallet_id
 
+        # Reuse the signed wallet token for both connect and subscribe auth.
+        self.auth_token = auth_token
+
         # Allow tests to replace the websocket creation logic with a stub.
         self.websocket_factory = websocket_factory
-
-        # Allow tests to inject credentials without touching real AWS config.
-        self.aws_session_factory = aws_session_factory
 
         # Track the underlying websocket so shutdown can unsubscribe cleanly.
         self.websocket: WebSocket | None = None
@@ -71,12 +56,9 @@ class AppSyncConnection:
     def connect(self) -> None:
         """Open the websocket, then finish the AppSync Events handshake."""
 
-        signed_headers = build_websocket_authorization(
-            self.notifier_domain,
-            aws_session_factory = self.aws_session_factory)
         protocol_headers = [
             "aws-appsync-event-ws",
-            f"header-{_encode_header_payload(signed_headers.headers)}",
+            f"header-{_encode_header_payload(build_websocket_headers(self.notifier_domain, self.auth_token))}",
         ]
         websocket_url = build_websocket_url(self.notifier_domain)
 
@@ -96,16 +78,15 @@ class AppSyncConnection:
     def subscribe(self) -> None:
         """Subscribe the current websocket to the wallet channel."""
 
-        authorization = build_message_authorization(
-            self.notifier_domain,
-            aws_session_factory = self.aws_session_factory)
         self._send_json(
             {
                 "id": self.subscription_id,
                 "type": "subscribe",
                 "channel": self.channel,
-                "authorization": authorization,
-            }
+                "authorization": build_subscribe_headers(
+                    self.notifier_domain,
+                    self.auth_token),
+            },
         )
 
         # Wait for the explicit subscribe success frame before listening for data.
@@ -118,45 +99,6 @@ class AppSyncConnection:
                 continue
             raise UserFacingError(
                 f"Chat subscription failed: expected subscribe_success, received {response}."
-            )
-
-    def publish_test_message(self) -> None:
-        """Publish a one-time test event into the wallet channel."""
-
-        authorization = build_message_authorization(
-            self.notifier_domain,
-            aws_session_factory = self.aws_session_factory)
-        payload = {
-            "message": "Notifier chat connection established.",
-            "source": self.notifier_domain,
-            "metadata": {
-                "kind": "test",
-                "wallet": self.wallet_id,
-            },
-        }
-        self._send_json(
-            {
-                "id": secrets.token_hex(8),
-                "type": "publish",
-                "channel": self.channel,
-                "events": [json.dumps(payload, separators=(",", ":"))],
-                "authorization": authorization,
-            }
-        )
-
-        # Confirm the publish before declaring the first-time setup complete.
-        while True:
-            response = self._recv_json()
-            response_type = response.get("type")
-            if response_type == "publish_success":
-                return
-            if response_type in {"ka", "keepalive"}:
-                continue
-            if response_type == "data":
-                _print_event_payload(response)
-                continue
-            raise UserFacingError(
-                f"Chat publish failed: expected publish_success, received {response}."
             )
 
     def listen_forever(self) -> None:
@@ -174,7 +116,8 @@ class AppSyncConnection:
             if message_type in {"ka", "keepalive"}:
                 continue
             if message_type == "data":
-                _print_event_payload(message)
+                if _print_event_payload(message):
+                    return
                 continue
             if message_type == "error":
                 raise UserFacingError(f"Chat stream returned an error: {message}")
@@ -240,97 +183,27 @@ def build_wallet_channel(wallet_id: str) -> str:
     return f"/{DEFAULT_CHANNEL_NAMESPACE}/{wallet_id}"
 
 
-def build_websocket_authorization(
+def build_websocket_headers(
     notifier_domain: str,
-    aws_session_factory = Session
-) -> SignedHeaders:
-    """Build SigV4 headers for the websocket connect request."""
+    auth_token: str
+) -> dict[str, str]:
+    """Build the websocket connect headers for the Lambda authorizer."""
 
-    events_domain = build_events_domain(notifier_domain)
-    request = AWSRequest(
-        method = "POST",
-        url = f"https://{events_domain}/event",
-        data = "{}")
-    headers = _sign_request(
-        request,
-        aws_session_factory = aws_session_factory)
-    return SignedHeaders(
-        host = events_domain,
-        headers = headers)
+    return {
+        "host": build_events_domain(notifier_domain),
+        "Authorization": auth_token,
+    }
 
 
-def build_message_authorization(
+def build_subscribe_headers(
     notifier_domain: str,
-    aws_session_factory = Session
+    auth_token: str
 ) -> dict[str, str]:
-    """Build SigV4 headers for subscribe and publish websocket messages."""
+    """Build the subscribe authorization headers for the Lambda authorizer."""
 
-    events_domain = build_events_domain(notifier_domain)
-    request = AWSRequest(
-        method = "POST",
-        url = f"https://{events_domain}/event",
-        data = "{}")
-    headers = _sign_request(
-        request,
-        aws_session_factory = aws_session_factory)
-    return headers
-
-
-def _sign_request(
-    request: AWSRequest,
-    aws_session_factory = Session
-) -> dict[str, str]:
-    """Resolve AWS credentials and sign the request headers with SigV4."""
-
-    profile_name = os.environ.get("AWS_PROFILE")
-    session = aws_session_factory(profile = profile_name) if profile_name else aws_session_factory()
-    credentials = session.get_credentials()
-    if credentials is None:
-        raise UserFacingError(
-            "Missing AWS credentials for AppSync chat. Configure AWS_IAM credentials first."
-        )
-
-    frozen_credentials = credentials.get_frozen_credentials()
-    normalized_headers = {
-        str(header_name).lower(): str(header_value)
-        for header_name, header_value in request.headers.items()
-    }
-    normalized_headers.setdefault("accept", "application/json, text/javascript")
-    normalized_headers.setdefault("content-encoding", "amz-1.0")
-    normalized_headers.setdefault("content-type", "application/json; charset=UTF-8")
-    normalized_headers["host"] = request.url.split("/")[2]
-
-    for header_name, header_value in normalized_headers.items():
-        request.headers[header_name] = header_value
-
-    SigV4Auth(
-        frozen_credentials,
-        APP_SYNC_SERVICE,
-        APP_SYNC_REGION).add_auth(request)
-
-    # Preserve only the headers AppSync requires for IAM websocket operations.
-    signed_headers = {
-        "accept": "application/json, text/javascript",
-        "content-encoding": "amz-1.0",
-        "content-type": "application/json; charset=UTF-8",
-        "host": request.url.split("/")[2],
-    }
-
-    normalized_signed_headers = {
-        str(header_name).lower(): str(header_value)
-        for header_name, header_value in request.headers.items()
-    }
-
-    for header_name in [
-        "x-amz-date",
-        "x-amz-security-token",
-        "authorization",
-    ]:
-        value = normalized_signed_headers.get(header_name)
-        if value:
-            signed_headers[header_name] = value
-
-    return signed_headers
+    return build_websocket_headers(
+        notifier_domain,
+        auth_token)
 
 
 def _encode_header_payload(headers: dict[str, str]) -> str:
@@ -340,27 +213,48 @@ def _encode_header_payload(headers: dict[str, str]) -> str:
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 
-def _print_event_payload(message: dict[str, object]) -> None:
-    """Render one incoming AppSync event payload to stdout."""
+def _is_exit_payload(payload: object) -> bool:
+    """Return whether the payload requests the listener to stop."""
+
+    if payload == "EXIT":
+        return True
+
+    if isinstance(payload, dict):
+        message = payload.get("message")
+        if message == "EXIT":
+            return True
+
+    return False
+
+
+def _print_event_payload(message: dict[str, object]) -> bool:
+    """Render one incoming AppSync event payload and report whether to stop."""
 
     event_list = message.get("event")
     if isinstance(event_list, list):
         for event in event_list:
+            if _is_exit_payload(event):
+                print("Received EXIT. Stopping chat listener.")
+                return True
             if isinstance(event, str):
                 print(event)
             else:
                 print(json.dumps(event, sort_keys = True))
-        return
+        return False
 
     payload = message.get("payload")
     if payload is not None:
+        if _is_exit_payload(payload):
+            print("Received EXIT. Stopping chat listener.")
+            return True
         if isinstance(payload, str):
             print(payload)
         else:
             print(json.dumps(payload, sort_keys = True))
-        return
+        return False
 
     print(json.dumps(message, sort_keys = True))
+    return False
 
 
 def load_wallet_id(
@@ -384,62 +278,30 @@ def load_wallet_id(
     return wallet_id.strip()
 
 
-def load_chat_state(
-    chat_state_path: Path
-) -> dict[str, object]:
-    """Load the persisted chat state, falling back to an empty dictionary."""
-
-    if not chat_state_path.exists():
-        return {}
-
-    payload = yaml.safe_load(chat_state_path.read_text(encoding = "utf-8")) or {}
-    if isinstance(payload, dict):
-        return payload
-    return {}
-
-
-def has_connected_before(
+def build_auth_token(
+    key_pair: KeyPair,
     notifier_domain: str,
-    chat_state_path: Path
-) -> bool:
-    """Return whether a notifier already received its one-time test message."""
+    wallet_id: str
+) -> str:
+    """Build a signed wallet auth token for notifier chat connections."""
 
-    payload = load_chat_state(chat_state_path)
-    connected = payload.get("ConnectedNotifiers")
-    if not isinstance(connected, list):
-        return False
-    return notifier_domain in connected
-
-
-def mark_connected(
-    notifier_domain: str,
-    chat_state_path: Path
-) -> None:
-    """Persist that the notifier already received its test message."""
-
-    payload = load_chat_state(chat_state_path)
-    connected = payload.get("ConnectedNotifiers")
-    if not isinstance(connected, list):
-        connected = []
-
-    if notifier_domain not in connected:
-        connected.append(notifier_domain)
-    payload["ConnectedNotifiers"] = connected
-
-    chat_state_path.parent.mkdir(mode = 0o700, parents = True, exist_ok = True)
-    chat_state_path.write_text(
-        yaml.safe_dump(
-            payload,
-            sort_keys = False),
-        encoding = "utf-8")
-    chat_state_path.chmod(0o600)
+    message = Msg(
+        To = notifier_domain,
+        From = "Anonymous",
+        Subject = CONNECT_SUBJECT,
+        Body = {"Wallet": wallet_id},
+    ).sign(key_pair.PrivateKey)
+    payload = json.dumps(
+        message.to_dict(),
+        separators = (",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 
 def cmd_chat(
     *,
-    config_dir: Path,
     config_path: Path,
-    require_configured_keys
+    require_configured_keys,
+    load_signing_key_pair
 ) -> int:
     """Connect to the configured notifier chat channel and stream events."""
 
@@ -447,12 +309,16 @@ def cmd_chat(
     require_configured_keys()
     notifier_domain = load_notifier_domain(config_path)
     wallet_id = load_wallet_id(config_path)
-    chat_state_path = config_dir / CHAT_STATE_FILE_NAME
-    is_first_connection = not has_connected_before(notifier_domain, chat_state_path)
+    key_pair = load_signing_key_pair()
+    auth_token = build_auth_token(
+        key_pair,
+        notifier_domain,
+        wallet_id)
 
     connection = AppSyncConnection(
         notifier_domain,
-        wallet_id)
+        wallet_id,
+        auth_token)
     try:
         print(
             f"Connecting to {build_websocket_url(notifier_domain)} on {build_wallet_channel(wallet_id)}..."
@@ -460,11 +326,6 @@ def cmd_chat(
         connection.connect()
         connection.subscribe()
         print("Connected. Press Ctrl+C to stop listening.")
-
-        if is_first_connection:
-            connection.publish_test_message()
-            mark_connected(notifier_domain, chat_state_path)
-
         connection.listen_forever()
     except KeyboardInterrupt:
         print("Stopping chat listener.")

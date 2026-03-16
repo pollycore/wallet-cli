@@ -290,9 +290,9 @@ def cmd_chat() -> int:
 
     _sync_runtime_dependencies()
     return _cmd_chat(
-        config_dir = CONFIG_DIR,
         config_path = CONFIG_PATH,
         require_configured_keys = require_configured_keys,
+        load_signing_key_pair = load_signing_key_pair,
     )
 
 
