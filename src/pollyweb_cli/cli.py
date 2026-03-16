@@ -48,6 +48,9 @@ BIND_PATTERN = re.compile(
     r"[0-9a-fA-F]{12}"
 )
 BIND_SCHEMA_KEY = "Schema"
+NOTIFIER_DOMAIN = "any-notifier.pollyweb.org"
+NOTIFIER_SUBJECT = "Onboard@Notifier"
+NOTIFIER_LANGUAGE = "en-us"
 
 
 class UserFacingError(Exception):
@@ -824,6 +827,48 @@ def record_shell_history(domain: str, history: list[str], command: str) -> list[
     return updated_history
 
 
+def send_onboard_message(public_key: bytes) -> dict[str, object]:
+    """Send an Onboard@Notifier message to register the new wallet public key.
+
+    Args:
+        public_key: The PEM-encoded public key bytes to register.
+
+    Returns:
+        The parsed JSON response dict from the notifier, or an empty dict.
+    """
+    # Build the unsigned onboard message with the public key in the body
+    message = {
+        "Header": {
+            "From": "Anonymous",
+            "To": NOTIFIER_DOMAIN,
+            "Subject": NOTIFIER_SUBJECT,
+        },
+        "Body": {
+            "Language": NOTIFIER_LANGUAGE,
+            "PublicKey": public_key.decode("ascii"),
+        },
+    }
+
+    # POST the message to the notifier inbox
+    request = urllib.request.Request(
+        f"https://pw.{NOTIFIER_DOMAIN}/inbox",
+        data=json.dumps(message, separators=(",", ":")).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    with urllib.request.urlopen(request) as response:
+        payload = response.read()
+
+    if not payload:
+        return {}
+
+    result = json.loads(payload)
+    if not isinstance(result, dict):
+        raise ValueError("Notifier onboard response must be a JSON object.")
+    return result
+
+
 def cmd_config(force: bool) -> int:
     private_exists = PRIVATE_KEY_PATH.exists()
     public_exists = PUBLIC_KEY_PATH.exists()
@@ -852,6 +897,16 @@ def cmd_config(force: bool) -> int:
 
     print(f"Created {PRIVATE_KEY_PATH}")
     print(f"Created {PUBLIC_KEY_PATH}")
+
+    # Notify the onboard service about the new wallet public key
+    try:
+        onboard_response = send_onboard_message(public_pem)
+        if wallet := onboard_response.get("Wallet"):
+            print(f"Wallet: {wallet}")
+    except Exception:
+        # Onboard notification is best-effort; don't fail config if it's unreachable
+        pass
+
     return 0
 
 
