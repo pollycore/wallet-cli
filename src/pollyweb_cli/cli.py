@@ -898,10 +898,13 @@ def cmd_config(force: bool) -> int:
     print(f"Created {PRIVATE_KEY_PATH}")
     print(f"Created {PUBLIC_KEY_PATH}")
 
-    # Notify the onboard service about the new wallet public key (required)
-    onboard_response = send_onboard_message(public_pem)
-    if wallet := onboard_response.get("Wallet"):
-        print(f"Wallet: {wallet}")
+    # Notify the onboard service about the new wallet public key (best-effort)
+    try:
+        onboard_response = send_onboard_message(public_pem)
+        if wallet := onboard_response.get("Wallet"):
+            print(f"Wallet: {wallet}")
+    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, OSError):
+        pass
 
     return 0
 
