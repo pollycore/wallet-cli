@@ -285,11 +285,12 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
     )
 
 
-def cmd_chat() -> int:
+def cmd_chat(debug: bool = False) -> int:
     """Run the chat command with the current filesystem paths."""
 
     _sync_runtime_dependencies()
     return _cmd_chat(
+        debug = debug,
         config_path = CONFIG_PATH,
         require_configured_keys = require_configured_keys,
         load_signing_key_pair = load_signing_key_pair,
@@ -330,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "shell":
             return cmd_shell(domain=args.domain, debug=args.debug)
         if args.command == "chat":
-            return cmd_chat()
+            return cmd_chat(debug = args.debug)
         if args.command == "sync":
             return cmd_sync(domain=args.domain, debug=args.debug)
     except UserFacingError as exc:

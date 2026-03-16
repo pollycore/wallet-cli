@@ -11,5 +11,11 @@ if [ ! -d ".venv" ]; then
   exit 1
 fi
 
-. .venv/bin/activate
-pytest
+if [ ! -x ".venv/bin/python" ]; then
+  printf '%s\n' "pre-push: missing .venv/bin/python. Recreate the virtualenv before pushing." >&2
+  exit 1
+fi
+
+printf '%s\n' "pre-push: running test suite..."
+.venv/bin/python -m pytest
+printf '%s\n' "pre-push: tests passed."

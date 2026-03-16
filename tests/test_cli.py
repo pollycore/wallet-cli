@@ -108,6 +108,16 @@ def test_parser_includes_chat_command():
     args = parser.parse_args(["chat"])
 
     assert args.command == "chat"
+    assert args.debug is False
+
+
+def test_parser_accepts_chat_debug_flag():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["chat", "--debug"])
+
+    assert args.command == "chat"
+    assert args.debug is True
 
 
 def test_chat_builds_expected_event_endpoints():
@@ -157,6 +167,33 @@ def test_chat_marks_first_connection(monkeypatch, tmp_path, capsys):
     assert "Connected. Press Ctrl+C to stop listening." in captured.out
 
 
+def test_chat_debug_prints_connection_details(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    config_dir.mkdir()
+    config_path = config_dir / "config.yaml"
+    config_path.write_text(
+        f"Helpers:\n  Notifier: any-notifier.pollyweb.org\nWallet: {VALID_WALLET_ID}\n",
+        encoding = "utf-8")
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(
+        cli,
+        "load_signing_key_pair",
+        lambda: cli.KeyPair())
+    monkeypatch.setattr(chat_feature, "AppSyncConnection", FakeChatConnection)
+
+    exit_code = cli.main(["chat", "--debug"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "\nChat connection details:\n" in captured.out
+    assert "WebSocketUrl: wss://events.any-notifier.pollyweb.org/event/realtime" in captured.out
+    assert f"Channel: /default/{VALID_WALLET_ID}" in captured.out
+    assert "ConnectHeaders:" in captured.out
+    assert "SubscribeHeaders:" in captured.out
+
+
 def test_chat_builds_signed_auth_token():
     key_pair = cli.KeyPair()
 
@@ -181,6 +218,35 @@ def test_chat_exit_payload_stops_listener(capsys):
         {"event": ["EXIT"]})
 
     assert should_stop is True
+    captured = capsys.readouterr()
+    assert "Received EXIT. Stopping chat listener." in captured.out
+
+
+def test_chat_exit_message_payload_stops_listener(capsys):
+    should_stop = chat_feature._print_event_payload(
+        {"payload": {"message": "EXIT"}})
+
+    assert should_stop is True
+    captured = capsys.readouterr()
+    assert "Received EXIT. Stopping chat listener." in captured.out
+
+
+def test_chat_listener_exits_when_event_requests_exit(capsys):
+    connection = chat_feature.AppSyncConnection(
+        "any-notifier.pollyweb.org",
+        VALID_WALLET_ID,
+        "signed-token")
+    messages = iter(
+        [
+            {"type": "keepalive"},
+            {"type": "data", "payload": {"message": "EXIT"}},
+        ]
+    )
+
+    connection._recv_json = lambda: next(messages)
+
+    connection.listen_forever()
+
     captured = capsys.readouterr()
     assert "Received EXIT. Stopping chat listener." in captured.out
 

@@ -15,6 +15,7 @@ from websocket import create_connection
 
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.features.config import load_notifier_domain
+from pollyweb_cli.tools.debug import print_debug_payload
 
 DEFAULT_CHANNEL_NAMESPACE = "default"
 CONNECT_SUBJECT = "Connect@Notifier"
@@ -299,6 +300,7 @@ def build_auth_token(
 
 def cmd_chat(
     *,
+    debug: bool = False,
     config_path: Path,
     require_configured_keys,
     load_signing_key_pair
@@ -314,6 +316,21 @@ def cmd_chat(
         key_pair,
         notifier_domain,
         wallet_id)
+
+    if debug:
+        print_debug_payload(
+            "Chat connection details",
+            {
+                "WebSocketUrl": build_websocket_url(notifier_domain),
+                "Channel": build_wallet_channel(wallet_id),
+                "ConnectHeaders": build_websocket_headers(
+                    notifier_domain,
+                    auth_token),
+                "SubscribeHeaders": build_subscribe_headers(
+                    notifier_domain,
+                    auth_token),
+            },
+        )
 
     connection = AppSyncConnection(
         notifier_domain,

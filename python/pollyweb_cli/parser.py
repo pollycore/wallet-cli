@@ -74,9 +74,14 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         help="Print outbound and inbound shell payloads.",
     )
 
-    subparsers.add_parser(
+    chat_parser = subparsers.add_parser(
         "chat",
         help="Listen for notifier chat events on the configured wallet channel.",
+    )
+    chat_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print websocket connection and subscription details.",
     )
 
     sync_parser = subparsers.add_parser(
