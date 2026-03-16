@@ -2,11 +2,11 @@
 
 Command-specific guides:
 
-- [config.md](config.md) for `pw config`
-- [bind.md](bind.md) for `pw bind`
-- [echo.md](echo.md) for `pw echo`
-- [shell.md](shell.md) for `pw shell`
-- [sync.md](sync.md) for `pw sync`
+- [commands/config.md](commands/config.md) for `pw config`
+- [commands/bind.md](commands/bind.md) for `pw bind`
+- [commands/echo.md](commands/echo.md) for `pw echo`
+- [commands/shell.md](commands/shell.md) for `pw shell`
+- [commands/sync.md](commands/sync.md) for `pw sync`
 
 Quick examples:
 
