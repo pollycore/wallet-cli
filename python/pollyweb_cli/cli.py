@@ -286,6 +286,7 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
 
 
 def cmd_chat(
+    domain: str | None = None,
     debug: bool = False,
     test: bool = False
 ) -> int:
@@ -293,6 +294,7 @@ def cmd_chat(
 
     _sync_runtime_dependencies()
     return _cmd_chat(
+        domain = domain,
         debug = debug,
         test = test,
         config_path = CONFIG_PATH,
@@ -336,6 +338,7 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_shell(domain=args.domain, debug=args.debug)
         if args.command == "chat":
             return cmd_chat(
+                domain = args.domain,
                 debug = args.debug,
                 test = args.test)
         if args.command == "sync":

@@ -79,6 +79,11 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         help="Listen for notifier chat events on the configured wallet channel.",
     )
     chat_parser.add_argument(
+        "domain",
+        nargs = "?",
+        help="Optional notifier domain that overrides Helpers.Notifier.",
+    )
+    chat_parser.add_argument(
         "--debug",
         action="store_true",
         help="Print websocket connection and subscription details.",

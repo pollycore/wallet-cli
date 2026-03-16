@@ -6,19 +6,27 @@ Listen for notifier chat events on the configured wallet channel:
 pw chat
 ```
 
+Optionally pass a notifier domain to override `Helpers.Notifier` from `~/.pollyweb/config.yaml` for this run:
+
+```bash
+pw chat notifier.example.com
+```
+
 Use `--debug` to print the websocket URL, wallet channel, and authorization headers used for the AppSync Events connection:
 
 ```bash
-pw chat --debug
+pw chat notifier.example.com --debug
 ```
 
 Use `--test` to publish a `"TEST"` message to the wallet channel immediately after the websocket connection is acknowledged:
 
 ```bash
-pw chat --test
+pw chat notifier.example.com --test
 ```
 
-`pw chat` reads `Helpers.Notifier` and `Wallet` from `~/.pollyweb/config.yaml`.
+`pw chat` always reads `Wallet` from `~/.pollyweb/config.yaml`.
+If you do not pass a domain, it also reads `Helpers.Notifier` from that file.
+If you pass a domain, that positional argument overrides `Helpers.Notifier` for the current command.
 The command connects to the notifier's AppSync Events endpoint at `wss://events.<notifier>/event/realtime` and subscribes to `/<namespace>/<wallet>`, currently `/default/<Wallet>`.
 
 Stop listening with `Ctrl+C`.

@@ -331,6 +331,7 @@ def build_auth_token(
 
 def cmd_chat(
     *,
+    domain: str | None = None,
     debug: bool = False,
     test: bool = False,
     config_path: Path,
@@ -341,7 +342,7 @@ def cmd_chat(
 
     # Reuse the existing CLI validation so chat only runs after wallet setup.
     require_configured_keys()
-    notifier_domain = load_notifier_domain(config_path)
+    notifier_domain = domain or load_notifier_domain(config_path)
     wallet_id = load_wallet_id(config_path)
     key_pair = load_signing_key_pair()
     auth_token = build_auth_token(

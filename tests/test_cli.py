@@ -111,6 +111,7 @@ def test_parser_includes_chat_command():
     args = parser.parse_args(["chat"])
 
     assert args.command == "chat"
+    assert args.domain is None
     assert args.debug is False
 
 
@@ -120,6 +121,7 @@ def test_parser_accepts_chat_debug_flag():
     args = parser.parse_args(["chat", "--debug"])
 
     assert args.command == "chat"
+    assert args.domain is None
     assert args.debug is True
     assert args.test is False
 
@@ -130,7 +132,19 @@ def test_parser_accepts_chat_test_flag():
     args = parser.parse_args(["chat", "--test"])
 
     assert args.command == "chat"
+    assert args.domain is None
     assert args.debug is False
+    assert args.test is True
+
+
+def test_parser_accepts_chat_domain_override():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["chat", "override.example.com", "--debug", "--test"])
+
+    assert args.command == "chat"
+    assert args.domain == "override.example.com"
+    assert args.debug is True
     assert args.test is True
 
 
@@ -243,6 +257,44 @@ def test_chat_debug_prints_connection_details(monkeypatch, tmp_path, capsys):
     assert f"Channel: /default/{VALID_WALLET_ID}" in captured.out
     assert "ConnectHeaders:" in captured.out
     assert "SubscribeHeaders:" in captured.out
+
+
+def test_chat_domain_argument_overrides_config_notifier(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    config_dir.mkdir()
+    config_path = config_dir / "config.yaml"
+    config_path.write_text(
+        f"Helpers:\n  Notifier: any-notifier.pollyweb.org\nWallet: {VALID_WALLET_ID}\n",
+        encoding = "utf-8")
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(
+        cli,
+        "load_signing_key_pair",
+        lambda: cli.KeyPair())
+    created_connections: list[FakeChatConnection] = []
+
+    def fake_connection(notifier_domain: str, wallet_id: str, auth_token: str):
+        connection = FakeChatConnection(notifier_domain, wallet_id, auth_token)
+        created_connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(chat_feature, "AppSyncConnection", fake_connection)
+
+    exit_code = cli.main(["chat", "override.example.com", "--debug", "--test"])
+
+    assert exit_code == 0
+    assert created_connections[0].notifier_domain == "override.example.com"
+    assert created_connections[0].calls == [
+        "connect",
+        "publish:TEST",
+        "subscribe",
+        "listen",
+        "close",
+    ]
+    captured = capsys.readouterr()
+    assert "wss://events.override.example.com/event/realtime" in captured.out
 
 
 def test_chat_builds_signed_auth_token():
