@@ -83,6 +83,11 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         action="store_true",
         help="Print websocket connection and subscription details.",
     )
+    chat_parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Publish a TEST message immediately after connecting.",
+    )
 
     sync_parser = subparsers.add_parser(
         "sync",

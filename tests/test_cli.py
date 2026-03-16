@@ -82,6 +82,9 @@ class FakeChatConnection:
     def subscribe(self) -> None:
         self.calls.append("subscribe")
 
+    def publish(self, event: object) -> None:
+        self.calls.append(f"publish:{event}")
+
     def listen_forever(self) -> None:
         self.calls.append("listen")
         raise KeyboardInterrupt()
@@ -118,6 +121,17 @@ def test_parser_accepts_chat_debug_flag():
 
     assert args.command == "chat"
     assert args.debug is True
+    assert args.test is False
+
+
+def test_parser_accepts_chat_test_flag():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["chat", "--test"])
+
+    assert args.command == "chat"
+    assert args.debug is False
+    assert args.test is True
 
 
 def test_chat_builds_expected_event_endpoints():
@@ -163,6 +177,43 @@ def test_chat_marks_first_connection(monkeypatch, tmp_path, capsys):
         "close",
     ]
     assert created_connections[0].auth_token
+    captured = capsys.readouterr()
+    assert "Connected. Press Ctrl+C to stop listening." in captured.out
+
+
+def test_chat_test_flag_publishes_test_message(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    config_dir.mkdir()
+    config_path = config_dir / "config.yaml"
+    config_path.write_text(
+        f"Helpers:\n  Notifier: any-notifier.pollyweb.org\nWallet: {VALID_WALLET_ID}\n",
+        encoding = "utf-8")
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(
+        cli,
+        "load_signing_key_pair",
+        lambda: cli.KeyPair())
+    created_connections: list[FakeChatConnection] = []
+
+    def fake_connection(notifier_domain: str, wallet_id: str, auth_token: str):
+        connection = FakeChatConnection(notifier_domain, wallet_id, auth_token)
+        created_connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(chat_feature, "AppSyncConnection", fake_connection)
+
+    exit_code = cli.main(["chat", "--test"])
+
+    assert exit_code == 0
+    assert created_connections[0].calls == [
+        "connect",
+        "publish:TEST",
+        "subscribe",
+        "listen",
+        "close",
+    ]
     captured = capsys.readouterr()
     assert "Connected. Press Ctrl+C to stop listening." in captured.out
 
@@ -249,6 +300,38 @@ def test_chat_listener_exits_when_event_requests_exit(capsys):
 
     captured = capsys.readouterr()
     assert "Received EXIT. Stopping chat listener." in captured.out
+
+
+def test_chat_publish_sends_test_event_and_waits_for_publish_success():
+    class FakeWebSocket:
+        def __init__(self):
+            self.sent_payloads: list[str] = []
+
+        def send(self, payload: str) -> None:
+            self.sent_payloads.append(payload)
+
+    connection = chat_feature.AppSyncConnection(
+        "any-notifier.pollyweb.org",
+        VALID_WALLET_ID,
+        "signed-token")
+    connection.websocket = FakeWebSocket()
+    messages = iter(
+        [
+            {"type": "keepalive"},
+            {"type": "publish_success"},
+        ]
+    )
+
+    connection._recv_json = lambda: next(messages)
+
+    connection.publish("TEST")
+
+    assert len(connection.websocket.sent_payloads) == 1
+    payload = json.loads(connection.websocket.sent_payloads[0])
+    assert payload["type"] == "publish"
+    assert payload["channel"] == f"/default/{VALID_WALLET_ID}"
+    assert payload["events"] == ['"TEST"']
+    assert payload["authorization"]["Authorization"] == "signed-token"
 
 
 def test_chat_requires_wallet_in_config(tmp_path):

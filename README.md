@@ -71,6 +71,12 @@ Listen for notifier chat events on the configured wallet channel:
 pw chat
 ```
 
+Publish a one-shot `"TEST"` event immediately after the websocket connection is acknowledged, then keep listening:
+
+```bash
+pw chat --test
+```
+
 Send a one-shot echo request and verify the synchronous signed response:
 
 ```bash
@@ -106,6 +112,7 @@ This is useful when you want to inspect the exact message contents being sent or
 - `pw echo <domain>` sends `Echo@Domain` and verifies the signed synchronous response
 - `pw echo --debug <domain>` shows the target inbox URL plus echo request and response payloads as colorized YAML
 - `pw chat` listens for AppSync Events on the configured notifier and wallet channel
+- `pw chat --test` publishes a `"TEST"` event immediately after connecting, then listens
 - `pw shell <domain>` starts an interactive remote shell session
 - `pw shell <domain>` remembers the last 20 commands per domain for arrow-key navigation
 - `pw shell --debug <domain>` shows the target inbox URL plus shell request and response payloads as colorized YAML

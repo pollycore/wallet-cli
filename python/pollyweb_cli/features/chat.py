@@ -51,6 +51,9 @@ class AppSyncConnection:
         # Reuse the generated subscribe ID during unsubscribe.
         self.subscription_id = secrets.token_hex(8)
 
+        # Keep a distinct publish ID so publish acknowledgements can be matched.
+        self.publish_id = secrets.token_hex(8)
+
         # Cache the current subscription channel string.
         self.channel = build_wallet_channel(wallet_id)
 
@@ -100,6 +103,34 @@ class AppSyncConnection:
                 continue
             raise UserFacingError(
                 f"Chat subscription failed: expected subscribe_success, received {response}."
+            )
+
+    def publish(self, event: object) -> None:
+        """Publish one JSON event to the current wallet channel."""
+
+        payload = json.dumps(event, separators = (",", ":"))
+        self._send_json(
+            {
+                "id": self.publish_id,
+                "type": "publish",
+                "channel": self.channel,
+                "events": [payload],
+                "authorization": build_subscribe_headers(
+                    self.notifier_domain,
+                    self.auth_token),
+            },
+        )
+
+        # Wait for the explicit publish success frame before subscribing.
+        while True:
+            response = self._recv_json()
+            response_type = response.get("type")
+            if response_type == "publish_success":
+                return
+            if response_type in {"ka", "keepalive"}:
+                continue
+            raise UserFacingError(
+                f"Chat publish failed: expected publish_success, received {response}."
             )
 
     def listen_forever(self) -> None:
@@ -301,6 +332,7 @@ def build_auth_token(
 def cmd_chat(
     *,
     debug: bool = False,
+    test: bool = False,
     config_path: Path,
     require_configured_keys,
     load_signing_key_pair
@@ -341,6 +373,8 @@ def cmd_chat(
             f"Connecting to {build_websocket_url(notifier_domain)} on {build_wallet_channel(wallet_id)}..."
         )
         connection.connect()
+        if test:
+            connection.publish("TEST")
         connection.subscribe()
         print("Connected. Press Ctrl+C to stop listening.")
         connection.listen_forever()

@@ -12,9 +12,13 @@ Use `--debug` to print the websocket URL, wallet channel, and authorization head
 pw chat --debug
 ```
 
+Use `--test` to publish a `"TEST"` message to the wallet channel immediately after the websocket connection is acknowledged:
+
+```bash
+pw chat --test
+```
+
 `pw chat` reads `Helpers.Notifier` and `Wallet` from `~/.pollyweb/config.yaml`.
 The command connects to the notifier's AppSync Events endpoint at `wss://events.<notifier>/event/realtime` and subscribes to `/<namespace>/<wallet>`, currently `/default/<Wallet>`.
-
-On the first successful connection to a given notifier, `pw chat` also publishes a one-time test message into that wallet channel and records that initialization in `~/.pollyweb/chat.yaml`.
 
 Stop listening with `Ctrl+C`.
