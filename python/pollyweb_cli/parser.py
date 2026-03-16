@@ -74,6 +74,11 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         help="Print outbound and inbound shell payloads.",
     )
 
+    subparsers.add_parser(
+        "chat",
+        help="Listen for notifier chat events on the configured wallet channel.",
+    )
+
     sync_parser = subparsers.add_parser(
         "sync",
         help="Sync files from ~/.pollyweb/sync/{domain} to a domain.",

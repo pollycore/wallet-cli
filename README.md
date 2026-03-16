@@ -7,6 +7,7 @@ It helps you:
 - create a local PollyWeb key pair
 - bind that identity to a PollyWeb-enabled domain
 - send an echo request to a domain and verify the signed reply
+- listen for notifier chat events over AppSync Events
 - send signed shell commands to a remote domain
 
 ## Install
@@ -64,6 +65,12 @@ Open an interactive shell against a domain:
 pw shell vault.example.com
 ```
 
+Listen for notifier chat events on the configured wallet channel:
+
+```bash
+pw chat
+```
+
 Send a one-shot echo request and verify the synchronous signed response:
 
 ```bash
@@ -98,6 +105,7 @@ This is useful when you want to inspect the exact message contents being sent or
 - `pw bind --debug <domain>` shows the target inbox URL plus bind request and response payloads as colorized YAML
 - `pw echo <domain>` sends `Echo@Domain` and verifies the signed synchronous response
 - `pw echo --debug <domain>` shows the target inbox URL plus echo request and response payloads as colorized YAML
+- `pw chat` listens for AppSync Events on the configured notifier and wallet channel
 - `pw shell <domain>` starts an interactive remote shell session
 - `pw shell <domain>` remembers the last 20 commands per domain for arrow-key navigation
 - `pw shell --debug <domain>` shows the target inbox URL plus shell request and response payloads as colorized YAML

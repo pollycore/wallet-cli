@@ -6,6 +6,7 @@ Command-specific guides:
 - [commands/bind.md](commands/bind.md) for `pw bind`
 - [commands/echo.md](commands/echo.md) for `pw echo`
 - [commands/shell.md](commands/shell.md) for `pw shell`
+- [commands/chat.md](commands/chat.md) for `pw chat`
 - [commands/sync.md](commands/sync.md) for `pw sync`
 
 Quick examples:
@@ -15,6 +16,7 @@ pw --version
 pw config
 pw bind vault.example.com
 pw echo vault.example.com
+pw chat
 pw shell vault.example.com
 pw sync vault.example.com
 ```

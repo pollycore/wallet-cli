@@ -15,6 +15,7 @@ from rich.markdown import Markdown
 from rich.text import Text
 
 import pollyweb_cli.features.bind as bind_feature
+import pollyweb_cli.features.chat as chat_feature
 import pollyweb_cli.features.config as config_feature
 import pollyweb_cli.tools.debug as debug_tools
 import pollyweb_cli.features.echo as echo_feature
@@ -29,6 +30,9 @@ from pollyweb_cli.features.bind import (
     save_bind,
     send_bind_message,
     serialize_public_key_value,
+)
+from pollyweb_cli.features.chat import (
+    cmd_chat as _cmd_chat,
 )
 from pollyweb_cli.features.config import (
     cmd_config as _cmd_config,
@@ -281,6 +285,17 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
     )
 
 
+def cmd_chat() -> int:
+    """Run the chat command with the current filesystem paths."""
+
+    _sync_runtime_dependencies()
+    return _cmd_chat(
+        config_dir = CONFIG_DIR,
+        config_path = CONFIG_PATH,
+        require_configured_keys = require_configured_keys,
+    )
+
+
 def cmd_sync(domain: str, debug: bool = False) -> int:
     """Run the sync command with the current filesystem paths."""
 
@@ -314,6 +329,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_echo(domain=args.domain, debug=args.debug)
         if args.command == "shell":
             return cmd_shell(domain=args.domain, debug=args.debug)
+        if args.command == "chat":
+            return cmd_chat()
         if args.command == "sync":
             return cmd_sync(domain=args.domain, debug=args.debug)
     except UserFacingError as exc:

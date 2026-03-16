@@ -12,6 +12,8 @@ dependencies = [
   "pollyweb==1.0.42",
   "PyYAML>=6.0",
   "rich>=14.3.3",
+  "botocore>=1.40.0",
+  "websocket-client>=1.8.0",
 ]
 
 [project.urls]

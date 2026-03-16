@@ -5,12 +5,14 @@ import json
 import stat
 import uuid
 import urllib.error
+from pathlib import Path
 
 import pollyweb.msg as pollyweb_msg
 import pytest
 
 from pollyweb import Msg
 from pollyweb_cli import cli
+from pollyweb_cli.features import chat as chat_feature
 
 VALID_BIND = "Bind:123e4567-e89b-12d3-a456-426614174000"
 
@@ -66,6 +68,29 @@ class FakeReadline:
         self.history_length = length
 
 
+class FakeChatConnection:
+    def __init__(self, notifier_domain: str, wallet_id: str):
+        self.notifier_domain = notifier_domain
+        self.wallet_id = wallet_id
+        self.calls: list[str] = []
+
+    def connect(self) -> None:
+        self.calls.append("connect")
+
+    def subscribe(self) -> None:
+        self.calls.append("subscribe")
+
+    def publish_test_message(self) -> None:
+        self.calls.append("publish")
+
+    def listen_forever(self) -> None:
+        self.calls.append("listen")
+        raise KeyboardInterrupt()
+
+    def close(self) -> None:
+        self.calls.append("close")
+
+
 def test_version_flag_prints_installed_version(monkeypatch, capsys):
     monkeypatch.setattr(cli, "get_installed_version", lambda _: "1.2.3")
 
@@ -76,6 +101,101 @@ def test_version_flag_prints_installed_version(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out.strip() == "pw 1.2.3"
     assert captured.err == ""
+
+
+def test_parser_includes_chat_command():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["chat"])
+
+    assert args.command == "chat"
+
+
+def test_chat_builds_expected_event_endpoints():
+    assert chat_feature.build_events_domain("any-notifier.pollyweb.org") == (
+        "events.any-notifier.pollyweb.org"
+    )
+    assert chat_feature.build_websocket_url("any-notifier.pollyweb.org") == (
+        "wss://events.any-notifier.pollyweb.org/event/realtime"
+    )
+    assert chat_feature.build_wallet_channel("wallet-uuid") == "/default/wallet-uuid"
+
+
+def test_chat_marks_first_connection(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    config_dir.mkdir()
+    config_path = config_dir / "config.yaml"
+    config_path.write_text(
+        "Helpers:\n  Notifier: any-notifier.pollyweb.org\nWallet: wallet-uuid\n",
+        encoding = "utf-8")
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    created_connections: list[FakeChatConnection] = []
+
+    def fake_connection(notifier_domain: str, wallet_id: str):
+        connection = FakeChatConnection(notifier_domain, wallet_id)
+        created_connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(chat_feature, "AppSyncConnection", fake_connection)
+
+    exit_code = cli.main(["chat"])
+
+    assert exit_code == 0
+    assert created_connections[0].calls == [
+        "connect",
+        "subscribe",
+        "publish",
+        "listen",
+        "close",
+    ]
+    state_path = config_dir / chat_feature.CHAT_STATE_FILE_NAME
+    assert chat_feature.has_connected_before("any-notifier.pollyweb.org", state_path)
+    captured = capsys.readouterr()
+    assert "Connected. Press Ctrl+C to stop listening." in captured.out
+
+
+def test_chat_skips_test_message_after_first_connection(monkeypatch, tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    config_dir.mkdir()
+    config_path = config_dir / "config.yaml"
+    config_path.write_text(
+        "Helpers:\n  Notifier: any-notifier.pollyweb.org\nWallet: wallet-uuid\n",
+        encoding = "utf-8")
+    state_path = config_dir / chat_feature.CHAT_STATE_FILE_NAME
+    chat_feature.mark_connected("any-notifier.pollyweb.org", state_path)
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    created_connections: list[FakeChatConnection] = []
+
+    def fake_connection(notifier_domain: str, wallet_id: str):
+        connection = FakeChatConnection(notifier_domain, wallet_id)
+        created_connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(chat_feature, "AppSyncConnection", fake_connection)
+
+    exit_code = cli.main(["chat"])
+
+    assert exit_code == 0
+    assert created_connections[0].calls == [
+        "connect",
+        "subscribe",
+        "listen",
+        "close",
+    ]
+
+
+def test_chat_requires_wallet_in_config(tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    config_dir.mkdir()
+    config_path = config_dir / "config.yaml"
+    config_path.write_text("Helpers:\n  Notifier: any-notifier.pollyweb.org\n", encoding = "utf-8")
+
+    with pytest.raises(cli.UserFacingError):
+        chat_feature.load_wallet_id(config_path)
 
 
 def test_config_creates_keypair_files(monkeypatch, tmp_path, capsys):
