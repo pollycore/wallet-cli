@@ -10,7 +10,7 @@ import urllib.error
 from pollyweb import Msg
 import pollyweb.msg as pollyweb_msg
 
-from pollyweb_cli.tools.debug_tools import print_echo_response
+from pollyweb_cli.tools.debug import print_echo_response
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.models import EchoResponse
 from pollyweb_cli.tools.transport import build_signed_message, send_request_message
