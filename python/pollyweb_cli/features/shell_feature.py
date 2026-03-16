@@ -8,10 +8,10 @@ import urllib.error
 import urllib.parse
 from pathlib import Path
 
-from pollyweb_cli.feature.bind_feature import get_first_bind_for_domain, load_binds
-from pollyweb_cli.debug_tools import print_shell_response
+from pollyweb_cli.features.bind_feature import get_first_bind_for_domain, load_binds
+from pollyweb_cli.tools.debug_tools import print_shell_response
 from pollyweb_cli.errors import UserFacingError
-from pollyweb_cli.transport import post_signed_message
+from pollyweb_cli.tools.transport import post_signed_message
 
 
 SHELL_SUBJECT = "Shell@Domain"

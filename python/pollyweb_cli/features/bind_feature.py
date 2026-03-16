@@ -12,7 +12,7 @@ import yaml
 from pollyweb import KeyPair
 
 from pollyweb_cli.errors import UserFacingError
-from pollyweb_cli.transport import post_signed_message
+from pollyweb_cli.tools.transport import post_signed_message
 
 
 BIND_SUBJECT = "Bind@Vault"

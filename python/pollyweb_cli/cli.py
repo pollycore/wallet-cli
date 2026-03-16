@@ -14,12 +14,12 @@ import pollyweb.msg as pollyweb_msg
 from rich.markdown import Markdown
 from rich.text import Text
 
-import pollyweb_cli.feature.bind_feature as bind_feature
-import pollyweb_cli.feature.config_feature as config_feature
-import pollyweb_cli.debug_tools as debug_tools
-import pollyweb_cli.feature.echo_feature as echo_feature
-import pollyweb_cli.feature.sync_feature as sync_feature
-from pollyweb_cli.feature.bind_feature import (
+import pollyweb_cli.features.bind_feature as bind_feature
+import pollyweb_cli.features.config_feature as config_feature
+import pollyweb_cli.tools.debug_tools as debug_tools
+import pollyweb_cli.features.echo_feature as echo_feature
+import pollyweb_cli.features.sync_feature as sync_feature
+from pollyweb_cli.features.bind_feature import (
     BIND_PATTERN,
     BIND_SCHEMA_KEY,
     BIND_SUBJECT,
@@ -30,7 +30,7 @@ from pollyweb_cli.feature.bind_feature import (
     send_bind_message,
     serialize_public_key_value,
 )
-from pollyweb_cli.feature.config_feature import (
+from pollyweb_cli.features.config_feature import (
     cmd_config as _cmd_config,
     load_signing_key_pair as _load_signing_key_pair,
     NOTIFIER_DOMAIN,
@@ -39,7 +39,7 @@ from pollyweb_cli.feature.config_feature import (
     require_configured_keys as _require_configured_keys,
     send_onboard_message as _send_onboard_message_impl,
 )
-from pollyweb_cli.debug_tools import (
+from pollyweb_cli.tools.debug_tools import (
     DEBUG_CONSOLE,
     DEBUG_KEY_STYLE,
     DEBUG_LITERAL_KEYS,
@@ -58,7 +58,7 @@ from pollyweb_cli.debug_tools import (
     print_shell_response,
     render_debug_yaml as _render_debug_yaml_impl,
 )
-from pollyweb_cli.feature.echo_feature import (
+from pollyweb_cli.features.echo_feature import (
     ECHO_SUBJECT,
     EchoResponse,
     cmd_echo as _cmd_echo,
@@ -66,7 +66,7 @@ from pollyweb_cli.feature.echo_feature import (
 )
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.parser import build_parser as _build_parser
-from pollyweb_cli.feature.shell_feature import (
+from pollyweb_cli.features.shell_feature import (
     SHELL_HISTORY_LIMIT,
     SHELL_SUBJECT,
     build_shell_arguments,
@@ -80,12 +80,12 @@ from pollyweb_cli.feature.shell_feature import (
     record_shell_history,
     save_shell_history,
 )
-from pollyweb_cli.feature.sync_feature import (
+from pollyweb_cli.features.sync_feature import (
     SYNC_SUBJECT,
     build_sync_files_map as _build_sync_files_map,
     cmd_sync as _cmd_sync,
 )
-from pollyweb_cli.transport import (
+from pollyweb_cli.tools.transport import (
     build_signed_message,
     post_signed_message,
     send_request_message,

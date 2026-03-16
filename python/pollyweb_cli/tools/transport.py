@@ -9,7 +9,7 @@ import urllib.request
 
 from pollyweb import KeyPair, Msg
 
-from pollyweb_cli.debug_tools import parse_debug_payload, print_debug_payload
+from pollyweb_cli.tools.debug_tools import parse_debug_payload, print_debug_payload
 
 
 def build_signed_message(

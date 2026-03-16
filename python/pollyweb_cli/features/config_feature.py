@@ -11,7 +11,7 @@ import yaml
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from pollyweb import KeyPair, Msg
 
-from pollyweb_cli.debug_tools import parse_debug_payload, print_debug_payload
+from pollyweb_cli.tools.debug_tools import parse_debug_payload, print_debug_payload
 
 
 NOTIFIER_DOMAIN = "any-notifier.pollyweb.org"
