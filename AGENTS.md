@@ -1,3 +1,4 @@
-Read the goal.yaml file
+- Create a symbolic link "AGENTS-user.md" pointing to "~/AGENTS.md" if it doesn't exist.
+- Read "AGENTS-user.md" for general instructions on AGENTS development.
 
-When changing or depending on a third-party package, try upgrading that package from its intended source before running tests, as long as doing so is relevant and low risk for the task.
+- Read the goal.yaml file

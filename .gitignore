@@ -5,3 +5,8 @@ __pycache__/
 .pytest_cache/
 src/*.egg-info/
 src/**/*.egg-info/
+python/*.egg-info/
+python/**/*.egg-info/
+.venv-*/
+build/
+.claude
