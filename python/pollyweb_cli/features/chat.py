@@ -5,9 +5,9 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 import secrets
-from typing import Protocol
 
 import yaml
 from botocore.auth import SigV4Auth
@@ -25,14 +25,6 @@ CHAT_STATE_FILE_NAME = "chat.yaml"
 DEFAULT_CHANNEL_NAMESPACE = "default"
 APP_SYNC_SERVICE = "appsync"
 APP_SYNC_REGION = "us-east-1"
-
-
-class CredentialsProtocol(Protocol):
-    """Describe the credential attributes used by the SigV4 signer."""
-
-    access_key: str
-    secret_key: str
-    token: str | None
 
 
 @dataclass
@@ -256,8 +248,9 @@ def build_websocket_authorization(
 
     events_domain = build_events_domain(notifier_domain)
     request = AWSRequest(
-        method = "GET",
-        url = f"https://{events_domain}/event/realtime")
+        method = "POST",
+        url = f"https://{events_domain}/event",
+        data = "{}")
     headers = _sign_request(
         request,
         aws_session_factory = aws_session_factory)
@@ -275,7 +268,8 @@ def build_message_authorization(
     events_domain = build_events_domain(notifier_domain)
     request = AWSRequest(
         method = "POST",
-        url = f"https://{events_domain}/event")
+        url = f"https://{events_domain}/event",
+        data = "{}")
     headers = _sign_request(
         request,
         aws_session_factory = aws_session_factory)
@@ -288,7 +282,8 @@ def _sign_request(
 ) -> dict[str, str]:
     """Resolve AWS credentials and sign the request headers with SigV4."""
 
-    session = aws_session_factory()
+    profile_name = os.environ.get("AWS_PROFILE")
+    session = aws_session_factory(profile = profile_name) if profile_name else aws_session_factory()
     credentials = session.get_credentials()
     if credentials is None:
         raise UserFacingError(
@@ -296,22 +291,44 @@ def _sign_request(
         )
 
     frozen_credentials = credentials.get_frozen_credentials()
+    normalized_headers = {
+        str(header_name).lower(): str(header_value)
+        for header_name, header_value in request.headers.items()
+    }
+    normalized_headers.setdefault("accept", "application/json, text/javascript")
+    normalized_headers.setdefault("content-encoding", "amz-1.0")
+    normalized_headers.setdefault("content-type", "application/json; charset=UTF-8")
+    normalized_headers["host"] = request.url.split("/")[2]
+
+    for header_name, header_value in normalized_headers.items():
+        request.headers[header_name] = header_value
+
     SigV4Auth(
         frozen_credentials,
         APP_SYNC_SERVICE,
         APP_SYNC_REGION).add_auth(request)
 
-    # Preserve only the headers AppSync needs for downstream authorization.
-    signed_headers: dict[str, str] = {}
+    # Preserve only the headers AppSync requires for IAM websocket operations.
+    signed_headers = {
+        "accept": "application/json, text/javascript",
+        "content-encoding": "amz-1.0",
+        "content-type": "application/json; charset=UTF-8",
+        "host": request.url.split("/")[2],
+    }
+
+    normalized_signed_headers = {
+        str(header_name).lower(): str(header_value)
+        for header_name, header_value in request.headers.items()
+    }
+
     for header_name in [
-        "host",
         "x-amz-date",
         "x-amz-security-token",
-        "Authorization",
+        "authorization",
     ]:
-        value = request.headers.get(header_name)
+        value = normalized_signed_headers.get(header_name)
         if value:
-            signed_headers[header_name] = str(value)
+            signed_headers[header_name] = value
 
     return signed_headers
 
