@@ -4,6 +4,7 @@ import builtins
 import json
 import socket
 import stat
+import sys
 import uuid
 import urllib.error
 from pathlib import Path
@@ -33,6 +34,19 @@ class DummyResponse:
 
     def __exit__(self, exc_type, exc, tb):
         return False
+
+
+@pytest.fixture(autouse = True)
+def skip_upgrade_check(
+    monkeypatch,
+    request
+):
+    """Keep CLI self-upgrade preflight out of unit-test command flows."""
+
+    if request.node.name.startswith("test_preflight_"):
+        return
+
+    monkeypatch.setenv(cli.SKIP_UPGRADE_CHECK_ENV, "1")
 
 
 def make_echo_response_payload(
@@ -97,6 +111,7 @@ class FakeChatConnection:
 
 
 def test_version_flag_prints_installed_version(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "_maybe_prompt_for_upgrade", lambda argv: None)
     monkeypatch.setattr(cli, "get_installed_version", lambda _: "1.2.3")
 
     with pytest.raises(SystemExit) as exc:
@@ -106,6 +121,108 @@ def test_version_flag_prints_installed_version(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out.strip() == "pw 1.2.3"
     assert captured.err == ""
+
+
+def test_preflight_skips_when_no_newer_release(monkeypatch):
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.62")
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
+
+    prompted = {"called": False}
+
+    def fake_prompt(installed, latest, argv):
+        prompted["called"] = True
+        return False
+
+    monkeypatch.setattr(cli, "_prompt_for_upgrade", fake_prompt)
+
+    assert cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"]) is None
+    assert prompted["called"] is False
+
+
+def test_preflight_prompts_and_persists_decline(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(cli, "DECLINED_UPGRADES_PATH", tmp_path / "declined-upgrades.yaml")
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.61")
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli, "_prompt_for_upgrade", lambda installed, latest, argv: False)
+
+    assert cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"]) is None
+    assert cli._load_declined_upgrades() == {"pollyweb-cli": "0.1.62"}
+
+
+def test_preflight_skips_prompt_for_declined_target_version(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "CONFIG_DIR", tmp_path)
+    declined_path = tmp_path / "declined-upgrades.yaml"
+    monkeypatch.setattr(cli, "DECLINED_UPGRADES_PATH", declined_path)
+    declined_path.write_text("pollyweb-cli: 0.1.62\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.61")
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
+
+    prompted = {"called": False}
+
+    def fake_prompt(installed, latest, argv):
+        prompted["called"] = True
+        return True
+
+    monkeypatch.setattr(cli, "_prompt_for_upgrade", fake_prompt)
+
+    assert cli._maybe_prompt_for_upgrade(["echo", "vault.example.com"]) is None
+    assert prompted["called"] is False
+
+
+def test_preflight_upgrades_and_reexecs_requested_command(monkeypatch):
+    recorded: dict[str, object] = {}
+
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.61")
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli, "_prompt_for_upgrade", lambda installed, latest, argv: True)
+
+    def fake_run(command, check):
+        recorded["run"] = command
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    def fake_execve(executable, args, env):
+        recorded["execve"] = (executable, args, env)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.os, "execve", fake_execve)
+
+    with pytest.raises(SystemExit) as exc:
+        cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"])
+
+    assert exc.value.code == 0
+    assert recorded["run"] == [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-U",
+        "pollyweb-cli==0.1.62",
+    ]
+    executable, args, env = recorded["execve"]
+    assert executable == sys.executable
+    assert args == [sys.executable, "-m", "pollyweb_cli.cli", "bind", "vault.example.com"]
+    assert env[cli.SKIP_UPGRADE_CHECK_ENV] == "1"
+
+
+def test_main_checks_for_upgrade_before_running_command(monkeypatch):
+    calls: list[list[str]] = []
+
+    def fake_preflight(argv):
+        calls.append(list(argv))
+        return 0
+
+    monkeypatch.setattr(cli, "_maybe_prompt_for_upgrade", fake_preflight)
+
+    assert cli.main(["bind", "vault.example.com"]) == 0
+    assert calls == [["bind", "vault.example.com"]]
 
 
 def test_parser_includes_chat_command():
