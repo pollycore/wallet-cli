@@ -387,7 +387,12 @@ def cmd_config(
     )
 
 
-def cmd_bind(domain: str, debug: bool = False) -> int:
+def cmd_bind(
+    domain: str,
+    debug: bool = False,
+    unsigned: bool = False,
+    anonymous: bool = False
+) -> int:
     """Run the bind command with the current filesystem paths."""
 
     _sync_runtime_dependencies()
@@ -397,12 +402,19 @@ def cmd_bind(domain: str, debug: bool = False) -> int:
         config_dir=CONFIG_DIR,
         public_key_path=PUBLIC_KEY_PATH,
         binds_path=BINDS_PATH,
+        unsigned=unsigned,
+        anonymous=anonymous,
         require_configured_keys=require_configured_keys,
         load_signing_key_pair=load_signing_key_pair,
     )
 
 
-def cmd_echo(domain: str, debug: bool = False) -> int:
+def cmd_echo(
+    domain: str,
+    debug: bool = False,
+    unsigned: bool = False,
+    anonymous: bool = False
+) -> int:
     """Run the echo command with the current filesystem paths."""
 
     _sync_runtime_dependencies()
@@ -410,12 +422,19 @@ def cmd_echo(domain: str, debug: bool = False) -> int:
         domain,
         debug=debug,
         config_dir=CONFIG_DIR,
+        unsigned=unsigned,
+        anonymous=anonymous,
         require_configured_keys=require_configured_keys,
         load_signing_key_pair=load_signing_key_pair,
     )
 
 
-def cmd_shell(domain: str, debug: bool = False) -> int:
+def cmd_shell(
+    domain: str,
+    debug: bool = False,
+    unsigned: bool = False,
+    anonymous: bool = False
+) -> int:
     """Run the interactive shell command with the current filesystem paths."""
 
     _sync_runtime_dependencies()
@@ -426,12 +445,19 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
         binds_path=BINDS_PATH,
         history_dir=HISTORY_DIR,
         readline=readline,
+        unsigned=unsigned,
+        anonymous=anonymous,
         require_configured_keys=require_configured_keys,
         load_signing_key_pair=load_signing_key_pair,
     )
 
 
-def cmd_msg(message: list[str], debug: bool = False) -> int:
+def cmd_msg(
+    message: list[str],
+    debug: bool = False,
+    unsigned: bool = False,
+    anonymous: bool = False
+) -> int:
     """Run the flexible message command with the current filesystem paths."""
 
     _sync_runtime_dependencies()
@@ -439,12 +465,19 @@ def cmd_msg(message: list[str], debug: bool = False) -> int:
         message,
         debug = debug,
         config_dir = CONFIG_DIR,
+        unsigned = unsigned,
+        anonymous = anonymous,
         require_configured_keys = require_configured_keys,
         load_signing_key_pair = load_signing_key_pair,
     )
 
 
-def cmd_test(path: str, debug: bool = False) -> int:
+def cmd_test(
+    path: str,
+    debug: bool = False,
+    unsigned: bool = False,
+    anonymous: bool = False
+) -> int:
     """Run the wrapped message test command with the current filesystem paths."""
 
     _sync_runtime_dependencies()
@@ -453,6 +486,8 @@ def cmd_test(path: str, debug: bool = False) -> int:
         debug = debug,
         config_dir = CONFIG_DIR,
         binds_path = BINDS_PATH,
+        unsigned = unsigned,
+        anonymous = anonymous,
         require_configured_keys = require_configured_keys,
         load_signing_key_pair = load_signing_key_pair,
     )
@@ -461,7 +496,9 @@ def cmd_test(path: str, debug: bool = False) -> int:
 def cmd_chat(
     domain: str | None = None,
     debug: bool = False,
-    test: bool = False
+    test: bool = False,
+    unsigned: bool = False,
+    anonymous: bool = False
 ) -> int:
     """Run the chat command with the current filesystem paths."""
 
@@ -470,13 +507,20 @@ def cmd_chat(
         domain = domain,
         debug = debug,
         test = test,
+        unsigned = unsigned,
+        anonymous = anonymous,
         config_path = CONFIG_PATH,
         require_configured_keys = require_configured_keys,
         load_signing_key_pair = load_signing_key_pair,
     )
 
 
-def cmd_sync(domain: str, debug: bool = False) -> int:
+def cmd_sync(
+    domain: str,
+    debug: bool = False,
+    unsigned: bool = False,
+    anonymous: bool = False
+) -> int:
     """Run the sync command with the current filesystem paths."""
 
     _sync_runtime_dependencies()
@@ -486,6 +530,8 @@ def cmd_sync(domain: str, debug: bool = False) -> int:
         config_dir=CONFIG_DIR,
         binds_path=BINDS_PATH,
         sync_dir=SYNC_DIR,
+        unsigned=unsigned,
+        anonymous=anonymous,
         require_configured_keys=require_configured_keys,
         load_signing_key_pair=load_signing_key_pair,
     )
@@ -509,22 +555,48 @@ def main(argv: list[str] | None = None) -> int:
                 debug=args.debug,
             )
         if args.command == "bind":
-            return cmd_bind(domain=args.domain, debug=args.debug)
+            return cmd_bind(
+                domain = args.domain,
+                debug = args.debug,
+                unsigned = args.unsigned,
+                anonymous = args.anonymous)
         if args.command == "echo":
-            return cmd_echo(domain=args.domain, debug=args.debug)
+            return cmd_echo(
+                domain = args.domain,
+                debug = args.debug,
+                unsigned = args.unsigned,
+                anonymous = args.anonymous)
         if args.command == "msg":
-            return cmd_msg(message=args.message, debug=args.debug)
+            return cmd_msg(
+                message = args.message,
+                debug = args.debug,
+                unsigned = args.unsigned,
+                anonymous = args.anonymous)
         if args.command == "test":
-            return cmd_test(path=args.path, debug=args.debug)
+            return cmd_test(
+                path = args.path,
+                debug = args.debug,
+                unsigned = args.unsigned,
+                anonymous = args.anonymous)
         if args.command == "shell":
-            return cmd_shell(domain=args.domain, debug=args.debug)
+            return cmd_shell(
+                domain = args.domain,
+                debug = args.debug,
+                unsigned = args.unsigned,
+                anonymous = args.anonymous)
         if args.command == "chat":
             return cmd_chat(
                 domain = args.domain,
                 debug = args.debug,
-                test = args.test)
+                test = args.test,
+                unsigned = args.unsigned,
+                anonymous = args.anonymous)
         if args.command == "sync":
-            return cmd_sync(domain=args.domain, debug=args.debug)
+            return cmd_sync(
+                domain = args.domain,
+                debug = args.debug,
+                unsigned = args.unsigned,
+                anonymous = args.anonymous)
     except UserFacingError as exc:
         print_error(f"Error: {exc}")
         return 1

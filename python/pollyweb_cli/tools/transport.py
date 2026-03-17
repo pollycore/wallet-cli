@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 
@@ -28,14 +29,41 @@ def serialize_wallet_response(response: object) -> str:
 
 def build_debug_outbound_payload(
     wallet: Wallet,
-    request_message: Msg
+    request_message: Msg,
+    *,
+    unsigned: bool = False
 ) -> dict[str, object]:
     """Render the actual outbound payload shape used by `wallet.send()`."""
 
-    if wallet.ID == "Anonymous":
-        return request_message.to_dict()
+    outbound_message = build_wallet_outbound_message(
+        wallet,
+        request_message,
+        unsigned = unsigned)
 
-    return wallet.sign(request_message).to_dict()
+    return outbound_message.to_dict()
+
+
+def build_wallet_outbound_message(
+    wallet: Wallet,
+    request_message: Msg,
+    *,
+    unsigned: bool = False
+) -> Msg:
+    """Build the concrete outbound message for the current wallet mode."""
+
+    if unsigned:
+        return replace(
+            request_message,
+            From = wallet.ID,
+            Selector = "",
+            Algorithm = "",
+            Hash = None,
+            Signature = None)
+
+    if wallet.ID == "Anonymous":
+        return request_message
+
+    return wallet.sign(request_message)
 
 
 def _load_first_bind_for_domain(
@@ -74,9 +102,14 @@ def _load_first_bind_for_domain(
 def _resolve_wallet_sender(
     domain: str,
     from_value: str | None,
-    binds_path: Path
+    binds_path: Path,
+    *,
+    anonymous: bool = False
 ) -> str | None:
     """Choose the wallet sender ID, preferring a stored bind over an empty sender."""
+
+    if anonymous:
+        return None
 
     if from_value not in (None, "", "Anonymous"):
         return str(from_value)
@@ -98,7 +131,8 @@ def build_wallet_message(
     key_pair: KeyPair,
     from_value: str | None = "Anonymous",
     schema_value: str | None = DEFAULT_SCHEMA,
-    binds_path: Path | None = None
+    binds_path: Path | None = None,
+    anonymous: bool = False
 ) -> tuple[Wallet, Msg, str]:
     """Create a wallet sender and normalized PollyWeb message."""
 
@@ -108,6 +142,7 @@ def build_wallet_message(
         normalized_domain,
         from_value,
         effective_binds_path,
+        anonymous = anonymous,
     )
 
     try:
@@ -140,7 +175,9 @@ def send_wallet_message(
     debug: bool = False,
     from_value: str | None = "Anonymous",
     schema_value: str | None = DEFAULT_SCHEMA,
-    binds_path: Path | None = None
+    binds_path: Path | None = None,
+    anonymous: bool = False,
+    unsigned: bool = False
 ) -> tuple[str, Msg, str]:
     """Send one wallet-backed PollyWeb message and return the raw response."""
 
@@ -152,6 +189,7 @@ def send_wallet_message(
         from_value=from_value,
         schema_value=schema_value,
         binds_path=binds_path,
+        anonymous=anonymous,
     )
 
     if debug:
@@ -160,10 +198,15 @@ def send_wallet_message(
             f"Outbound payload to {request_url}",
             build_debug_outbound_payload(
                 wallet,
-                request_message),
+                request_message,
+                unsigned = unsigned),
         )
 
-    response = wallet.send(request_message)
+    outbound_message = build_wallet_outbound_message(
+        wallet,
+        request_message,
+        unsigned = unsigned)
+    response = outbound_message.send()
     response_payload = serialize_wallet_response(response)
 
     if debug:

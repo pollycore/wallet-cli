@@ -5,6 +5,21 @@ from __future__ import annotations
 import argparse
 
 
+def add_wallet_send_flags(parser: argparse.ArgumentParser) -> None:
+    """Attach the shared anonymous and unsigned send flags to one parser."""
+
+    parser.add_argument(
+        "--unsigned",
+        action="store_true",
+        help="Send without Hash or Signature fields.",
+    )
+    parser.add_argument(
+        "--anonymous",
+        action="store_true",
+        help="Ignore stored binds and force From: Anonymous.",
+    )
+
+
 def build_parser(get_cli_version) -> argparse.ArgumentParser:
     """Construct the top-level command parser."""
 
@@ -45,6 +60,7 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         action="store_true",
         help="Print outbound and inbound bind payloads.",
     )
+    add_wallet_send_flags(bind_parser)
 
     echo_parser = subparsers.add_parser(
         "echo",
@@ -59,6 +75,7 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         action="store_true",
         help="Print outbound and inbound echo payloads.",
     )
+    add_wallet_send_flags(echo_parser)
 
     msg_parser = subparsers.add_parser(
         "msg",
@@ -74,6 +91,7 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         action="store_true",
         help="Print outbound and inbound message payloads.",
     )
+    add_wallet_send_flags(msg_parser)
 
     test_parser = subparsers.add_parser(
         "test",
@@ -88,6 +106,7 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         action="store_true",
         help="Print outbound and inbound test payloads.",
     )
+    add_wallet_send_flags(test_parser)
 
     shell_parser = subparsers.add_parser(
         "shell",
@@ -102,6 +121,7 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         action="store_true",
         help="Print outbound and inbound shell payloads.",
     )
+    add_wallet_send_flags(shell_parser)
 
     chat_parser = subparsers.add_parser(
         "chat",
@@ -122,6 +142,7 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         action="store_true",
         help="Publish a TEST message immediately after connecting.",
     )
+    add_wallet_send_flags(chat_parser)
 
     sync_parser = subparsers.add_parser(
         "sync",
@@ -136,5 +157,6 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         action="store_true",
         help="Print outbound and inbound sync payloads.",
     )
+    add_wallet_send_flags(sync_parser)
 
     return parser

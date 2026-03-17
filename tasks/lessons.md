@@ -9,3 +9,4 @@
 - For automatic `pw` upgrade prompts, run the preflight before every `pw` invocation, including `pw --version`, and read the latest release from the PyPI JSON metadata endpoint with cache-busting headers instead of trusting the rendered HTML page.
 - When upgrading `pollyweb` in an older local virtualenv, follow the package upgrade with `python -m pip install -e '.[dev]'` in that env so stale editable-install metadata does not keep pinning an older exact `pollyweb` version.
 - For wallet-backed sends, the CLI should only override `msg.From` when it has something concrete to provide, such as a stored bind UUID for the target domain; otherwise let `pollyweb.Wallet` apply its own default `Anonymous` sender.
+- Treat `--anonymous` and `--unsigned` as transport-level controls in the shared send helper: `--anonymous` must override stored binds and explicit wallet UUID senders, while `--unsigned` must remove `Hash` and `Signature` without changing the chosen `From`.

@@ -1,12 +1,12 @@
 # pw msg
 
-Send a signed PollyWeb message from a YAML, JSON, or Python file:
+Send a PollyWeb message from a YAML, JSON, or Python file:
 
 ```bash
 pw msg ./message.yaml
 ```
 
-The file must contain either top-level `To`, `Subject`, and optional `From`, `Schema`, `Body` fields, or a `Header` object with those same header values plus a top-level `Body` object. For Python files, define one of `MESSAGE`, `message`, `REQUEST`, `request`, or `build_message()` that returns that same object shape. The CLI signs the message with the configured wallet key through `pollyweb.Wallet.send()`, sends it to `https://pw.<To>/inbox`, and prints the raw synchronous response.
+The file must contain either top-level `To`, `Subject`, and optional `From`, `Schema`, `Body` fields, or a `Header` object with those same header values plus a top-level `Body` object. For Python files, define one of `MESSAGE`, `message`, `REQUEST`, `request`, or `build_message()` that returns that same object shape. The CLI sends the message with the configured wallet semantics to `https://pw.<To>/inbox` and prints the raw synchronous response.
 
 Example file:
 
@@ -31,7 +31,9 @@ pw msg to:any-domain.dom subject:Echo@Domain --debug
 
 For `pw msg`, domains ending in `.dom` are treated as shorthand for `.pollyweb.org`, so `To:any-domain.dom` is sent to `https://pw.any-domain.pollyweb.org/inbox` with `To: any-domain.pollyweb.org` in the signed message header.
 
-Because the command now follows wallet semantics end-to-end, `From` must be omitted, `Anonymous`, or a UUID bind value. When `From` is omitted or `Anonymous`, the CLI first checks `~/.pollyweb/binds.yaml` for a bind stored against the target domain and uses that bind UUID as `msg.From`; if no bind is stored, it leaves the fallback to `pollyweb.Wallet`, which signs as `Anonymous`. Arbitrary domain `From` values are rejected instead of being hand-signed locally.
+Because the command follows wallet semantics end-to-end, `From` must be omitted, `Anonymous`, or a UUID bind value. When `From` is omitted or `Anonymous`, the CLI first checks `~/.pollyweb/binds.yaml` for a bind stored against the target domain and uses that bind UUID as `msg.From`; if no bind is stored, it falls back to `From: Anonymous`. Arbitrary domain `From` values are rejected instead of being hand-signed locally.
+
+Use `--anonymous` to ignore any stored bind and force `From: Anonymous` for the outbound request. Use `--unsigned` to keep the selected sender but remove `Hash` and `Signature` before sending.
 
 Print the outbound payload, the full inbox URL the POST is sent to, and the inbound response body as colorized, indented YAML:
 

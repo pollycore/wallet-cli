@@ -182,6 +182,8 @@ def cmd_test(
     debug: bool,
     config_dir: Path,
     binds_path: Path,
+    unsigned: bool,
+    anonymous: bool,
     require_configured_keys,
     load_signing_key_pair
 ) -> int:
@@ -208,6 +210,8 @@ def cmd_test(
             debug = debug,
             from_value = request.get("From"),
             schema_value = request.get("Schema"),
+            anonymous = anonymous,
+            unsigned = unsigned,
         )
     except FileNotFoundError:
         if Path(test_path).suffix in {".yaml", ".yml", ".json"}:

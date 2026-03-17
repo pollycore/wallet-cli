@@ -19,9 +19,11 @@ Inbound:
   Subject: Echo@Domain
 ```
 
-`pw test` sends only the `Outbound` payload, using the same wallet-backed signing and transport rules as `pw msg`. That means `.dom` recipients are normalized to `.pollyweb.org`, and any explicit `From` value must be `Anonymous` or a UUID bind value. When `From` is omitted or `Anonymous`, the CLI first checks `~/.pollyweb/binds.yaml` for the target domain's bind UUID and uses that as `msg.From`; if none is stored, it leaves the fallback to `pollyweb.Wallet`, which signs as `Anonymous`. When `Inbound` is present, the CLI parses the synchronous JSON response and checks that every field in `Inbound` exists in the returned payload with the same value. Extra response fields are allowed.
+`pw test` sends only the `Outbound` payload, using the same wallet-backed transport rules as `pw msg`. That means `.dom` recipients are normalized to `.pollyweb.org`, and any explicit `From` value must be `Anonymous` or a UUID bind value. When `From` is omitted or `Anonymous`, the CLI first checks `~/.pollyweb/binds.yaml` for the target domain's bind UUID and uses that as `msg.From`; if none is stored, it falls back to `From: Anonymous`. When `Inbound` is present, the CLI parses the synchronous JSON response and checks that every field in `Inbound` exists in the returned payload with the same value. Extra response fields are allowed.
 
 If a fixture needs a stored bind value, any string field may use the placeholder `{BindOf(domain)}`. `pw test` resolves it from `~/.pollyweb/binds.yaml` before sending the request, and the lookup uses the same canonical domain normalization as `pw bind`, so `{BindOf(any-hoster.dom)}` and `{BindOf(any-hoster.pollyweb.org)}` resolve the same stored bind.
+
+Use `--anonymous` to ignore any stored bind and force `From: Anonymous`. Use `--unsigned` to keep the selected sender but remove `Hash` and `Signature` before sending.
 
 This makes wrapped fixtures useful for end-to-end checks where you want one file to describe both the request and the expected response.
 

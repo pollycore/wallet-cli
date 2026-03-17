@@ -5,6 +5,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
+from pollyweb_cli import cli
+
 
 # Add the repository's package source directory so plain `pytest` can import
 # `pollyweb_cli` without requiring an editable install first.
@@ -13,3 +17,22 @@ PYTHON_SOURCE = REPO_ROOT / "python"
 
 if str(PYTHON_SOURCE) not in sys.path:
     sys.path.insert(0, str(PYTHON_SOURCE))
+
+
+@pytest.fixture(autouse = True)
+def skip_upgrade_check(
+    monkeypatch,
+    request
+):
+    """Keep CLI self-upgrade preflight out of unit-test command flows."""
+
+    if (
+        request.node.name.startswith("test_preflight_")
+        or request.node.name.startswith("test_get_latest_published_version_")
+        or request.node.name.startswith("test_version_flag_checks_for_upgrade_")
+    ):
+        return
+
+    env_name = getattr(cli, "SKIP_UPGRADE_CHECK_ENV", None)
+    if env_name:
+        monkeypatch.setenv(env_name, "1")

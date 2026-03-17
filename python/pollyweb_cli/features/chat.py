@@ -313,7 +313,9 @@ def load_wallet_id(
 def build_auth_token(
     key_pair: KeyPair,
     notifier_domain: str,
-    wallet_id: str
+    wallet_id: str,
+    *,
+    unsigned: bool = False
 ) -> str:
     """Build a signed wallet auth token for notifier chat connections."""
 
@@ -322,7 +324,10 @@ def build_auth_token(
         From = "Anonymous",
         Subject = CONNECT_SUBJECT,
         Body = {"Wallet": wallet_id},
-    ).sign(key_pair.PrivateKey)
+    )
+    if not unsigned:
+        message = message.sign(key_pair.PrivateKey)
+
     payload = json.dumps(
         message.to_dict(),
         separators = (",", ":")).encode("utf-8")
@@ -334,6 +339,8 @@ def cmd_chat(
     domain: str | None = None,
     debug: bool = False,
     test: bool = False,
+    unsigned: bool = False,
+    anonymous: bool = False,
     config_path: Path,
     require_configured_keys,
     load_signing_key_pair
@@ -343,12 +350,13 @@ def cmd_chat(
     # Reuse the existing CLI validation so chat only runs after wallet setup.
     require_configured_keys()
     notifier_domain = domain or load_notifier_domain(config_path)
-    wallet_id = load_wallet_id(config_path)
+    wallet_id = "Anonymous" if anonymous else load_wallet_id(config_path)
     key_pair = load_signing_key_pair()
     auth_token = build_auth_token(
         key_pair,
         notifier_domain,
-        wallet_id)
+        wallet_id,
+        unsigned = unsigned)
 
     if debug:
         print_debug_payload(

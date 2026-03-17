@@ -60,7 +60,7 @@ Bind your wallet to a domain:
 pw bind vault.example.com
 ```
 
-This sends a signed `Bind@Vault` request to `https://pw.vault.example.com/inbox` using the compact public-key value in the request body. The command now uses `pollyweb.Wallet.send()` directly, so it reuses the stored bind UUID for that domain from `~/.pollyweb/binds.yaml` when one exists and otherwise falls back to `pollyweb.Wallet`'s default `From: Anonymous` behavior, while still storing only the UUID portion of the returned bind token in `~/.pollyweb/binds.yaml`. Rebinding the same domain replaces the existing bind for that domain unless the server returns a different `Schema`, in which case both entries are kept.
+This sends a `Bind@Vault` request to `https://pw.vault.example.com/inbox` using the compact public-key value in the request body. The command reuses the stored bind UUID for that domain from `~/.pollyweb/binds.yaml` when one exists and otherwise falls back to `From: Anonymous`, while still storing only the UUID portion of the returned bind token in `~/.pollyweb/binds.yaml`. Rebinding the same domain replaces the existing bind for that domain unless the server returns a different `Schema`, in which case both entries are kept. Use `--anonymous` to ignore the stored bind and force `From: Anonymous`, or `--unsigned` to remove `Hash` and `Signature` before sending.
 
 You can also use the PollyWeb shorthand domain suffix:
 
@@ -100,7 +100,7 @@ Send a one-shot echo request and verify the synchronous signed response:
 pw echo vault.example.com
 ```
 
-This sends a signed `Echo@Domain` message to `https://pw.<domain>/inbox`, expects a synchronous PollyWeb message in return, verifies the reply signature using the responding domain's DKIM key, and checks that the response `From`, `To`, `Subject`, and `Correlation` values match the target domain and the original request.
+This sends an `Echo@Domain` message to `https://pw.<domain>/inbox`, expects a synchronous PollyWeb message in return, verifies the reply signature using the responding domain's DKIM key, and checks that the response `From`, `To`, `Subject`, and `Correlation` values match the target domain and the original request. Use `--anonymous` to force `From: Anonymous`, or `--unsigned` to remove `Hash` and `Signature` before sending.
 
 Send a signed message from a file:
 
@@ -108,7 +108,7 @@ Send a signed message from a file:
 pw msg ./message.yaml
 ```
 
-This reads a YAML, JSON, or Python message definition, or you can pass a raw JSON object string or inline `Key:Value` fields. The CLI signs the message with the configured wallet key through `pollyweb.Wallet.send()`, sends it to `https://pw.<To>/inbox`, and prints the raw synchronous response body.
+This reads a YAML, JSON, or Python message definition, or you can pass a raw JSON object string or inline `Key:Value` fields. The CLI sends the message with wallet-backed sender selection to `https://pw.<To>/inbox` and prints the raw synchronous response body.
 
 ```bash
 pw msg '{"To":"vault.example.com","Subject":"Echo@Domain","Body":{"Ping":"pong"}}'
@@ -116,7 +116,7 @@ pw msg To:any-domain.org Subject:topic@role DynamicBodyProperty:123
 pw msg to:any-domain.dom subject:Echo@Domain --debug
 ```
 
-For `pw msg`, inline header keys like `to` and `subject` are matched case-insensitively, and a `To` domain ending in `.dom` is expanded to `.pollyweb.org` before signing and sending. Because the command now follows wallet semantics directly, `From` must be omitted, `Anonymous`, or a UUID bind value. When `From` is omitted or `Anonymous`, the CLI first checks `~/.pollyweb/binds.yaml` for a stored bind matching the target domain and uses that UUID as `msg.From`; if none is stored, it leaves the fallback to `pollyweb.Wallet`, which signs as `Anonymous`.
+For `pw msg`, inline header keys like `to` and `subject` are matched case-insensitively, and a `To` domain ending in `.dom` is expanded to `.pollyweb.org` before sending. `From` must be omitted, `Anonymous`, or a UUID bind value. When `From` is omitted or `Anonymous`, the CLI first checks `~/.pollyweb/binds.yaml` for a stored bind matching the target domain and uses that UUID as `msg.From`; if none is stored, it falls back to `From: Anonymous`. Use `--anonymous` to ignore stored binds entirely, or `--unsigned` to keep the selected sender but remove `Hash` and `Signature`.
 
 Run a wrapped message test fixture:
 
@@ -124,9 +124,9 @@ Run a wrapped message test fixture:
 pw test ./test.yaml
 ```
 
-This reads a YAML file with `Outbound` and optional `Inbound` sections. The CLI sends only `Outbound` with the same wallet-backed rules as `pw msg`, then if `Inbound` is present it parses the synchronous JSON response and verifies that the expected `Inbound` fields appear in the returned payload. Fixtures can also use `{BindOf(domain)}` string placeholders, which resolve against `~/.pollyweb/binds.yaml` with the same canonical domain normalization as `pw bind`.
+This reads a YAML file with `Outbound` and optional `Inbound` sections. The CLI sends only `Outbound` with the same wallet-backed rules as `pw msg`, then if `Inbound` is present it parses the synchronous JSON response and verifies that the expected `Inbound` fields appear in the returned payload. Fixtures can also use `{BindOf(domain)}` string placeholders, which resolve against `~/.pollyweb/binds.yaml` with the same canonical domain normalization as `pw bind`. `--anonymous` ignores stored binds, and `--unsigned` removes `Hash` and `Signature` before sending.
 
-Each command you enter is parsed into a base `Command` plus an `Arguments` dictionary, then sent as a signed `Shell@Domain` message whose `From` header is set to the first stored bind for that domain. Long flags like `--all 123` become `{"all":"123"}`, short flags like `-a 123` become `{"a":"123"}`, `key=value` tokens like `a=123` become `{"a":"123"}`, and plain positional arguments remain indexed as `{"0":"value"}`. `pw shell` also keeps the last 20 commands for that exact domain in `~/.pollyweb/history/`, so you can use the up/down arrows to revisit recent commands. Commands are recorded before the network request is sent, which means failed requests still appear in that domain's history.
+Each command you enter is parsed into a base `Command` plus an `Arguments` dictionary, then sent as a `Shell@Domain` message whose `From` header is set to the first stored bind for that domain by default. Long flags like `--all 123` become `{"all":"123"}`, short flags like `-a 123` become `{"a":"123"}`, `key=value` tokens like `a=123` become `{"a":"123"}`, and plain positional arguments remain indexed as `{"0":"value"}`. `--anonymous` skips the bind requirement and forces `From: Anonymous`, while `--unsigned` removes `Hash` and `Signature` before each send. `pw shell` also keeps the last 20 commands for that exact domain in `~/.pollyweb/history/`, so you can use the up/down arrows to revisit recent commands. Commands are recorded before the network request is sent, which means failed requests still appear in that domain's history.
 
 To inspect the signed shell request and response for each command as colorized, indented YAML, including the full inbox URL the POST is sent to:
 

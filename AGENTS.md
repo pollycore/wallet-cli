@@ -4,13 +4,15 @@
 
 - Read the goal.yaml file
 - When answering questions about behavior, start by checking the written instructions and docs first, and be specific about what they do or do not say before using code to confirm runtime behavior.
-- `pw msg <path>` accepts YAML or JSON files in either a top-level `To`/`Subject`/`Body` shape or a `Header` plus top-level `Body` shape, signs the message locally, and prints the raw synchronous response.
+- `pw msg <path>` accepts YAML or JSON files in either a top-level `To`/`Subject`/`Body` shape or a `Header` plus top-level `Body` shape, sends the message with wallet-backed sender selection, and prints the raw synchronous response.
 - `pw msg <message...>` also accepts Python files that expose a message object, raw JSON object strings, and inline `Key:Value` fields where non-header keys are collected into `Body`.
 - For `pw msg`, a `To` value ending in `.dom` is normalized to `.pollyweb.org` before signing the message and building the inbox URL.
 - `pw msg` should use the shared `pollyweb.normalize_domain_name()` helper for `.dom` expansion; `wallet-cli` now requires a published `pollyweb` release that includes that helper.
 - Wallet-backed CLI sends should go through `pollyweb.Wallet.send(...)` instead of custom signing and `urllib` transport helpers, so alias normalization and wire behavior stay aligned with the published library.
 - Because `Wallet.send(...)` is wallet-scoped, `pw msg` and `pw test` only support `From: Anonymous` or a UUID bind value; arbitrary domain `From` values are not valid wallet senders.
 - When a wallet-backed send would otherwise use `From: Anonymous`, first look up the target domain in `~/.pollyweb/binds.yaml` using canonical domain normalization and pass that bind UUID to the wallet; only fall back to the wallet library's own `Anonymous` default when no bind is stored.
+- `--anonymous` on wallet-backed send commands must bypass stored bind lookup and force `From: Anonymous`, even if the input payload or local binds would otherwise select a UUID sender.
+- `--unsigned` on wallet-backed send commands must keep the selected sender but strip `Hash` and `Signature` before transport; this includes UUID-backed senders as well as anonymous ones.
 - For inline `pw msg` arguments, header keys are case-insensitive for `to`, `subject`, `from`, `schema`, `body`, and `header`.
 - `pw test <path>` reads a wrapped YAML fixture, sends only its `Outbound` payload with the same signing rules as `pw msg`, and treats `Inbound` as an expected subset of the returned JSON payload.
 - `pw test` also resolves any string exactly matching `{BindOf(<domain>)}` from `~/.pollyweb/binds.yaml` before sending, and the lookup should reuse canonical domain normalization so `.dom` and `.pollyweb.org` placeholders share the same stored bind.

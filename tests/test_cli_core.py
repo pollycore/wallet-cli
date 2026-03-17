@@ -1,0 +1,352 @@
+from __future__ import annotations
+
+import builtins
+import json
+import socket
+import stat
+import sys
+import uuid
+import urllib.error
+from pathlib import Path
+
+import pollyweb.msg as pollyweb_msg
+import pytest
+
+from pollyweb import Msg
+from pollyweb_cli import cli
+from pollyweb_cli.features import chat as chat_feature
+from pollyweb_cli.features import test as test_feature
+from pollyweb_cli.tools import transport as transport_tools
+
+from tests.cli_test_helpers import (
+    TEST_MSGS_DIR,
+    VALID_BIND,
+    VALID_WALLET_ID,
+    DummyResponse,
+    FakeChatConnection,
+    FakeReadline,
+    _setup_sync_env,
+    make_echo_response_payload,
+)
+
+def test_version_flag_prints_installed_version(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "_maybe_prompt_for_upgrade", lambda argv: None)
+    monkeypatch.setattr(cli, "get_installed_version", lambda _: "1.2.3")
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--version"])
+
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "pw 1.2.3"
+    assert captured.err == ""
+
+def test_version_flag_checks_for_upgrade_before_printing_version(monkeypatch, capsys):
+    prompted = []
+
+    def fake_preflight(argv):
+        prompted.append(list(argv))
+        return None
+
+    monkeypatch.setattr(cli, "_maybe_prompt_for_upgrade", fake_preflight)
+    monkeypatch.setattr(cli, "get_installed_version", lambda _: "1.2.3")
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--version"])
+
+    assert exc.value.code == 0
+    assert prompted == [["--version"]]
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "pw 1.2.3"
+
+def test_preflight_skips_when_no_newer_release(monkeypatch):
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.62")
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
+
+    prompted = {"called": False}
+
+    def fake_prompt(installed, latest, argv):
+        prompted["called"] = True
+        return False
+
+    monkeypatch.setattr(cli, "_prompt_for_upgrade", fake_prompt)
+
+    assert cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"]) is None
+    assert prompted["called"] is False
+
+def test_preflight_prompts_and_persists_decline(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(cli, "DECLINED_UPGRADES_PATH", tmp_path / "declined-upgrades.yaml")
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.61")
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli, "_prompt_for_upgrade", lambda installed, latest, argv: False)
+
+    assert cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"]) is None
+    assert cli._load_declined_upgrades() == {"pollyweb-cli": "0.1.62"}
+
+def test_preflight_treats_dev_version_as_older_than_stable(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(cli, "DECLINED_UPGRADES_PATH", tmp_path / "declined-upgrades.yaml")
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.dev43")
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.61")
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+
+    prompted = []
+
+    def fake_prompt(installed, latest, argv):
+        prompted.append((installed, latest, list(argv)))
+        return False
+
+    monkeypatch.setattr(cli, "_prompt_for_upgrade", fake_prompt)
+
+    assert cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"]) is None
+    assert prompted == [("0.1.dev43", "0.1.61", ["bind", "vault.example.com"])]
+    assert cli._load_declined_upgrades() == {"pollyweb-cli": "0.1.61"}
+
+def test_preflight_skips_prompt_for_declined_target_version(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "CONFIG_DIR", tmp_path)
+    declined_path = tmp_path / "declined-upgrades.yaml"
+    monkeypatch.setattr(cli, "DECLINED_UPGRADES_PATH", declined_path)
+    declined_path.write_text("pollyweb-cli: 0.1.62\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.61")
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
+
+    prompted = {"called": False}
+
+    def fake_prompt(installed, latest, argv):
+        prompted["called"] = True
+        return True
+
+    monkeypatch.setattr(cli, "_prompt_for_upgrade", fake_prompt)
+
+    assert cli._maybe_prompt_for_upgrade(["echo", "vault.example.com"]) is None
+    assert prompted["called"] is False
+
+def test_get_latest_published_version_uses_uncached_json_request(monkeypatch):
+    seen = {}
+
+    def fake_urlopen(request, timeout=0):
+        seen["url"] = request.full_url
+        seen["headers"] = {
+            key.lower(): value
+            for key, value in request.header_items()
+        }
+        return DummyResponse(b'{"info":{"version":"0.1.62"}}')
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    assert cli._get_latest_published_version() == "0.1.62"
+    assert seen["url"].startswith(cli.PYPI_JSON_URL)
+    assert "?_=" in seen["url"]
+    assert seen["headers"]["accept"] == "application/json"
+    assert seen["headers"]["cache-control"] == "no-cache"
+    assert seen["headers"]["pragma"] == "no-cache"
+
+def test_preflight_upgrades_and_reexecs_requested_command(monkeypatch):
+    recorded: dict[str, object] = {}
+
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.61")
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli, "_prompt_for_upgrade", lambda installed, latest, argv: True)
+
+    def fake_run(command, check):
+        recorded["run"] = command
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    def fake_execve(executable, args, env):
+        recorded["execve"] = (executable, args, env)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.os, "execve", fake_execve)
+
+    with pytest.raises(SystemExit) as exc:
+        cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"])
+
+    assert exc.value.code == 0
+    assert recorded["run"] == [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-U",
+        "pollyweb-cli==0.1.62",
+    ]
+    executable, args, env = recorded["execve"]
+    assert executable == sys.executable
+    assert args == [sys.executable, "-m", "pollyweb_cli.cli", "bind", "vault.example.com"]
+    assert env[cli.SKIP_UPGRADE_CHECK_ENV] == "1"
+
+def test_main_checks_for_upgrade_before_running_command(monkeypatch):
+    calls: list[list[str]] = []
+
+    def fake_preflight(argv):
+        calls.append(list(argv))
+        return 0
+
+    monkeypatch.setattr(cli, "_maybe_prompt_for_upgrade", fake_preflight)
+
+    assert cli.main(["bind", "vault.example.com"]) == 0
+    assert calls == [["bind", "vault.example.com"]]
+
+def test_parser_includes_chat_command():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["chat"])
+
+    assert args.command == "chat"
+    assert args.domain is None
+    assert args.debug is False
+
+def test_parser_accepts_chat_debug_flag():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["chat", "--debug"])
+
+    assert args.command == "chat"
+    assert args.domain is None
+    assert args.debug is True
+    assert args.test is False
+
+def test_parser_accepts_chat_test_flag():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["chat", "--test"])
+
+    assert args.command == "chat"
+    assert args.domain is None
+    assert args.debug is False
+    assert args.test is True
+
+def test_parser_accepts_chat_domain_override():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["chat", "override.example.com", "--debug", "--test"])
+
+    assert args.command == "chat"
+    assert args.domain == "override.example.com"
+    assert args.debug is True
+    assert args.test is True
+
+def test_parser_accepts_shared_unsigned_and_anonymous_flags():
+    parser = cli.build_parser()
+
+    msg_args = parser.parse_args(["msg", "--unsigned", "--anonymous", "To:vault.example.com", "Subject:Echo@Domain"])
+    chat_args = parser.parse_args(["chat", "--unsigned", "--anonymous"])
+
+    assert msg_args.unsigned is True
+    assert msg_args.anonymous is True
+    assert chat_args.unsigned is True
+    assert chat_args.anonymous is True
+
+def test_parser_accepts_msg_command():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["msg", "./message.yaml", "--debug"])
+
+    assert args.command == "msg"
+    assert args.message == ["./message.yaml"]
+    assert args.debug is True
+
+def test_parser_accepts_test_command():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["test", "./test.yaml", "--debug"])
+
+    assert args.command == "test"
+    assert args.path == "./test.yaml"
+    assert args.debug is True
+
+def test_print_debug_payload_wraps_long_unbroken_strings_as_literal_blocks(capsys):
+    cli.print_debug_payload(
+        "Outbound payload",
+        {
+            "Body": {"PublicKey": "A" * 96},
+            "Signature": "B" * 96,
+        },
+    )
+
+    captured = capsys.readouterr()
+    assert "PublicKey: |" in captured.out
+    assert "Signature: |" in captured.out
+    assert "A" * 64 in captured.out
+    assert "A" * 32 in captured.out
+    assert "B" * 64 in captured.out
+    assert "B" * 32 in captured.out
+
+def test_print_debug_payload_wraps_public_key_even_when_shorter_than_width(capsys):
+    cli.print_debug_payload(
+        "Outbound payload",
+        {
+            "Body": {
+                "PublicKey": "MCowBQYDK2VwAyEA1234567890abcdefghijklmnopqrstuv=="
+            }
+        },
+    )
+
+    captured = capsys.readouterr()
+    assert "PublicKey: |" in captured.out
+    assert "MCowBQYDK2VwAyEA1234567890abcdefghijklmnopqrstuv==" in captured.out
+
+def test_main_renders_user_facing_errors_in_red(monkeypatch):
+    monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: True)
+    monkeypatch.setattr(
+        cli,
+        "cmd_echo",
+        lambda domain, debug, unsigned = False, anonymous = False: (
+            _ for _ in ()
+        ).throw(cli.UserFacingError("boom")),
+    )
+    printed = []
+
+    def fake_print(*args, **kwargs):
+        printed.append((args, kwargs))
+
+    monkeypatch.setattr(builtins, "print", fake_print)
+
+    exit_code = cli.main(["echo", "vault.example.com"])
+
+    assert exit_code == 1
+    assert printed == [
+        (
+            (f"{cli.ERROR_STYLE}Error: boom{cli.ERROR_STYLE_RESET}",),
+            {"file": cli.sys.stderr},
+        )
+    ]
+
+def test_main_renders_bind_errors_in_red(monkeypatch):
+    monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: True)
+    monkeypatch.setattr(
+        cli,
+        "cmd_bind",
+        lambda domain, debug, unsigned = False, anonymous = False: (_ for _ in ()).throw(
+            cli.UserFacingError(
+                f"Could not bind {domain}. The server returned HTTP 500."
+            )
+        ),
+    )
+    printed = []
+
+    def fake_print(*args, **kwargs):
+        printed.append((args, kwargs))
+
+    monkeypatch.setattr(builtins, "print", fake_print)
+
+    exit_code = cli.main(["bind", "any-hoster.pollyweb.org"])
+
+    assert exit_code == 1
+    assert printed == [
+        (
+            (
+                f"{cli.ERROR_STYLE}Error: Could not bind any-hoster.pollyweb.org. "
+                f"The server returned HTTP 500.{cli.ERROR_STYLE_RESET}",
+            ),
+            {"file": cli.sys.stderr},
+        )
+    ]

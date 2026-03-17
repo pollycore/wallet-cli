@@ -181,7 +181,9 @@ def send_bind_message(
     domain: str,
     key_pair: KeyPair,
     public_key_path: Path,
-    debug: bool = False
+    debug: bool = False,
+    anonymous: bool = False,
+    unsigned: bool = False
 ) -> dict[str, str]:
     """Send the bind request for a domain and parse the server response."""
 
@@ -198,6 +200,8 @@ def send_bind_message(
         },
         key_pair=key_pair,
         debug=debug,
+        anonymous=anonymous,
+        unsigned=unsigned,
     )
 
     try:
@@ -235,6 +239,8 @@ def cmd_bind(
     config_dir: Path,
     public_key_path: Path,
     binds_path: Path,
+    unsigned: bool,
+    anonymous: bool,
     require_configured_keys,
     load_signing_key_pair
 ) -> int:
@@ -248,6 +254,8 @@ def cmd_bind(
             key_pair,
             public_key_path,
             debug=debug,
+            anonymous=anonymous,
+            unsigned=unsigned,
         )
         save_bind(bind_entry, domain, binds_path)
     except FileNotFoundError:

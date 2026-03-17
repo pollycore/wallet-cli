@@ -1,16 +1,17 @@
 # Task Plan
 
 - [x] Review the written instructions, docs, and current wallet-backed send behavior
-- [x] Auto-upgrade wallet-backed `From: Anonymous` sends to the stored bind for the target domain
-- [x] Keep bind lookup canonical so `.dom` recipients reuse the same stored bind entry
-- [x] Add regression coverage for automatic bind-backed sender selection
+- [x] Add shared `--unsigned` and `--anonymous` handling for wallet-backed CLI send paths
+- [x] Extend the `pollyweb` transport rules so unsigned UUID-backed sends are valid
+- [x] Cover bind, msg, shell, sync, chat, and shared parser behavior with regression tests
 - [x] Refresh command docs and record the lesson after verification
-- [x] Run targeted verification for the updated send paths
+- [x] Run targeted verification in both `wallet-cli` and `pollyweb-pypi`
 
 # Review
 
-- Wallet-backed sends now check `~/.pollyweb/binds.yaml` for the normalized target domain and use that bind UUID as `msg.From` whenever the caller omitted `From` or set it to `Anonymous`.
-- If no bind exists, the CLI no longer forces `Anonymous`; it leaves sender fallback to `pollyweb.Wallet`, which still signs as `Anonymous` by default.
-- Added regression coverage for automatic bind-backed sender selection on canonical and `.dom` target domains, plus the no-bind fallback path.
-- Refreshed the command docs, README, AGENTS guidance, and lessons to describe the new sender-selection order.
-- Verified the change with `./.venv/bin/python -m pytest -q tests/test_cli.py -k 'test_bind_ or test_msg_ or test_test_'`.
+- Added `--unsigned` and `--anonymous` to `pw msg`, `bind`, `test`, `shell`, `chat`, `sync`, and `echo`.
+- `--anonymous` now bypasses stored bind lookup and forces `From: Anonymous`; for `pw chat` it also switches the subscription channel and auth token body to `Anonymous`.
+- `--unsigned` now strips `Hash` and `Signature` while keeping the selected sender, including stored bind UUID senders.
+- Updated `pollyweb` so direct unsigned UUID-backed `Msg.send()` calls validate and transport cleanly.
+- Refreshed README, command docs, AGENTS guidance, lessons, and verification coverage for the new flags.
+- Verified with `./.venv/bin/python -m pytest -q tests/test_cli.py -k 'test_bind_ or test_msg_ or test_test_ or test_echo_ or test_shell_ or test_sync_ or test_chat_'` and `./.venv/bin/python -m pytest -q tests/test_msg.py -k 'TestWallet or unsigned'`.

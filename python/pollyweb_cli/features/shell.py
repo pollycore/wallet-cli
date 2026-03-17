@@ -173,6 +173,8 @@ def cmd_shell(
     binds_path: Path,
     history_dir: Path,
     readline,
+    unsigned: bool,
+    anonymous: bool,
     require_configured_keys,
     load_signing_key_pair
 ) -> int:
@@ -190,11 +192,11 @@ def cmd_shell(
         raise UserFacingError(str(exc)) from None
 
     bind_value = get_first_bind_for_domain(domain, binds)
-    if bind_value is None:
+    if bind_value is None and not anonymous:
         raise UserFacingError(
             f"No bind stored for {domain}. Run `pw bind {domain}` first."
         ) from None
-    from_value = get_shell_from_value(bind_value)
+    from_value = "Anonymous" if anonymous else get_shell_from_value(bind_value)
     history = configure_shell_history(domain, history_dir, readline)
     available_commands: list[str] = []
 
@@ -216,6 +218,8 @@ def cmd_shell(
                 key_pair=key_pair,
                 debug=debug,
                 from_value=from_value,
+                anonymous=anonymous,
+                unsigned=unsigned,
             )
         except urllib.error.HTTPError as exc:
             raise UserFacingError(

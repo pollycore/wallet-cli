@@ -1,0 +1,448 @@
+from __future__ import annotations
+
+import builtins
+import json
+import socket
+import stat
+import sys
+import uuid
+import urllib.error
+from pathlib import Path
+
+import pollyweb.msg as pollyweb_msg
+import pytest
+
+from pollyweb import Msg
+from pollyweb_cli import cli
+from pollyweb_cli.features import chat as chat_feature
+from pollyweb_cli.features import test as test_feature
+from pollyweb_cli.tools import transport as transport_tools
+
+from tests.cli_test_helpers import (
+    TEST_MSGS_DIR,
+    VALID_BIND,
+    VALID_WALLET_ID,
+    DummyResponse,
+    FakeChatConnection,
+    FakeReadline,
+    _setup_sync_env,
+    make_echo_response_payload,
+)
+
+def test_bind_sends_unsigned_anonymous_message_and_stores_bind(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    bind_value = f"Bind:{uuid.uuid4()}"
+    stored_bind_value = bind_value.split(":", 1)[1]
+    requests = []
+
+    def fake_urlopen(request):
+        requests.append(request)
+        return DummyResponse(bind_value.encode("utf-8"))
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["bind", "vault.example.com"])
+
+    assert exit_code == 0
+    assert binds_path.exists()
+    assert cli.yaml.safe_load(binds_path.read_text()) == [
+        {"Bind": stored_bind_value, "Domain": "vault.example.com"}
+    ]
+    assert stat.S_IMODE(binds_path.stat().st_mode) == 0o600
+
+    request = requests[0]
+    assert request.full_url == "https://pw.vault.example.com/inbox"
+    assert request.get_method() == "POST"
+    assert request.headers["Content-type"] == "application/json"
+    body = request.data.decode()
+    assert '"From":"Anonymous"' in body
+    assert '"Schema":"pollyweb.org/MSG:1.0"' in body
+    assert '"To":"vault.example.com"' in body
+    assert '"Subject":"Bind@Vault"' in body
+    assert '"Domain":"vault.example.com"' in body
+    assert "-----BEGIN PUBLIC KEY-----" not in body
+    assert "-----END PUBLIC KEY-----" not in body
+    assert '\\n' not in body.split('"PublicKey":"', 1)[1].split('"', 1)[0]
+    assert '"Hash":"' not in body
+    assert '"Signature":"' not in body
+
+    captured = capsys.readouterr()
+    assert stored_bind_value in captured.out
+    assert str(binds_path) in captured.out
+
+def test_bind_normalizes_dom_alias_when_using_wallet_send(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    bind_value = f"Bind:{uuid.uuid4()}"
+    stored_bind_value = bind_value.split(":", 1)[1]
+    requests = []
+
+    def fake_urlopen(request):
+        requests.append(request)
+        return DummyResponse(bind_value.encode("utf-8"))
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["bind", "any-hoster.dom"])
+
+    assert exit_code == 0
+    assert cli.yaml.safe_load(binds_path.read_text()) == [
+        {"Bind": stored_bind_value, "Domain": "any-hoster.pollyweb.org"}
+    ]
+
+    request = requests[0]
+    assert request.full_url == "https://pw.any-hoster.pollyweb.org/inbox"
+    body = request.data.decode()
+    assert '"To":"any-hoster.pollyweb.org"' in body
+    assert '"Schema":"pollyweb.org/MSG:1.0"' in body
+    assert '"Domain":"any-hoster.pollyweb.org"' in body
+
+    captured = capsys.readouterr()
+    assert "Stored bind for any-hoster.dom" in captured.out
+
+def test_bind_anonymous_flag_ignores_stored_bind(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [{"Bind": VALID_WALLET_ID, "Domain": "vault.example.com"}],
+            sort_keys = False),
+        encoding = "utf-8")
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        assert payload["Header"]["From"] == "Anonymous"
+        assert "Hash" not in payload
+        assert "Signature" not in payload
+        return DummyResponse(VALID_BIND.encode("utf-8"))
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["bind", "--anonymous", "vault.example.com"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Stored bind for vault.example.com" in captured.out
+
+def test_serialize_public_key_value_strips_pem_wrappers():
+    pem = (
+        "-----BEGIN PUBLIC KEY-----\n"
+        "MCowBQYDK2VwAyEA1234567890abcdefghijklmnopqrstuv==\n"
+        "-----END PUBLIC KEY-----\n"
+    )
+
+    assert (
+        cli.serialize_public_key_value(pem)
+        == "MCowBQYDK2VwAyEA1234567890abcdefghijklmnopqrstuv=="
+    )
+
+def test_bind_debug_prints_outbound_and_inbound_payloads(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    bind_value = f"Bind:{uuid.uuid4()}"
+
+    def fake_urlopen(request):
+        return DummyResponse(bind_value.encode("utf-8"))
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["bind", "--debug", "vault.example.com"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "\nOutbound payload to https://pw.vault.example.com/inbox:\n" in captured.out
+    assert "Outbound payload to https://pw.vault.example.com/inbox:" in captured.out
+    assert "Subject: Bind@Vault" in captured.out
+    assert "To: vault.example.com" in captured.out
+    assert "From: Anonymous" in captured.out
+    assert "Schema: pollyweb.org/MSG:1.0" in captured.out
+    assert "Domain: vault.example.com" in captured.out
+    outbound = captured.out.split("\n\nInbound payload:\n", 1)[0]
+    assert "Hash:" not in outbound
+    assert "Signature:" not in outbound
+    assert "\n\nInbound payload:\n" in captured.out
+    assert "Inbound payload:" in captured.out
+    assert "Body:" in captured.out
+    assert bind_value in captured.out
+    assert captured.err == ""
+
+def test_bind_appends_without_overwriting_existing_binds(monkeypatch, tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    binds_path.write_text(
+        cli.yaml.safe_dump([{"Bind": "existing", "Domain": "old.example.com"}]),
+    )
+    bind_value = f"Bind:{uuid.uuid4()}"
+    stored_bind_value = bind_value.split(":", 1)[1]
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(
+        cli.urllib.request, "urlopen", lambda request: DummyResponse(bind_value.encode())
+    )
+
+    exit_code = cli.main(["bind", "vault.example.com"])
+
+    assert exit_code == 0
+    assert cli.yaml.safe_load(binds_path.read_text()) == [
+        {"Bind": "existing", "Domain": "old.example.com"},
+        {"Bind": stored_bind_value, "Domain": "vault.example.com"},
+    ]
+
+def test_bind_replaces_existing_bind_for_same_domain(monkeypatch, tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    bind_value = f"Bind:{uuid.uuid4()}"
+    stored_bind_value = bind_value.split(":", 1)[1]
+    binds_path.write_text(
+        cli.yaml.safe_dump([{"Bind": "existing", "Domain": "vault.example.com"}]),
+    )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(
+        cli.urllib.request, "urlopen", lambda request: DummyResponse(bind_value.encode())
+    )
+
+    exit_code = cli.main(["bind", "vault.example.com"])
+
+    assert exit_code == 0
+    assert cli.yaml.safe_load(binds_path.read_text()) == [
+        {"Bind": stored_bind_value, "Domain": "vault.example.com"}
+    ]
+
+def test_bind_keeps_distinct_schema_entries_for_same_domain(monkeypatch, tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    bind_value = f"Bind:{uuid.uuid4()}"
+    stored_bind_value = bind_value.split(":", 1)[1]
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [
+                {
+                    "Bind": "existing",
+                    "Domain": "vault.example.com",
+                    "Schema": "schema:one",
+                }
+            ]
+        ),
+    )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(
+        cli.urllib.request,
+        "urlopen",
+        lambda request: DummyResponse(
+            cli.json.dumps({"Bind": bind_value, "Schema": "schema:two"}).encode()
+        ),
+    )
+
+    exit_code = cli.main(["bind", "vault.example.com"])
+
+    assert exit_code == 0
+    assert cli.yaml.safe_load(binds_path.read_text()) == [
+        {
+            "Bind": "existing",
+            "Domain": "vault.example.com",
+            "Schema": "schema:one",
+        },
+        {
+            "Bind": stored_bind_value,
+            "Schema": "schema:two",
+            "Domain": "vault.example.com",
+        },
+    ]
+
+def test_bind_replaces_existing_bind_with_matching_schema(monkeypatch, tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    bind_value = f"Bind:{uuid.uuid4()}"
+    stored_bind_value = bind_value.split(":", 1)[1]
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [
+                {
+                    "Bind": "existing",
+                    "Domain": "vault.example.com",
+                    "Schema": "schema:one",
+                }
+            ]
+        ),
+    )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(
+        cli.urllib.request,
+        "urlopen",
+        lambda request: DummyResponse(
+            cli.json.dumps({"Bind": bind_value, "Schema": "schema:one"}).encode()
+        ),
+    )
+
+    exit_code = cli.main(["bind", "vault.example.com"])
+
+    assert exit_code == 0
+    assert cli.yaml.safe_load(binds_path.read_text()) == [
+        {
+            "Bind": stored_bind_value,
+            "Domain": "vault.example.com",
+            "Schema": "schema:one",
+        }
+    ]
+
+def test_bind_requires_existing_keys(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+
+    exit_code = cli.main(["bind", "vault.example.com"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Run `pw config` first" in captured.err
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+
+def test_bind_requires_bind_token_in_response(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(
+        cli.urllib.request, "urlopen", lambda request: DummyResponse(b'{"ok":true}')
+    )
+
+    exit_code = cli.main(["bind", "vault.example.com"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Could not bind vault.example.com." in captured.err
+    assert "did not include a bind token" in captured.err
+
+def test_bind_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        raise urllib.error.URLError(
+            socket.gaierror(8, "nodename nor servname provided, or not known")
+        )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["bind", "any-host.dom"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert (
+        "Could not resolve PollyWeb inbox host pw.any-host.pollyweb.org"
+        in captured.err
+    )
+

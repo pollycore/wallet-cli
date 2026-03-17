@@ -227,6 +227,8 @@ def cmd_msg(
     *,
     debug: bool,
     config_dir: Path,
+    unsigned: bool,
+    anonymous: bool,
     require_configured_keys,
     load_signing_key_pair
 ) -> int:
@@ -247,6 +249,8 @@ def cmd_msg(
             debug = debug,
             from_value = request.get("From"),
             schema_value = request.get("Schema"),
+            anonymous = anonymous,
+            unsigned = unsigned,
         )
     except FileNotFoundError:
         if len(arguments) == 1 and Path(arguments[0]).suffix in MESSAGE_FILE_SUFFIXES:

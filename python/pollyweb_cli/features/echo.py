@@ -149,6 +149,8 @@ def cmd_echo(
     *,
     debug: bool,
     config_dir,
+    unsigned: bool,
+    anonymous: bool,
     require_configured_keys,
     load_signing_key_pair
 ) -> int:
@@ -163,6 +165,8 @@ def cmd_echo(
             body={},
             key_pair=key_pair,
             debug=debug,
+            anonymous=anonymous,
+            unsigned=unsigned,
         )
         response, verification = parse_and_verify_echo_response(
             response_payload,
