@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 import socket
 import urllib.error
 from typing import Any
@@ -11,15 +12,78 @@ from typing import Any
 import yaml
 
 from pollyweb_cli.errors import UserFacingError
+from pollyweb_cli.features.bind import (
+    get_first_bind_for_domain,
+    load_binds,
+)
 from pollyweb_cli.features.msg import (
     describe_message_network_error,
     parse_message_request,
 )
 from pollyweb_cli.tools.transport import send_wallet_message
 
+PLACEHOLDER_PATTERN = re.compile(r"^\{BindOf\(([^)]+)\)\}$")
+
+
+def resolve_bind_placeholder(
+    value: str,
+    binds_path: Path
+) -> str:
+    """Resolve one `{BindOf(domain)}` token from the stored binds file."""
+
+    match = PLACEHOLDER_PATTERN.fullmatch(value.strip())
+    if match is None:
+        return value
+
+    requested_domain = match.group(1).strip()
+    if not requested_domain:
+        raise UserFacingError(
+            "Bind placeholder must include a non-empty domain."
+        ) from None
+
+    bind_value = get_first_bind_for_domain(
+        requested_domain,
+        load_binds(binds_path))
+    if bind_value is None:
+        raise UserFacingError(
+            f"No bind stored for {requested_domain}. "
+            f"Run `pw bind {requested_domain}` first."
+        ) from None
+
+    return bind_value
+
+
+def resolve_fixture_bind_placeholders(
+    value: Any,
+    binds_path: Path
+) -> Any:
+    """Recursively replace supported bind placeholders inside a fixture."""
+
+    if isinstance(value, dict):
+        return {
+            key: resolve_fixture_bind_placeholders(
+                nested_value,
+                binds_path)
+            for key, nested_value in value.items()
+        }
+
+    if isinstance(value, list):
+        return [
+            resolve_fixture_bind_placeholders(
+                item,
+                binds_path)
+            for item in value
+        ]
+
+    if isinstance(value, str):
+        return resolve_bind_placeholder(value, binds_path)
+
+    return value
+
 
 def load_message_test_fixture(
-    path: Path
+    path: Path,
+    binds_path: Path
 ) -> dict[str, Any]:
     """Load and validate a wrapped message test fixture from disk."""
 
@@ -49,7 +113,7 @@ def load_message_test_fixture(
             f"Test file {path} must define `Inbound` as an object when present."
         ) from None
 
-    return loaded
+    return resolve_fixture_bind_placeholders(loaded, binds_path)
 
 
 def normalize_test_response(
@@ -117,6 +181,7 @@ def cmd_test(
     *,
     debug: bool,
     config_dir: Path,
+    binds_path: Path,
     require_configured_keys,
     load_signing_key_pair
 ) -> int:
@@ -128,7 +193,9 @@ def cmd_test(
         require_configured_keys()
         key_pair = load_signing_key_pair()
         fixture_path = Path(test_path)
-        fixture = load_message_test_fixture(fixture_path)
+        fixture = load_message_test_fixture(
+            fixture_path,
+            binds_path)
 
         request, _ = parse_message_request(
             [json.dumps(fixture["Outbound"])])

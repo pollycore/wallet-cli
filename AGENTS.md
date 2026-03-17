@@ -12,6 +12,7 @@
 - Because `Wallet.send(...)` is wallet-scoped, `pw msg` and `pw test` only support `From: Anonymous` or a UUID bind value; arbitrary domain `From` values are not valid wallet senders.
 - For inline `pw msg` arguments, header keys are case-insensitive for `to`, `subject`, `from`, `schema`, `body`, and `header`.
 - `pw test <path>` reads a wrapped YAML fixture, sends only its `Outbound` payload with the same signing rules as `pw msg`, and treats `Inbound` as an expected subset of the returned JSON payload.
+- `pw test` also resolves any string exactly matching `{BindOf(<domain>)}` from `~/.pollyweb/binds.yaml` before sending, and the lookup should reuse canonical domain normalization so `.dom` and `.pollyweb.org` placeholders share the same stored bind.
 - Keep a pytest coverage hook that iterates every checked-in file under `test-msgs` and runs `cli.main(["test", <fixture>])`, so adding a new wrapped fixture automatically adds command coverage.
 - `pw bind` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
 - `pw bind` stores only the UUID portion of a `Bind:<UUID>` response in `~/.pollyweb/binds.yaml`; keep the wire response parsing compatible with the prefixed format.

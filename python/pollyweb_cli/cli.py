@@ -452,6 +452,7 @@ def cmd_test(path: str, debug: bool = False) -> int:
         path,
         debug = debug,
         config_dir = CONFIG_DIR,
+        binds_path = BINDS_PATH,
         require_configured_keys = require_configured_keys,
         load_signing_key_pair = load_signing_key_pair,
     )

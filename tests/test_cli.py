@@ -1408,6 +1408,141 @@ def test_test_loads_wrapped_fixture_and_verifies_inbound(
     assert '"Subject":"Echo@Domain"' in captured.out
 
 
+def test_test_resolves_bind_placeholder_from_stored_binds(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    binds_path = config_dir / "binds.yaml"
+    test_path = tmp_path / "test.yaml"
+    bind_value = "30ddc4c7-ba23-4bae-971c-2595143f69eb"
+
+    config_dir.mkdir()
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [
+                {
+                    "Bind": bind_value,
+                    "Domain": "any-hoster.pollyweb.org",
+                }
+            ],
+            sort_keys = False),
+        encoding = "utf-8")
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.pollyweb.org\n"
+            "  Subject: Echo@Domain\n"
+            "  From: '{BindOf(any-hoster.pollyweb.org)}'\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    def fake_send_wallet_message(**kwargs):
+        assert kwargs["from_value"] == bind_value
+        return (
+            '{"Header":{"From":"any-hoster.pollyweb.org","To":"any-hoster.pollyweb.org","Subject":"Echo@Domain"}}',
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert '"Subject":"Echo@Domain"' in captured.out
+
+
+def test_test_resolves_bind_placeholder_for_dom_alias(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    binds_path = config_dir / "binds.yaml"
+    test_path = tmp_path / "test.yaml"
+    bind_value = "30ddc4c7-ba23-4bae-971c-2595143f69eb"
+
+    config_dir.mkdir()
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [
+                {
+                    "Bind": bind_value,
+                    "Domain": "any-hoster.pollyweb.org",
+                }
+            ],
+            sort_keys = False),
+        encoding = "utf-8")
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+            "  From: '{BindOf(any-hoster.dom)}'\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    def fake_send_wallet_message(**kwargs):
+        assert kwargs["domain"] == "any-hoster.pollyweb.org"
+        assert kwargs["from_value"] == bind_value
+        return (
+            '{"Header":{"From":"any-hoster.pollyweb.org","To":"any-hoster.pollyweb.org","Subject":"Echo@Domain"}}',
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert '"Subject":"Echo@Domain"' in captured.out
+
+
+def test_test_reports_missing_bind_for_placeholder(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    binds_path = config_dir / "binds.yaml"
+    test_path = tmp_path / "test.yaml"
+
+    config_dir.mkdir()
+    binds_path.write_text("[]\n", encoding = "utf-8")
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.pollyweb.org\n"
+            "  Subject: Echo@Domain\n"
+            "  From: '{BindOf(any-hoster.pollyweb.org)}'\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "No bind stored for any-hoster.pollyweb.org." in captured.err
+    assert "Run `pw bind any-hoster.pollyweb.org` first." in captured.err
+
+
 @pytest.mark.parametrize(
     "fixture_path",
     sorted(TEST_MSGS_DIR.glob("*")),
@@ -1415,11 +1550,14 @@ def test_test_loads_wrapped_fixture_and_verifies_inbound(
 def test_test_command_accepts_every_checked_in_test_message_fixture(
     monkeypatch,
     fixture_path,
+    tmp_path,
     capsys
 ):
     # Load the checked-in fixture so the test follows the same wrapped
     # Outbound/Inbound contract documented for `pw test`.
-    fixture = test_feature.load_message_test_fixture(fixture_path)
+    fixture = test_feature.load_message_test_fixture(
+        fixture_path,
+        tmp_path / "binds.yaml")
 
     # Build a JSON response that contains the expected inbound subset, because
     # `pw test` only requires the response to include those expected fields.
