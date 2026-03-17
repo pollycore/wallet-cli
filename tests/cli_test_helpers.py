@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 from pollyweb import Msg
+from pollyweb._crypto import encode_signature, sign_message, signature_algorithm_for_private_key
 
 from pollyweb_cli import cli
 
@@ -42,14 +44,48 @@ def make_echo_response_payload(
     from_value: str,
     correlation: str,
     private_key,
+    to_value: str | None = None,
     selector: str = "default",
     body: dict[str, object] | None = None,
 ) -> bytes:
     """Build one signed echo response payload for CLI transport tests."""
 
+    if to_value is not None and to_value != from_value:
+        header = {
+            "Algorithm": signature_algorithm_for_private_key(private_key),
+            "Correlation": correlation,
+            "From": from_value,
+            "Schema": "pollyweb.org/MSG:1.0",
+            "Selector": selector,
+            "Subject": "Echo@Domain",
+            "Timestamp": "2026-03-17T20:00:00.000Z",
+            "To": to_value,
+        }
+        canonical_payload = {
+            "Body": body or {"Echo": "ok"},
+            "Header": header,
+        }
+        canonical = json.dumps(
+            canonical_payload,
+            sort_keys = True,
+            separators = (",", ":"),
+            ensure_ascii = False,
+        ).encode("utf-8")
+        signature, _ = sign_message(
+            private_key,
+            canonical,
+            signature_algorithm = header["Algorithm"],
+        )
+        payload = {
+            **canonical_payload,
+            "Hash": hashlib.sha256(canonical).hexdigest(),
+            "Signature": encode_signature(signature),
+        }
+        return json.dumps(payload).encode("utf-8")
+
     msg = Msg(
         From = from_value,
-        To = from_value,
+        To = from_value if to_value is None else to_value,
         Subject = "Echo@Domain",
         Correlation = correlation,
         Selector = selector,

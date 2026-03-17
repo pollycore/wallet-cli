@@ -268,6 +268,116 @@ def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
     assert " - To matched expected sender: any-domain.pollyweb.org" in captured.out
     assert captured.err == ""
 
+
+def test_echo_accepts_response_to_stored_bind(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [
+                {
+                    "Bind": VALID_WALLET_ID,
+                    "Domain": "any-hoster.pollyweb.org",
+                }
+            ]
+        ),
+        encoding = "utf-8",
+    )
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        return DummyResponse(
+            make_echo_response_payload(
+                from_value = "any-hoster.pollyweb.org",
+                to_value = VALID_WALLET_ID,
+                correlation = payload["Header"]["Correlation"],
+                private_key = remote_key_pair.PrivateKey,
+            )
+        )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: (remote_key_pair.PublicKey, "ed25519"),
+    )
+
+    exit_code = cli.main(["echo", "any-hoster.pollyweb.org"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Verified echo response: ✅" in captured.out
+    assert captured.err == ""
+
+
+def test_echo_rejects_unrelated_response_to_value(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [
+                {
+                    "Bind": VALID_WALLET_ID,
+                    "Domain": "vault.example.com",
+                }
+            ]
+        ),
+        encoding = "utf-8",
+    )
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        return DummyResponse(
+            make_echo_response_payload(
+                from_value = "vault.example.com",
+                to_value = "30ddc4c7-ba23-4bae-971c-2595143f69eb",
+                correlation = payload["Header"]["Correlation"],
+                private_key = remote_key_pair.PrivateKey,
+            )
+        )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: (remote_key_pair.PublicKey, "ed25519"),
+    )
+
+    exit_code = cli.main(["echo", "vault.example.com"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert (
+        "unexpected To value: 30ddc4c7-ba23-4bae-971c-2595143f69eb"
+        in captured.err
+    )
+
 def test_print_echo_response_formats_payload(capsys):
     cli.print_echo_response(
         '{"Header":{"Subject":"Echo@Domain"},"Body":{"Echo":"ok"}}'
@@ -277,4 +387,3 @@ def test_print_echo_response_formats_payload(capsys):
     assert "\nEcho response:\n" in captured.out
     assert "Subject: Echo@Domain" in captured.out
     assert "Echo: ok" in captured.out
-

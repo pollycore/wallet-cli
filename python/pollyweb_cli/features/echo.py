@@ -6,12 +6,14 @@ import base64
 import hashlib
 import json
 import urllib.error
+from pathlib import Path
 
 from pollyweb import Msg
 import pollyweb.msg as pollyweb_msg
 
 from pollyweb_cli.tools.debug import print_echo_response
 from pollyweb_cli.errors import UserFacingError
+from pollyweb_cli.features.bind import get_first_bind_for_domain, load_binds
 from pollyweb_cli.models import EchoResponse
 from pollyweb_cli.tools.transport import send_wallet_message
 
@@ -24,7 +26,8 @@ def parse_and_verify_echo_response(
     *,
     domain: str,
     request_correlation: str,
-    expected_to: str
+    expected_to: str,
+    allowed_to: set[str] | None = None
 ) -> tuple[EchoResponse, object | None]:
     """Parse and verify an echo response, supporting legacy payload variants."""
 
@@ -136,7 +139,8 @@ def parse_and_verify_echo_response(
         raise UserFacingError(
             f"Echo response from {domain} had an unexpected Correlation: {parsed_response.Correlation}"
         ) from None
-    if parsed_response.To != expected_to:
+    valid_to_values = {expected_to} if allowed_to is None else allowed_to
+    if parsed_response.To not in valid_to_values:
         raise UserFacingError(
             f"Echo response from {domain} had an unexpected To value: {parsed_response.To}"
         ) from None
@@ -149,6 +153,7 @@ def cmd_echo(
     *,
     debug: bool,
     config_dir,
+    binds_path: Path,
     unsigned: bool,
     anonymous: bool,
     require_configured_keys,
@@ -165,14 +170,25 @@ def cmd_echo(
             body={},
             key_pair=key_pair,
             debug=debug,
+            binds_path=binds_path,
             anonymous=anonymous,
             unsigned=unsigned,
         )
+        allowed_to = {normalized_domain}
+
+        # Some hosts echo back the caller bind UUID instead of the target domain.
+        stored_bind = get_first_bind_for_domain(
+            normalized_domain,
+            load_binds(binds_path))
+        if stored_bind is not None:
+            allowed_to.add(stored_bind)
+
         response, verification = parse_and_verify_echo_response(
             response_payload,
             domain=normalized_domain,
             request_correlation=request_message.Correlation,
             expected_to=normalized_domain,
+            allowed_to=allowed_to,
         )
     except FileNotFoundError:
         raise UserFacingError(

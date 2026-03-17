@@ -423,6 +423,7 @@ def cmd_echo(
         domain,
         debug=debug,
         config_dir=CONFIG_DIR,
+        binds_path=BINDS_PATH,
         unsigned=unsigned,
         anonymous=anonymous,
         require_configured_keys=require_configured_keys,

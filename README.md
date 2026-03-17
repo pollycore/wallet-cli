@@ -150,7 +150,7 @@ This is useful when you want to inspect the exact message contents being sent or
 - `pw config --force` replaces an existing key pair
 - `pw bind <domain>` requests and stores a bind token for a domain
 - `pw bind --debug <domain>` shows the target inbox URL plus bind request and response payloads as colorized YAML
-- `pw echo <domain>` sends `Echo@Domain` and verifies the signed synchronous response
+- `pw echo <domain>` sends `Echo@Domain` and verifies the signed synchronous response, accepting a reply `To` that matches either the target domain or its stored bind UUID
 - `pw echo --debug <domain>` shows the target inbox URL plus echo request and response payloads as colorized YAML
 - `pw msg <message...>` sends a signed message from a YAML, JSON, or Python file, a JSON object string, or inline `Key:Value` fields
 - `pw msg --debug <message...>` shows the target inbox URL plus message request and response payloads as colorized YAML

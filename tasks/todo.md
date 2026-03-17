@@ -1,15 +1,16 @@
 # Task Plan
 
-- [x] Review the written instructions, docs, and current upgrade-preflight behavior
-- [x] Change the upgrade prompt so plain `Enter` declines instead of upgrading
-- [x] Add regression tests for explicit yes, explicit no, and empty-input prompt behavior
-- [x] Refresh the user-facing docs to match the safer default
-- [x] Run targeted verification and capture the lesson
+- [x] Review the written instructions, docs, and current `pw echo` validation behavior
+- [x] Change echo response validation so a stored bind UUID for the target domain is accepted as a valid `To`
+- [x] Add regression coverage for bind-backed echo replies and keep invalid `To` failures intact
+- [x] Refresh docs and lessons to match the accepted echo behavior
+- [x] Run targeted verification and capture the review
 
 # Review
 
-- Changed the self-upgrade prompt in `python/pollyweb_cli/cli.py` from `[Y/n]` to `[y/N]` and made empty input decline instead of upgrade.
-- Added focused regression tests in `tests/test_cli_core.py` for empty input, explicit `y`, and explicit `n`.
-- Updated `README.md` to state that only `y` or `yes` upgrades, and that pressing `Enter` declines.
-- Recorded the prompt-default lesson in `tasks/lessons.md`.
-- Verified with `./.venv/bin/python -m pytest -q tests/test_cli_core.py -k 'prompt_for_upgrade or preflight or version_flag'`.
+- Updated `python/pollyweb_cli/features/echo.py` so `pw echo` accepts a response `To` that matches either the normalized target domain or that domain's stored bind UUID from `binds.yaml`.
+- Threaded `BINDS_PATH` into the echo command entrypoint in `python/pollyweb_cli/cli.py` so echo verification can reuse the same canonical bind lookup rules as wallet-backed sending.
+- Added regression coverage in `tests/test_echo.py` for a bind-backed echo reply and for an unrelated UUID still failing the `To` check.
+- Extended `tests/cli_test_helpers.py` so tests can build signed raw JSON echo payloads for UUID `To` values, matching the server behavior that bypasses local `Msg` domain validation.
+- Updated `docs/commands/echo.md`, `README.md`, and `tasks/lessons.md` to document the accepted bind-backed echo behavior.
+- Verified with `./.venv/bin/python -m pytest -q tests/test_echo.py` and `git diff --check`.
