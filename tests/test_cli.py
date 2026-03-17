@@ -14,6 +14,7 @@ import pytest
 from pollyweb import Msg
 from pollyweb_cli import cli
 from pollyweb_cli.features import chat as chat_feature
+from pollyweb_cli.features import test as test_feature
 
 VALID_BIND = "Bind:123e4567-e89b-12d3-a456-426614174000"
 VALID_WALLET_ID = "123e4567-e89b-12d3-a456-426614174000"
@@ -156,6 +157,16 @@ def test_parser_accepts_msg_command():
 
     assert args.command == "msg"
     assert args.message == ["./message.yaml"]
+    assert args.debug is True
+
+
+def test_parser_accepts_test_command():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["test", "./test.yaml", "--debug"])
+
+    assert args.command == "test"
+    assert args.path == "./test.yaml"
     assert args.debug is True
 
 
@@ -1132,6 +1143,119 @@ def test_msg_loads_header_envelope_file(monkeypatch, tmp_path, capsys):
     assert exit_code == 0
     captured = capsys.readouterr()
     assert captured.out.strip() == "response"
+
+
+def test_test_loads_wrapped_fixture_and_verifies_inbound(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  From: any-hoster.pollyweb.org\n"
+            "  To: any-hoster.pollyweb.org\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "build_signed_message",
+        lambda **kwargs: {
+            "Header": {
+                "To": kwargs["domain"],
+                "Subject": kwargs["subject"],
+            },
+            "Body": kwargs["body"],
+        })
+    monkeypatch.setattr(
+        test_feature,
+        "send_request_message",
+        lambda **kwargs: (
+            '{"Header":{"From":"any-hoster.pollyweb.org","To":"any-hoster.pollyweb.org","Subject":"Echo@Domain"},"Body":{"Extra":"ok"}}'
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert '"Subject":"Echo@Domain"' in captured.out
+
+
+def test_test_reports_missing_expected_inbound_key(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(
+        cli,
+        "require_configured_keys",
+        lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "build_signed_message",
+        lambda **kwargs: {"Header": {"To": kwargs["domain"]}, "Body": kwargs["body"]})
+    monkeypatch.setattr(
+        test_feature,
+        "send_request_message",
+        lambda **kwargs: '{"Header":{"To":"vault.example.com"}}')
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Expected response.Subject to exist in the response." in captured.err
+
+
+def test_test_reports_http_failures_with_fixture_path(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "build_signed_message",
+        lambda **kwargs: {"Header": {"To": kwargs["domain"]}, "Body": kwargs["body"]})
+
+    def raise_http_error(**kwargs):
+        raise urllib.error.HTTPError(
+            "https://pw.vault.example.com/inbox",
+            502,
+            "Bad Gateway",
+            hdrs = None,
+            fp = None)
+
+    monkeypatch.setattr(test_feature, "send_request_message", raise_http_error)
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert f"Test request from test file {test_path} failed with HTTP 502." in captured.err
 
 
 def test_msg_reports_missing_message_file(monkeypatch, tmp_path, capsys):

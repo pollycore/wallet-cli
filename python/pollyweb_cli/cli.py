@@ -20,6 +20,7 @@ import pollyweb_cli.features.config as config_feature
 import pollyweb_cli.tools.debug as debug_tools
 import pollyweb_cli.features.echo as echo_feature
 import pollyweb_cli.features.sync as sync_feature
+import pollyweb_cli.features.test as test_feature
 from pollyweb_cli.features.bind import (
     BIND_PATTERN,
     BIND_SCHEMA_KEY,
@@ -70,6 +71,9 @@ from pollyweb_cli.features.echo import (
 )
 from pollyweb_cli.features.msg import (
     cmd_msg as _cmd_msg,
+)
+from pollyweb_cli.features.test import (
+    cmd_test as _cmd_test,
 )
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.parser import build_parser as _build_parser
@@ -301,6 +305,19 @@ def cmd_msg(message: list[str], debug: bool = False) -> int:
     )
 
 
+def cmd_test(path: str, debug: bool = False) -> int:
+    """Run the wrapped message test command with the current filesystem paths."""
+
+    _sync_runtime_dependencies()
+    return _cmd_test(
+        path,
+        debug = debug,
+        config_dir = CONFIG_DIR,
+        require_configured_keys = require_configured_keys,
+        load_signing_key_pair = load_signing_key_pair,
+    )
+
+
 def cmd_chat(
     domain: str | None = None,
     debug: bool = False,
@@ -352,6 +369,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_echo(domain=args.domain, debug=args.debug)
         if args.command == "msg":
             return cmd_msg(message=args.message, debug=args.debug)
+        if args.command == "test":
+            return cmd_test(path=args.path, debug=args.debug)
         if args.command == "shell":
             return cmd_shell(domain=args.domain, debug=args.debug)
         if args.command == "chat":

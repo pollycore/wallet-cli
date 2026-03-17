@@ -75,6 +75,20 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         help="Print outbound and inbound message payloads.",
     )
 
+    test_parser = subparsers.add_parser(
+        "test",
+        help="Send a wrapped test fixture and verify the expected response.",
+    )
+    test_parser.add_argument(
+        "path",
+        help="Path to a YAML test fixture with Outbound and optional Inbound sections.",
+    )
+    test_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print outbound and inbound test payloads.",
+    )
+
     shell_parser = subparsers.add_parser(
         "shell",
         help="Open an interactive shell against a domain.",
