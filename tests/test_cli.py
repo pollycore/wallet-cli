@@ -334,7 +334,7 @@ def test_chat_builds_signed_auth_token():
 
     assert message.Subject == "Connect@Notifier"
     assert message.To == "any-notifier.pollyweb.org"
-    assert message.Body["Wallet"] == VALID_WALLET_ID
+    assert message.Body.Wallet == VALID_WALLET_ID
     assert message.verify(key_pair.PublicKey) is True
 
 

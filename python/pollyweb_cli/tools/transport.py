@@ -7,7 +7,7 @@ import hashlib
 import json
 import urllib.request
 
-from pollyweb import KeyPair, Msg
+from pollyweb import KeyPair, Msg, Struct
 
 from pollyweb_cli.tools.debug import parse_debug_payload, print_debug_payload
 
@@ -48,7 +48,8 @@ def build_signed_message(
 
         signed_payload = {
             "Header": header,
-            "Body": template_message.Body,
+            # Convert Struct wrappers back into plain JSON-compatible values.
+            "Body": Struct.unwrap(template_message.Body),
         }
         canonical = json.dumps(
             signed_payload,
