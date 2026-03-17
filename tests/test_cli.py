@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import json
+import socket
 import stat
 import uuid
 import urllib.error
@@ -1221,6 +1222,74 @@ def test_msg_accepts_inline_arguments(monkeypatch, tmp_path, capsys):
     assert captured.out.strip() == "inline"
 
 
+def test_msg_accepts_inline_headers_without_body(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        assert payload["Header"]["To"] == "any-domain.pollyweb.org"
+        assert payload["Header"]["Subject"] == "Echo@Domain"
+        assert payload["Body"] == {}
+        return DummyResponse(b"headers-only")
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(
+        [
+            "msg",
+            "To:any-domain.dom",
+            "Subject:Echo@Domain",
+        ]
+    )
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "headers-only"
+
+
+def test_msg_expands_dom_suffix_from_json_argument(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        assert payload["Header"]["To"] == "any-domain.pollyweb.org"
+        assert payload["Header"]["Subject"] == "Echo@Domain"
+        assert payload["Body"] == {}
+        assert request.full_url == "https://pw.any-domain.pollyweb.org/inbox"
+        return DummyResponse(b"expanded-json")
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(
+        [
+            "msg",
+            '{"To":"any-domain.dom","Subject":"Echo@Domain","Body":{}}',
+        ]
+    )
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "expanded-json"
+
+
 def test_msg_accepts_python_message_file(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
@@ -1257,6 +1326,41 @@ def test_msg_accepts_python_message_file(monkeypatch, tmp_path, capsys):
     assert exit_code == 0
     captured = capsys.readouterr()
     assert captured.out.strip() == "python"
+
+
+def test_msg_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        raise urllib.error.URLError(
+            socket.gaierror(8, "nodename nor servname provided, or not known")
+        )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(
+        [
+            "msg",
+            "To:any-domain.dom",
+            "Subject:Echo@Domain",
+        ]
+    )
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert (
+        "Could not resolve PollyWeb inbox host pw.any-domain.pollyweb.org"
+        in captured.err
+    )
 
 
 def test_echo_fails_when_response_headers_do_not_make_sense(

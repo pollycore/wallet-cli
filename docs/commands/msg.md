@@ -28,6 +28,8 @@ Or build the message inline with `Key:Value` pairs. `To`, `Subject`, `From`, `Sc
 pw msg To:any-domain.org Subject:topic@role DynamicBodyProperty:123
 ```
 
+For `pw msg`, domains ending in `.dom` are treated as shorthand for `.pollyweb.org`, so `To:any-domain.dom` is sent to `https://pw.any-domain.pollyweb.org/inbox` with `To: any-domain.pollyweb.org` in the signed message header.
+
 Print the outbound payload, the full inbox URL the POST is sent to, and the inbound response body as colorized, indented YAML:
 
 ```bash

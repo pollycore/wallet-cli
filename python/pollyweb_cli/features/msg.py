@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import runpy
+import socket
 import urllib.error
 
 from pollyweb_cli.errors import UserFacingError
@@ -27,6 +28,8 @@ MESSAGE_FILE_SUFFIXES = {
     ".json",
     ".py",
 }
+POLLYWEB_DOMAIN_ALIAS_SUFFIX = ".dom"
+POLLYWEB_DOMAIN_CANONICAL_SUFFIX = ".pollyweb.org"
 
 
 def _normalize_loaded_message(
@@ -90,7 +93,21 @@ def _normalize_loaded_message(
             f"{source_name} must use a string Schema value when present."
         ) from None
 
+    normalized["To"] = normalize_message_domain(str(to_value))
+
     return normalized
+
+
+def normalize_message_domain(domain: str) -> str:
+    """Expand supported domain aliases used by `pw msg`."""
+
+    stripped = domain.strip()
+    if stripped.endswith(POLLYWEB_DOMAIN_ALIAS_SUFFIX):
+        return (
+            stripped[: -len(POLLYWEB_DOMAIN_ALIAS_SUFFIX)]
+            + POLLYWEB_DOMAIN_CANONICAL_SUFFIX
+        )
+    return stripped
 
 
 def load_message_request(path: Path) -> dict[str, object]:
@@ -189,6 +206,21 @@ def parse_message_request(arguments: list[str]) -> tuple[dict[str, object], str]
     return parse_inline_message_arguments(arguments), "inline message arguments"
 
 
+def describe_message_network_error(
+    domain: str,
+    reason: object
+) -> str:
+    """Convert a transport failure into a human-readable message."""
+
+    if isinstance(reason, socket.gaierror):
+        return f"Could not resolve PollyWeb inbox host pw.{domain}"
+
+    if isinstance(reason, str):
+        return reason
+
+    return repr(reason)
+
+
 def cmd_msg(
     arguments: list[str],
     *,
@@ -233,7 +265,9 @@ def cmd_msg(
             f"Message request from {source_name} failed with HTTP {exc.code}."
         ) from None
     except urllib.error.URLError as exc:
-        reason = exc.reason if isinstance(exc.reason, str) else repr(exc.reason)
+        reason = describe_message_network_error(
+            str(request["To"]),
+            exc.reason)
         raise UserFacingError(
             f"Message request from {source_name} failed: {reason}"
         ) from None
