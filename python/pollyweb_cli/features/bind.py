@@ -181,6 +181,7 @@ def send_bind_message(
     domain: str,
     key_pair: KeyPair,
     public_key_path: Path,
+    binds_path: Path,
     debug: bool = False,
     anonymous: bool = False,
     unsigned: bool = False
@@ -200,6 +201,7 @@ def send_bind_message(
         },
         key_pair=key_pair,
         debug=debug,
+        binds_path=binds_path,
         anonymous=anonymous,
         unsigned=unsigned,
     )
@@ -253,6 +255,7 @@ def cmd_bind(
             domain,
             key_pair,
             public_key_path,
+            binds_path,
             debug=debug,
             anonymous=anonymous,
             unsigned=unsigned,

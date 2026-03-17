@@ -15,3 +15,4 @@
 - Updated `pollyweb` so direct unsigned UUID-backed `Msg.send()` calls validate and transport cleanly.
 - Refreshed README, command docs, AGENTS guidance, lessons, and verification coverage for the new flags.
 - Verified with `./.venv/bin/python -m pytest -q tests/test_cli.py -k 'test_bind_ or test_msg_ or test_test_ or test_echo_ or test_shell_ or test_sync_ or test_chat_'` and `./.venv/bin/python -m pytest -q tests/test_msg.py -k 'TestWallet or unsigned'`.
+- Follow-up hardening: `wallet-cli` now requires the first published `pollyweb` release that includes unsigned UUID-send support, and the local pre-push hook should verify that contract with a clean-install smoke test.

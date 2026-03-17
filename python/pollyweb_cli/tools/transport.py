@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 from pathlib import Path
+import uuid
 
 from pollyweb import KeyPair, Msg, Wallet, normalize_domain_name
 import yaml
@@ -91,6 +92,11 @@ def _load_first_bind_for_domain(
         bind_domain = item.get("Domain")
 
         if not isinstance(bind_value, str) or not isinstance(bind_domain, str):
+            continue
+
+        try:
+            uuid.UUID(bind_value)
+        except (ValueError, AttributeError, TypeError):
             continue
 
         if normalize_domain_name(bind_domain) == normalized_domain:

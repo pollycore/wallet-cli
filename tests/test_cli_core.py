@@ -29,6 +29,31 @@ from tests.cli_test_helpers import (
     make_echo_response_payload,
 )
 
+def test_dependency_contract_requires_pollyweb_release_with_unsigned_uuid_send_support():
+    key_pair = cli.KeyPair()
+    payloads = []
+
+    def fake_urlopen(request):
+        payloads.append(cli.json.loads(request.data.decode("utf-8")))
+        return DummyResponse(b'{"ok":true}')
+
+    message = Msg(
+        From = VALID_WALLET_ID,
+        To = "vault.example.com",
+        Subject = "Echo@Domain",
+    )
+
+    original_urlopen = cli.urllib.request.urlopen
+    cli.urllib.request.urlopen = fake_urlopen
+    try:
+        assert message.send() == {"ok": True}
+    finally:
+        cli.urllib.request.urlopen = original_urlopen
+
+    assert payloads[0]["Header"]["From"] == VALID_WALLET_ID
+    assert "Hash" not in payloads[0]
+    assert "Signature" not in payloads[0]
+
 def test_version_flag_prints_installed_version(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_maybe_prompt_for_upgrade", lambda argv: None)
     monkeypatch.setattr(cli, "get_installed_version", lambda _: "1.2.3")
