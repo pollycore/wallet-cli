@@ -18,6 +18,7 @@ from pollyweb_cli.features import test as test_feature
 
 VALID_BIND = "Bind:123e4567-e89b-12d3-a456-426614174000"
 VALID_WALLET_ID = "123e4567-e89b-12d3-a456-426614174000"
+TEST_MSGS_DIR = Path(__file__).resolve().parents[1] / "test-msgs"
 
 
 class DummyResponse:
@@ -1185,6 +1186,50 @@ def test_test_loads_wrapped_fixture_and_verifies_inbound(
     assert exit_code == 0
     captured = capsys.readouterr()
     assert '"Subject":"Echo@Domain"' in captured.out
+
+
+@pytest.mark.parametrize(
+    "fixture_path",
+    sorted(TEST_MSGS_DIR.glob("*")),
+    ids = lambda path: path.name)
+def test_test_command_accepts_every_checked_in_test_message_fixture(
+    monkeypatch,
+    fixture_path,
+    capsys
+):
+    # Load the checked-in fixture so the test follows the same wrapped
+    # Outbound/Inbound contract documented for `pw test`.
+    fixture = test_feature.load_message_test_fixture(fixture_path)
+
+    # Build a JSON response that contains the expected inbound subset, because
+    # `pw test` only requires the response to include those expected fields.
+    inbound = fixture.get("Inbound") or {}
+    response_payload = json.dumps(inbound)
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "build_signed_message",
+        lambda **kwargs: {
+            "Header": {
+                "To": kwargs["domain"],
+                "Subject": kwargs["subject"],
+            },
+            "Body": kwargs["body"],
+        })
+    monkeypatch.setattr(
+        test_feature,
+        "send_request_message",
+        lambda **kwargs: response_payload)
+
+    # Run the real CLI command for each fixture file in `test-msgs` so new
+    # fixtures automatically get covered by this repository test.
+    exit_code = cli.main(["test", str(fixture_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == response_payload
 
 
 def test_test_reports_missing_expected_inbound_key(
