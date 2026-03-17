@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import socket
 import sys
 import urllib.error
 from pathlib import Path
@@ -182,6 +183,25 @@ def send_bind_message(
         raise UserFacingError(str(exc).replace("{domain}", domain)) from None
 
 
+def describe_bind_network_error(
+    domain: str,
+    reason: object
+) -> str:
+    """Convert bind transport failures into user-facing guidance."""
+
+    if isinstance(reason, socket.gaierror):
+        return (
+            "Could not resolve PollyWeb inbox host "
+            f"pw.{domain}. Check that the domain name is correct and that "
+            "its DNS record exists."
+        )
+
+    if isinstance(reason, str):
+        return reason
+
+    return repr(reason)
+
+
 def cmd_bind(
     domain: str,
     *,
@@ -213,7 +233,9 @@ def cmd_bind(
             f"Could not bind {domain}. The server returned HTTP {exc.code}."
         ) from None
     except urllib.error.URLError as exc:
-        reason = exc.reason if isinstance(exc.reason, str) else repr(exc.reason)
+        reason = describe_bind_network_error(
+            domain,
+            exc.reason)
         raise UserFacingError(
             f"Could not bind {domain}. Network request failed: {reason}"
         ) from None
