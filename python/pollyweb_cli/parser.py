@@ -35,6 +35,11 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
 
+    subparsers.add_parser(
+        "upgrade",
+        help="Force-install the latest published pollyweb-cli release.",
+    )
+
     config_parser = subparsers.add_parser(
         "config",
         help="Generate a PollyWeb key pair in ~/.pollyweb.",

@@ -228,25 +228,42 @@ def _prompt_for_upgrade(installed_version: str, latest_version: str, argv: list[
         (
             f"A newer {PACKAGE_NAME} release is available "
             f"({installed_version} -> {latest_version}). "
-            f"Upgrade now before running `{command_text}`? [y/N] "
+            f"Upgrade now before running `{command_text}`? [Y/n] "
         )
     ).strip().lower()
-    return reply in {"y", "yes"}
+    return reply in {"", "y", "yes"}
 
 
-def _upgrade_and_restart(argv: list[str], latest_version: str) -> int:
-    """Install the requested release into the current environment and re-exec."""
+def _install_upgrade(
+    installed_version: str,
+    latest_version: str,
+) -> bool:
+    """Install the requested release and report whether the install succeeded."""
 
     install_target = f"{PACKAGE_NAME}=={latest_version}"
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "-U", install_target],
         check=False,
     )
-    if result.returncode != 0:
-        print_error(
-            f"Error: Failed to upgrade {PACKAGE_NAME} to {latest_version}."
-        )
-        return result.returncode or 1
+    if result.returncode == 0:
+        return True
+
+    print_error(
+        f"Notice: Failed to upgrade {PACKAGE_NAME} to {latest_version}; "
+        f"continuing with installed {installed_version}."
+    )
+    return False
+
+
+def _upgrade_and_restart(
+    argv: list[str],
+    installed_version: str,
+    latest_version: str,
+) -> int | None:
+    """Install the requested release into the current environment and re-exec."""
+
+    if not _install_upgrade(installed_version, latest_version):
+        return None
 
     restart_env = os.environ.copy()
     restart_env[SKIP_UPGRADE_CHECK_ENV] = "1"
@@ -286,11 +303,33 @@ def _maybe_prompt_for_upgrade(argv: list[str]) -> int | None:
         return None
 
     if _prompt_for_upgrade(installed_version, latest_version, argv):
-        return _upgrade_and_restart(argv, latest_version)
+        return _upgrade_and_restart(
+            argv,
+            installed_version,
+            latest_version,
+        )
 
     declines[PACKAGE_NAME] = latest_version
     _save_declined_upgrades(declines)
     return None
+
+
+def cmd_upgrade() -> int:
+    """Force-install the latest published CLI release."""
+
+    installed_version = _get_cli_version()
+    latest_version = _get_latest_published_version()
+    if not latest_version:
+        print_error(
+            f"Error: Could not determine the latest published {PACKAGE_NAME} release."
+        )
+        return 1
+
+    if not _install_upgrade(installed_version, latest_version):
+        return 1
+
+    print(f"Upgraded {PACKAGE_NAME} from {installed_version} to {latest_version}.")
+    return 0
 
 
 def require_configured_keys() -> None:
@@ -543,14 +582,17 @@ def main(argv: list[str] | None = None) -> int:
     """Dispatch CLI arguments to the appropriate feature command."""
 
     argv = list(sys.argv[1:] if argv is None else argv)
-    preflight_result = _maybe_prompt_for_upgrade(argv)
-    if preflight_result is not None:
-        return preflight_result
+    if not argv or argv[0] != "upgrade":
+        preflight_result = _maybe_prompt_for_upgrade(argv)
+        if preflight_result is not None:
+            return preflight_result
 
     parser = build_parser()
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "upgrade":
+            return cmd_upgrade()
         if args.command == "config":
             return cmd_config(
                 force=args.force,

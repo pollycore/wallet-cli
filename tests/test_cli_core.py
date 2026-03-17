@@ -99,7 +99,7 @@ def test_preflight_skips_when_no_newer_release(monkeypatch):
     assert cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"]) is None
     assert prompted["called"] is False
 
-def test_prompt_for_upgrade_defaults_to_decline_on_empty_input(monkeypatch):
+def test_prompt_for_upgrade_defaults_to_accept_on_empty_input(monkeypatch):
     monkeypatch.setattr(builtins, "input", lambda prompt: "")
 
     assert (
@@ -108,7 +108,7 @@ def test_prompt_for_upgrade_defaults_to_decline_on_empty_input(monkeypatch):
             "0.1.62",
             ["echo", "vault.example.com"],
         )
-        is False
+        is True
     )
 
 def test_prompt_for_upgrade_accepts_explicit_yes(monkeypatch):
@@ -244,6 +244,54 @@ def test_preflight_upgrades_and_reexecs_requested_command(monkeypatch):
     assert args == [sys.executable, "-m", "pollyweb_cli.cli", "bind", "vault.example.com"]
     assert env[cli.SKIP_UPGRADE_CHECK_ENV] == "1"
 
+def test_cmd_upgrade_installs_latest_release(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.72")
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.73")
+    monkeypatch.setattr(cli, "_install_upgrade", lambda installed, latest: True)
+
+    assert cli.cmd_upgrade() == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "Upgraded pollyweb-cli from 0.1.72 to 0.1.73."
+    assert captured.err == ""
+
+def test_cmd_upgrade_fails_when_latest_version_is_unavailable(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: None)
+
+    assert cli.cmd_upgrade() == 1
+    captured = capsys.readouterr()
+    assert (
+        "Error: Could not determine the latest published pollyweb-cli release."
+        in captured.err
+    )
+
+def test_cmd_upgrade_returns_error_when_install_fails(monkeypatch):
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.72")
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.73")
+    monkeypatch.setattr(cli, "_install_upgrade", lambda installed, latest: False)
+
+    assert cli.cmd_upgrade() == 1
+
+def test_preflight_continues_when_upgrade_install_fails(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.72")
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.73")
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli, "_prompt_for_upgrade", lambda installed, latest, argv: True)
+
+    def fake_run(command, check):
+        class Result:
+            returncode = 1
+
+        return Result()
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    assert cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"]) is None
+    captured = capsys.readouterr()
+    assert (
+        "Notice: Failed to upgrade pollyweb-cli to 0.1.73; "
+        "continuing with installed 0.1.72."
+    ) in captured.err
+
 def test_main_checks_for_upgrade_before_running_command(monkeypatch):
     calls: list[list[str]] = []
 
@@ -255,6 +303,30 @@ def test_main_checks_for_upgrade_before_running_command(monkeypatch):
 
     assert cli.main(["bind", "vault.example.com"]) == 0
     assert calls == [["bind", "vault.example.com"]]
+
+def test_main_upgrade_command_skips_preflight_and_runs_upgrade(monkeypatch):
+    called = {"preflight": False, "upgrade": False}
+
+    def fake_preflight(argv):
+        called["preflight"] = True
+        return None
+
+    def fake_upgrade():
+        called["upgrade"] = True
+        return 0
+
+    monkeypatch.setattr(cli, "_maybe_prompt_for_upgrade", fake_preflight)
+    monkeypatch.setattr(cli, "cmd_upgrade", fake_upgrade)
+
+    assert cli.main(["upgrade"]) == 0
+    assert called == {"preflight": False, "upgrade": True}
+
+def test_parser_includes_upgrade_command():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["upgrade"])
+
+    assert args.command == "upgrade"
 
 def test_parser_includes_chat_command():
     parser = cli.build_parser()
