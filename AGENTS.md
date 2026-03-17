@@ -6,6 +6,6 @@
 - `pw msg <path>` accepts YAML or JSON files in either a top-level `To`/`Subject`/`Body` shape or a `Header` plus top-level `Body` shape, signs the message locally, and prints the raw synchronous response.
 - `pw msg <message...>` also accepts Python files that expose a message object, raw JSON object strings, and inline `Key:Value` fields where non-header keys are collected into `Body`.
 - For `pw msg`, a `To` value ending in `.dom` is normalized to `.pollyweb.org` before signing the message and building the inbox URL.
-- `pw msg` should use the shared `pollyweb.normalize_domain_name()` helper for `.dom` expansion so CLI parsing stays aligned with library send behavior.
+- `pw msg` should prefer the shared `pollyweb.normalize_domain_name()` helper for `.dom` expansion when the installed PyPI release exposes it, but keep a local fallback until that helper is available in the published package.
 - For inline `pw msg` arguments, header keys are case-insensitive for `to`, `subject`, `from`, `schema`, `body`, and `header`.
 - `pw test <path>` reads a wrapped YAML fixture, sends only its `Outbound` payload with the same signing rules as `pw msg`, and treats `Inbound` as an expected subset of the returned JSON payload.
