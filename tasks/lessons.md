@@ -6,4 +6,5 @@
 - If the server scopes bind allocation by domain, `pw bind` must send the normalized target domain in `Body.Domain`, not just the public key, or multiple domains can still collapse into one bind pool.
 - Treat "check for a newer `pw` before `pw bind`, ask before upgrading, and remember declines" as user-facing behavior/instructions, not as something the CLI itself should implement.
 - When following the user's `pw bind` workflow, compare the invoked local `pw --version` against the latest published release and treat dev builds like `0.1.dev43` as older than stable releases like `0.1.61`; if the published release is newer, ask before running the command.
+- For automatic `pw` upgrade prompts, run the preflight before every `pw` invocation, including `pw --version`, and read the latest release from the PyPI JSON metadata endpoint with cache-busting headers instead of trusting the rendered HTML page.
 - When upgrading `pollyweb` in an older local virtualenv, follow the package upgrade with `python -m pip install -e '.[dev]'` in that env so stale editable-install metadata does not keep pinning an older exact `pollyweb` version.

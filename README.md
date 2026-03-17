@@ -31,6 +31,8 @@ After installation, the CLI is available as:
 pw --help
 ```
 
+Before running any `pw` command, the CLI checks PyPI for a newer published `pollyweb-cli` release. If it finds one and stdin is interactive, it prompts to upgrade first, installs the newer release into the current Python environment, and then reruns the original `pw ...` command on the upgraded code. If you decline, the CLI remembers that target release in `~/.pollyweb/declined-upgrades.yaml` and stops asking again until a newer release appears.
+
 To confirm which release is installed:
 
 ```bash
@@ -160,6 +162,6 @@ This is useful when you want to inspect the exact message contents being sent or
 - `pw shell <domain>` starts an interactive remote shell session
 - `pw shell <domain>` remembers the last 20 commands per domain for arrow-key navigation
 - `pw shell --debug <domain>` shows the target inbox URL plus shell request and response payloads as colorized YAML
-- `pw --version` prints the installed CLI version
+- `pw --version` prints the installed CLI version after the same upgrade preflight check used by other `pw` commands
 
 For more examples and command behavior, see [docs/usage.md](docs/usage.md) and the command-specific guides in `docs/commands/`.

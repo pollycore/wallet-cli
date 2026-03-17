@@ -4,10 +4,15 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version as get_installed_version
 import json
+import os
 from pathlib import Path
+import shlex
+import subprocess
 import sys
+import time
 import urllib
 
+from packaging.version import InvalidVersion, Version
 import yaml
 from pollyweb import KeyPair, Msg
 import pollyweb.msg as pollyweb_msg
@@ -110,8 +115,12 @@ CONFIG_PATH = CONFIG_DIR / "config.yaml"
 BINDS_PATH = CONFIG_DIR / "binds.yaml"
 HISTORY_DIR = CONFIG_DIR / "history"
 SYNC_DIR = CONFIG_DIR / "sync"
+DECLINED_UPGRADES_PATH = CONFIG_DIR / "declined-upgrades.yaml"
 ERROR_STYLE = "\033[1;31m"
 ERROR_STYLE_RESET = "\033[0m"
+PACKAGE_NAME = "pollyweb-cli"
+PYPI_JSON_URL = f"https://pypi.org/pypi/{PACKAGE_NAME}/json"
+SKIP_UPGRADE_CHECK_ENV = "POLLYWEB_CLI_SKIP_UPGRADE_CHECK"
 
 
 def build_parser():
@@ -142,9 +151,145 @@ def _get_cli_version() -> str:
     """Resolve the installed package version for `pw --version`."""
 
     try:
-        return get_installed_version("pollyweb-cli")
+        return get_installed_version(PACKAGE_NAME)
     except PackageNotFoundError:
         return "0+unknown"
+
+
+def _load_declined_upgrades() -> dict[str, str]:
+    """Load persisted upgrade declines keyed by package name."""
+
+    if not DECLINED_UPGRADES_PATH.exists():
+        return {}
+    try:
+        data = yaml.safe_load(DECLINED_UPGRADES_PATH.read_text(encoding="utf-8"))
+    except OSError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        str(key): str(value)
+        for key, value in data.items()
+        if key is not None and value is not None
+    }
+
+
+def _save_declined_upgrades(declines: dict[str, str]) -> None:
+    """Persist declined upgrade versions for future invocations."""
+
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    DECLINED_UPGRADES_PATH.write_text(
+        yaml.safe_dump(declines, sort_keys=True),
+        encoding="utf-8",
+    )
+    DECLINED_UPGRADES_PATH.chmod(0o600)
+
+
+def _get_latest_published_version() -> str | None:
+    """Fetch the latest published package version from PyPI metadata."""
+
+    request = urllib.request.Request(
+        f"{PYPI_JSON_URL}?_={int(time.time())}",
+        headers={
+            "Accept": "application/json",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, urllib.error.URLError):
+        return None
+    info = payload.get("info")
+    if not isinstance(info, dict):
+        return None
+    version = info.get("version")
+    return str(version) if version else None
+
+
+def _parse_version(value: str) -> Version | None:
+    """Parse a PEP 440 version, returning None when parsing fails."""
+
+    try:
+        return Version(value)
+    except InvalidVersion:
+        return None
+
+
+def _prompt_for_upgrade(installed_version: str, latest_version: str, argv: list[str]) -> bool:
+    """Ask the user whether to upgrade before running the requested command."""
+
+    command_text = "pw"
+    if argv:
+        command_text = f"pw {shlex.join(argv)}"
+    reply = input(
+        (
+            f"A newer {PACKAGE_NAME} release is available "
+            f"({installed_version} -> {latest_version}). "
+            f"Upgrade now before running `{command_text}`? [Y/n] "
+        )
+    ).strip().lower()
+    return reply in {"", "y", "yes"}
+
+
+def _upgrade_and_restart(argv: list[str], latest_version: str) -> int:
+    """Install the requested release into the current environment and re-exec."""
+
+    install_target = f"{PACKAGE_NAME}=={latest_version}"
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-U", install_target],
+        check=False,
+    )
+    if result.returncode != 0:
+        print_error(
+            f"Error: Failed to upgrade {PACKAGE_NAME} to {latest_version}."
+        )
+        return result.returncode or 1
+
+    restart_env = os.environ.copy()
+    restart_env[SKIP_UPGRADE_CHECK_ENV] = "1"
+    os.execve(
+        sys.executable,
+        [sys.executable, "-m", "pollyweb_cli.cli", *argv],
+        restart_env,
+    )
+    return 0
+
+
+def _maybe_prompt_for_upgrade(argv: list[str]) -> int | None:
+    """Prompt for an upgrade before any `pw` command when a newer release exists."""
+
+    if os.environ.get(SKIP_UPGRADE_CHECK_ENV) == "1":
+        return None
+
+    installed_version = _get_cli_version()
+    latest_version = _get_latest_published_version()
+    if not latest_version:
+        return None
+
+    installed = _parse_version(installed_version)
+    latest = _parse_version(latest_version)
+    if installed is None or latest is None or latest <= installed:
+        return None
+
+    declines = _load_declined_upgrades()
+    if declines.get(PACKAGE_NAME) == latest_version:
+        return None
+
+    if not sys.stdin.isatty():
+        print_error(
+            f"Notice: {PACKAGE_NAME} {latest_version} is available; "
+            f"continuing with installed {installed_version} because no prompt is possible."
+        )
+        return None
+
+    if _prompt_for_upgrade(installed_version, latest_version, argv):
+        return _upgrade_and_restart(argv, latest_version)
+
+    declines[PACKAGE_NAME] = latest_version
+    _save_declined_upgrades(declines)
+    return None
 
 
 def require_configured_keys() -> None:
@@ -347,6 +492,11 @@ def cmd_sync(domain: str, debug: bool = False) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     """Dispatch CLI arguments to the appropriate feature command."""
+
+    argv = list(sys.argv[1:] if argv is None else argv)
+    preflight_result = _maybe_prompt_for_upgrade(argv)
+    if preflight_result is not None:
+        return preflight_result
 
     parser = build_parser()
     args = parser.parse_args(argv)
