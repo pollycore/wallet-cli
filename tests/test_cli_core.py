@@ -55,7 +55,7 @@ def test_dependency_contract_requires_pollyweb_release_with_unsigned_uuid_send_s
     assert "Signature" not in payloads[0]
 
 def test_version_command_prints_installed_version(monkeypatch, capsys):
-    monkeypatch.setattr(cli, "_maybe_prompt_for_upgrade", lambda argv: None)
+    monkeypatch.setattr(cli, "_maybe_upgrade_before_command", lambda argv: None)
     monkeypatch.setattr(cli, "get_installed_version", lambda _: "1.2.3")
 
     assert cli.main(["version"]) == 0
@@ -70,7 +70,7 @@ def test_version_command_checks_for_upgrade_before_printing_version(monkeypatch,
         prompted.append(list(argv))
         return None
 
-    monkeypatch.setattr(cli, "_maybe_prompt_for_upgrade", fake_preflight)
+    monkeypatch.setattr(cli, "_maybe_upgrade_before_command", fake_preflight)
     monkeypatch.setattr(cli, "get_installed_version", lambda _: "1.2.3")
 
     assert cli.main(["version"]) == 0
@@ -82,101 +82,22 @@ def test_preflight_skips_when_no_newer_release(monkeypatch):
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.62")
     monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
 
-    prompted = {"called": False}
+    assert cli._maybe_upgrade_before_command(["bind", "vault.example.com"]) is None
 
-    def fake_prompt(installed, latest, argv):
-        prompted["called"] = True
-        return False
-
-    monkeypatch.setattr(cli, "_prompt_for_upgrade", fake_prompt)
-
-    assert cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"]) is None
-    assert prompted["called"] is False
-
-def test_prompt_for_upgrade_defaults_to_accept_on_empty_input(monkeypatch):
-    monkeypatch.setattr(builtins, "input", lambda prompt: "")
-
-    assert (
-        cli._prompt_for_upgrade(
-            "0.1.61",
-            "0.1.62",
-            ["echo", "vault.example.com"],
-        )
-        is True
-    )
-
-def test_prompt_for_upgrade_accepts_explicit_yes(monkeypatch):
-    monkeypatch.setattr(builtins, "input", lambda prompt: "y")
-
-    assert (
-        cli._prompt_for_upgrade(
-            "0.1.61",
-            "0.1.62",
-            ["echo", "vault.example.com"],
-        )
-        is True
-    )
-
-def test_prompt_for_upgrade_rejects_explicit_no(monkeypatch):
-    monkeypatch.setattr(builtins, "input", lambda prompt: "n")
-
-    assert (
-        cli._prompt_for_upgrade(
-            "0.1.61",
-            "0.1.62",
-            ["echo", "vault.example.com"],
-        )
-        is False
-    )
-
-def test_preflight_prompts_and_persists_decline(monkeypatch, tmp_path):
-    monkeypatch.setattr(cli, "CONFIG_DIR", tmp_path)
-    monkeypatch.setattr(cli, "DECLINED_UPGRADES_PATH", tmp_path / "declined-upgrades.yaml")
-    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.61")
-    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
-    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
-    monkeypatch.setattr(cli, "_prompt_for_upgrade", lambda installed, latest, argv: False)
-
-    assert cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"]) is None
-    assert cli._load_declined_upgrades() == {"pollyweb-cli": "0.1.62"}
-
-def test_preflight_treats_dev_version_as_older_than_stable(monkeypatch, tmp_path):
-    monkeypatch.setattr(cli, "CONFIG_DIR", tmp_path)
-    monkeypatch.setattr(cli, "DECLINED_UPGRADES_PATH", tmp_path / "declined-upgrades.yaml")
+def test_preflight_treats_dev_version_as_older_than_stable(monkeypatch):
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.dev43")
     monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.61")
-    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
 
-    prompted = []
+    seen = []
 
-    def fake_prompt(installed, latest, argv):
-        prompted.append((installed, latest, list(argv)))
-        return False
+    def fake_upgrade(argv, installed, latest):
+        seen.append((list(argv), installed, latest))
+        return 0
 
-    monkeypatch.setattr(cli, "_prompt_for_upgrade", fake_prompt)
+    monkeypatch.setattr(cli, "_upgrade_and_restart", fake_upgrade)
 
-    assert cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"]) is None
-    assert prompted == [("0.1.dev43", "0.1.61", ["bind", "vault.example.com"])]
-    assert cli._load_declined_upgrades() == {"pollyweb-cli": "0.1.61"}
-
-def test_preflight_skips_prompt_for_declined_target_version(monkeypatch, tmp_path):
-    monkeypatch.setattr(cli, "CONFIG_DIR", tmp_path)
-    declined_path = tmp_path / "declined-upgrades.yaml"
-    monkeypatch.setattr(cli, "DECLINED_UPGRADES_PATH", declined_path)
-    declined_path.write_text("pollyweb-cli: 0.1.62\n", encoding="utf-8")
-    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.61")
-    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
-
-    prompted = {"called": False}
-
-    def fake_prompt(installed, latest, argv):
-        prompted["called"] = True
-        return True
-
-    monkeypatch.setattr(cli, "_prompt_for_upgrade", fake_prompt)
-
-    assert cli._maybe_prompt_for_upgrade(["echo", "vault.example.com"]) is None
-    assert prompted["called"] is False
+    assert cli._maybe_upgrade_before_command(["bind", "vault.example.com"]) == 0
+    assert seen == [(["bind", "vault.example.com"], "0.1.dev43", "0.1.61")]
 
 def test_get_latest_published_version_uses_uncached_json_request(monkeypatch):
     seen = {}
@@ -203,8 +124,6 @@ def test_preflight_upgrades_and_reexecs_requested_command(monkeypatch):
 
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.61")
     monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
-    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
-    monkeypatch.setattr(cli, "_prompt_for_upgrade", lambda installed, latest, argv: True)
 
     def fake_run(command, check):
         recorded["run"] = command
@@ -222,7 +141,7 @@ def test_preflight_upgrades_and_reexecs_requested_command(monkeypatch):
     monkeypatch.setattr(cli.os, "execve", fake_execve)
 
     with pytest.raises(SystemExit) as exc:
-        cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"])
+        cli._maybe_upgrade_before_command(["bind", "vault.example.com"])
 
     assert exc.value.code == 0
     assert recorded["run"] == [
@@ -268,8 +187,6 @@ def test_cmd_upgrade_returns_error_when_install_fails(monkeypatch):
 def test_preflight_continues_when_upgrade_install_fails(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.72")
     monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.73")
-    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
-    monkeypatch.setattr(cli, "_prompt_for_upgrade", lambda installed, latest, argv: True)
 
     def fake_run(command, check):
         class Result:
@@ -279,7 +196,7 @@ def test_preflight_continues_when_upgrade_install_fails(monkeypatch, capsys):
 
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
 
-    assert cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"]) is None
+    assert cli._maybe_upgrade_before_command(["bind", "vault.example.com"]) is None
     captured = capsys.readouterr()
     assert (
         "Notice: Failed to upgrade pollyweb-cli to 0.1.73; "
@@ -293,7 +210,7 @@ def test_main_checks_for_upgrade_before_running_command(monkeypatch):
         calls.append(list(argv))
         return 0
 
-    monkeypatch.setattr(cli, "_maybe_prompt_for_upgrade", fake_preflight)
+    monkeypatch.setattr(cli, "_maybe_upgrade_before_command", fake_preflight)
 
     assert cli.main(["bind", "vault.example.com"]) == 0
     assert calls == [["bind", "vault.example.com"]]
@@ -309,7 +226,7 @@ def test_main_upgrade_command_skips_preflight_and_runs_upgrade(monkeypatch):
         called["upgrade"] = True
         return 0
 
-    monkeypatch.setattr(cli, "_maybe_prompt_for_upgrade", fake_preflight)
+    monkeypatch.setattr(cli, "_maybe_upgrade_before_command", fake_preflight)
     monkeypatch.setattr(cli, "cmd_upgrade", fake_upgrade)
 
     assert cli.main(["upgrade"]) == 0

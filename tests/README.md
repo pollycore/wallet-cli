@@ -2,7 +2,7 @@
 
 This folder is organized by CLI feature so future changes can stay local:
 
-- `test_cli_core.py`: parser, version, `pw upgrade`, upgrade preflight, and generic CLI rendering helpers
+- `test_cli_core.py`: parser, version, `pw upgrade`, automatic upgrade preflight, and generic CLI rendering helpers
 - `test_chat.py`: AppSync chat helpers and `pw chat`
 - `test_config.py`: `pw config` and config persistence behavior
 - `test_bind.py`: `pw bind`, bind storage, and bind-network error handling

@@ -6,7 +6,6 @@ from importlib.metadata import PackageNotFoundError, version as get_installed_ve
 import json
 import os
 from pathlib import Path
-import shlex
 import subprocess
 import sys
 import time
@@ -115,7 +114,6 @@ CONFIG_PATH = CONFIG_DIR / "config.yaml"
 BINDS_PATH = CONFIG_DIR / "binds.yaml"
 HISTORY_DIR = CONFIG_DIR / "history"
 SYNC_DIR = CONFIG_DIR / "sync"
-DECLINED_UPGRADES_PATH = CONFIG_DIR / "declined-upgrades.yaml"
 ERROR_STYLE = "\033[1;31m"
 ERROR_STYLE_RESET = "\033[0m"
 PACKAGE_NAME = "pollyweb-cli"
@@ -156,35 +154,6 @@ def _get_cli_version() -> str:
         return "0+unknown"
 
 
-def _load_declined_upgrades() -> dict[str, str]:
-    """Load persisted upgrade declines keyed by package name."""
-
-    if not DECLINED_UPGRADES_PATH.exists():
-        return {}
-    try:
-        data = yaml.safe_load(DECLINED_UPGRADES_PATH.read_text(encoding="utf-8"))
-    except OSError:
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    return {
-        str(key): str(value)
-        for key, value in data.items()
-        if key is not None and value is not None
-    }
-
-
-def _save_declined_upgrades(declines: dict[str, str]) -> None:
-    """Persist declined upgrade versions for future invocations."""
-
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    DECLINED_UPGRADES_PATH.write_text(
-        yaml.safe_dump(declines, sort_keys=True),
-        encoding="utf-8",
-    )
-    DECLINED_UPGRADES_PATH.chmod(0o600)
-
-
 def _get_latest_published_version() -> str | None:
     """Fetch the latest published package version from PyPI metadata."""
 
@@ -215,23 +184,6 @@ def _parse_version(value: str) -> Version | None:
         return Version(value)
     except InvalidVersion:
         return None
-
-
-def _prompt_for_upgrade(installed_version: str, latest_version: str, argv: list[str]) -> bool:
-    """Ask the user whether to upgrade before running the requested command."""
-
-    command_text = "pw"
-    if argv:
-        command_text = f"pw {shlex.join(argv)}"
-
-    reply = input(
-        (
-            f"A newer {PACKAGE_NAME} release is available "
-            f"({installed_version} -> {latest_version}). "
-            f"Upgrade now before running `{command_text}`? [Y/n] "
-        )
-    ).strip().lower()
-    return reply in {"", "y", "yes"}
 
 
 def _install_upgrade(
@@ -275,8 +227,8 @@ def _upgrade_and_restart(
     return 0
 
 
-def _maybe_prompt_for_upgrade(argv: list[str]) -> int | None:
-    """Prompt for an upgrade before any `pw` command when a newer release exists."""
+def _maybe_upgrade_before_command(argv: list[str]) -> int | None:
+    """Upgrade before any `pw` command when a newer release exists."""
 
     if os.environ.get(SKIP_UPGRADE_CHECK_ENV) == "1":
         return None
@@ -291,27 +243,11 @@ def _maybe_prompt_for_upgrade(argv: list[str]) -> int | None:
     if installed is None or latest is None or latest <= installed:
         return None
 
-    declines = _load_declined_upgrades()
-    if declines.get(PACKAGE_NAME) == latest_version:
-        return None
-
-    if not sys.stdin.isatty():
-        print_error(
-            f"Notice: {PACKAGE_NAME} {latest_version} is available; "
-            f"continuing with installed {installed_version} because no prompt is possible."
-        )
-        return None
-
-    if _prompt_for_upgrade(installed_version, latest_version, argv):
-        return _upgrade_and_restart(
-            argv,
-            installed_version,
-            latest_version,
-        )
-
-    declines[PACKAGE_NAME] = latest_version
-    _save_declined_upgrades(declines)
-    return None
+    return _upgrade_and_restart(
+        argv,
+        installed_version,
+        latest_version,
+    )
 
 
 def cmd_upgrade() -> int:
@@ -590,7 +526,7 @@ def main(argv: list[str] | None = None) -> int:
 
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] != "upgrade":
-        preflight_result = _maybe_prompt_for_upgrade(argv)
+        preflight_result = _maybe_upgrade_before_command(argv)
         if preflight_result is not None:
             return preflight_result
 
