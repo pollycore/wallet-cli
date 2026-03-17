@@ -10,6 +10,7 @@
 - `pw msg` should use the shared `pollyweb.normalize_domain_name()` helper for `.dom` expansion; `wallet-cli` now requires a published `pollyweb` release that includes that helper.
 - Wallet-backed CLI sends should go through `pollyweb.Wallet.send(...)` instead of custom signing and `urllib` transport helpers, so alias normalization and wire behavior stay aligned with the published library.
 - Because `Wallet.send(...)` is wallet-scoped, `pw msg` and `pw test` only support `From: Anonymous` or a UUID bind value; arbitrary domain `From` values are not valid wallet senders.
+- When a wallet-backed send would otherwise use `From: Anonymous`, first look up the target domain in `~/.pollyweb/binds.yaml` using canonical domain normalization and pass that bind UUID to the wallet; only fall back to the wallet library's own `Anonymous` default when no bind is stored.
 - For inline `pw msg` arguments, header keys are case-insensitive for `to`, `subject`, `from`, `schema`, `body`, and `header`.
 - `pw test <path>` reads a wrapped YAML fixture, sends only its `Outbound` payload with the same signing rules as `pw msg`, and treats `Inbound` as an expected subset of the returned JSON payload.
 - `pw test` also resolves any string exactly matching `{BindOf(<domain>)}` from `~/.pollyweb/binds.yaml` before sending, and the lookup should reuse canonical domain normalization so `.dom` and `.pollyweb.org` placeholders share the same stored bind.

@@ -60,7 +60,7 @@ Bind your wallet to a domain:
 pw bind vault.example.com
 ```
 
-This sends a signed `Bind@Vault` request to `https://pw.vault.example.com/inbox` using the compact public-key value in the request body. The command now uses `pollyweb.Wallet.send()` directly, so when there is no wallet-specific sender yet it sends `From: Anonymous` with the standard PollyWeb schema and stores only the UUID portion of the returned bind token in `~/.pollyweb/binds.yaml`. Rebinding the same domain replaces the existing bind for that domain unless the server returns a different `Schema`, in which case both entries are kept.
+This sends a signed `Bind@Vault` request to `https://pw.vault.example.com/inbox` using the compact public-key value in the request body. The command now uses `pollyweb.Wallet.send()` directly, so it reuses the stored bind UUID for that domain from `~/.pollyweb/binds.yaml` when one exists and otherwise falls back to `pollyweb.Wallet`'s default `From: Anonymous` behavior, while still storing only the UUID portion of the returned bind token in `~/.pollyweb/binds.yaml`. Rebinding the same domain replaces the existing bind for that domain unless the server returns a different `Schema`, in which case both entries are kept.
 
 You can also use the PollyWeb shorthand domain suffix:
 
@@ -116,7 +116,7 @@ pw msg To:any-domain.org Subject:topic@role DynamicBodyProperty:123
 pw msg to:any-domain.dom subject:Echo@Domain --debug
 ```
 
-For `pw msg`, inline header keys like `to` and `subject` are matched case-insensitively, and a `To` domain ending in `.dom` is expanded to `.pollyweb.org` before signing and sending. Because the command now follows wallet semantics directly, `From` must be omitted, `Anonymous`, or a UUID bind value.
+For `pw msg`, inline header keys like `to` and `subject` are matched case-insensitively, and a `To` domain ending in `.dom` is expanded to `.pollyweb.org` before signing and sending. Because the command now follows wallet semantics directly, `From` must be omitted, `Anonymous`, or a UUID bind value. When `From` is omitted or `Anonymous`, the CLI first checks `~/.pollyweb/binds.yaml` for a stored bind matching the target domain and uses that UUID as `msg.From`; if none is stored, it leaves the fallback to `pollyweb.Wallet`, which signs as `Anonymous`.
 
 Run a wrapped message test fixture:
 

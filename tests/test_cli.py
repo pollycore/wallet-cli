@@ -16,6 +16,7 @@ from pollyweb import Msg
 from pollyweb_cli import cli
 from pollyweb_cli.features import chat as chat_feature
 from pollyweb_cli.features import test as test_feature
+from pollyweb_cli.tools import transport as transport_tools
 
 VALID_BIND = "Bind:123e4567-e89b-12d3-a456-426614174000"
 VALID_WALLET_ID = "123e4567-e89b-12d3-a456-426614174000"
@@ -1331,6 +1332,93 @@ def test_msg_loads_top_level_message_file_and_prints_response(
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["msg", str(message_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == '{"ok":true}'
+
+
+def test_msg_uses_stored_bind_as_wallet_sender_for_target_domain(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    message_path = tmp_path / "message.yaml"
+    bind_value = "30ddc4c7-ba23-4bae-971c-2595143f69eb"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [
+                {
+                    "Bind": bind_value,
+                    "Domain": "any-hoster.pollyweb.org",
+                }
+            ],
+            sort_keys = False),
+        encoding = "utf-8")
+    message_path.write_text(
+        "To: any-hoster.dom\nSubject: Echo@Domain\nBody:\n  Ping: pong\n",
+        encoding = "utf-8")
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+
+        # The wallet-backed send should reuse the stored bind for the
+        # normalized recipient domain instead of signing as Anonymous.
+        assert payload["Header"]["From"] == bind_value
+        assert payload["Header"]["To"] == "any-hoster.pollyweb.org"
+        return DummyResponse(b'{"ok":true}')
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(transport_tools, "DEFAULT_BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["msg", str(message_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == '{"ok":true}'
+
+
+def test_msg_uses_wallet_default_anonymous_sender_when_no_bind_exists(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    message_path = tmp_path / "message.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    message_path.write_text(
+        "To: vault.example.com\nSubject: Echo@Domain\nBody:\n  Ping: pong\n",
+        encoding = "utf-8")
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+
+        # When no stored bind exists, the CLI should leave sender fallback to
+        # the wallet library, which still signs as Anonymous by default.
+        assert payload["Header"]["From"] == "Anonymous"
+        assert payload["Header"]["To"] == "vault.example.com"
+        return DummyResponse(b'{"ok":true}')
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(transport_tools, "DEFAULT_BINDS_PATH", binds_path)
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
 
     exit_code = cli.main(["msg", str(message_path)])

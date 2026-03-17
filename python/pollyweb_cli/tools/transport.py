@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from pollyweb import KeyPair, Msg, Wallet, normalize_domain_name
+import yaml
 
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.tools.debug import parse_debug_payload, print_debug_payload
 
 
 DEFAULT_SCHEMA = "pollyweb.org/MSG:1.0"
+DEFAULT_BINDS_PATH = Path.home() / ".pollyweb" / "binds.yaml"
 
 
 def serialize_wallet_response(response: object) -> str:
@@ -23,21 +26,84 @@ def serialize_wallet_response(response: object) -> str:
     return str(response)
 
 
+def _load_first_bind_for_domain(
+    domain: str,
+    binds_path: Path
+) -> str | None:
+    """Return the first stored bind UUID for a normalized domain."""
+
+    if not binds_path.exists():
+        return None
+
+    loaded = yaml.safe_load(binds_path.read_text(encoding = "utf-8"))
+    if not isinstance(loaded, list):
+        return None
+
+    normalized_domain = normalize_domain_name(domain)
+
+    # Reuse the canonical recipient domain so `.dom` and `.pollyweb.org`
+    # lookups find the same stored bind entry.
+    for item in loaded:
+        if not isinstance(item, dict):
+            continue
+
+        bind_value = item.get("Bind")
+        bind_domain = item.get("Domain")
+
+        if not isinstance(bind_value, str) or not isinstance(bind_domain, str):
+            continue
+
+        if normalize_domain_name(bind_domain) == normalized_domain:
+            return bind_value
+
+    return None
+
+
+def _resolve_wallet_sender(
+    domain: str,
+    from_value: str | None,
+    binds_path: Path
+) -> str | None:
+    """Choose the wallet sender ID, preferring a stored bind over an empty sender."""
+
+    if from_value not in (None, "", "Anonymous"):
+        return str(from_value)
+
+    stored_bind = _load_first_bind_for_domain(domain, binds_path)
+    if stored_bind:
+        return stored_bind
+
+    if from_value == "Anonymous":
+        return None
+
+    return None
+
+
 def build_wallet_message(
     domain: str,
     subject: str,
     body: dict[str, object],
     key_pair: KeyPair,
     from_value: str | None = "Anonymous",
-    schema_value: str | None = DEFAULT_SCHEMA
+    schema_value: str | None = DEFAULT_SCHEMA,
+    binds_path: Path | None = None
 ) -> tuple[Wallet, Msg, str]:
     """Create a wallet sender and normalized PollyWeb message."""
 
     normalized_domain = normalize_domain_name(domain)
-    sender_value = "Anonymous" if from_value in (None, "") else str(from_value)
+    effective_binds_path = DEFAULT_BINDS_PATH if binds_path is None else binds_path
+    sender_value = _resolve_wallet_sender(
+        normalized_domain,
+        from_value,
+        effective_binds_path,
+    )
 
     try:
-        wallet = Wallet(KeyPair=key_pair, ID=sender_value)
+        wallet_kwargs = {"KeyPair": key_pair}
+        if sender_value is not None:
+            wallet_kwargs["ID"] = sender_value
+
+        wallet = Wallet(**wallet_kwargs)
     except ValueError:
         raise UserFacingError(
             "Wallet-backed commands only support `From: Anonymous` or a UUID bind value."
@@ -61,7 +127,8 @@ def send_wallet_message(
     key_pair: KeyPair,
     debug: bool = False,
     from_value: str | None = "Anonymous",
-    schema_value: str | None = DEFAULT_SCHEMA
+    schema_value: str | None = DEFAULT_SCHEMA,
+    binds_path: Path | None = None
 ) -> tuple[str, Msg, str]:
     """Send one wallet-backed PollyWeb message and return the raw response."""
 
@@ -72,6 +139,7 @@ def send_wallet_message(
         key_pair=key_pair,
         from_value=from_value,
         schema_value=schema_value,
+        binds_path=binds_path,
     )
 
     if debug:

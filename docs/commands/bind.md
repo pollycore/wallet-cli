@@ -8,7 +8,7 @@ pw bind vault.example.com
 
 This sends a signed `Bind@Vault` message to `vault.example.com` with your configured public key in the body. The key is stored locally as PEM in `~/.pollyweb/public.pem`, but the outbound message sends only the compact key value without the PEM `BEGIN/END` wrapper lines.
 
-Because `pw bind` now sends through `pollyweb.Wallet.send()`, the request uses `From: Anonymous` until a real bind ID is available and includes the standard PollyWeb schema header.
+Because `pw bind` now sends through `pollyweb.Wallet.send()`, the request uses a stored bind UUID from `~/.pollyweb/binds.yaml` when one already exists for that target domain; otherwise it falls back to `pollyweb.Wallet`'s default `From: Anonymous` behavior. The request also includes the standard PollyWeb schema header.
 
 Domains ending in `.dom` are normalized to `.pollyweb.org` before the message is signed and sent, so `pw bind any-hoster.dom` targets `https://pw.any-hoster.pollyweb.org/inbox` and stores the canonical domain name locally.
 

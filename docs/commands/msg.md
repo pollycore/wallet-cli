@@ -31,7 +31,7 @@ pw msg to:any-domain.dom subject:Echo@Domain --debug
 
 For `pw msg`, domains ending in `.dom` are treated as shorthand for `.pollyweb.org`, so `To:any-domain.dom` is sent to `https://pw.any-domain.pollyweb.org/inbox` with `To: any-domain.pollyweb.org` in the signed message header.
 
-Because the command now follows wallet semantics end-to-end, `From` must be omitted, `Anonymous`, or a UUID bind value. Arbitrary domain `From` values are rejected instead of being hand-signed locally.
+Because the command now follows wallet semantics end-to-end, `From` must be omitted, `Anonymous`, or a UUID bind value. When `From` is omitted or `Anonymous`, the CLI first checks `~/.pollyweb/binds.yaml` for a bind stored against the target domain and uses that bind UUID as `msg.From`; if no bind is stored, it leaves the fallback to `pollyweb.Wallet`, which signs as `Anonymous`. Arbitrary domain `From` values are rejected instead of being hand-signed locally.
 
 Print the outbound payload, the full inbox URL the POST is sent to, and the inbound response body as colorized, indented YAML:
 
