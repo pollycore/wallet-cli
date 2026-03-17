@@ -10,7 +10,7 @@ from pathlib import Path
 from pollyweb_cli.features.bind import get_first_bind_for_domain, load_binds
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.features.shell import get_shell_from_value
-from pollyweb_cli.tools.transport import post_signed_message
+from pollyweb_cli.tools.transport import send_wallet_message
 
 
 SYNC_SUBJECT = "Map@Filer"
@@ -65,7 +65,7 @@ def cmd_sync(
     files = build_sync_files_map(domain, sync_dir)
 
     try:
-        response_payload = post_signed_message(
+        response_payload, _, _ = send_wallet_message(
             domain=domain,
             subject=SYNC_SUBJECT,
             body={"Files": files},

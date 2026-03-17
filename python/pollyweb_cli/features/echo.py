@@ -13,7 +13,7 @@ import pollyweb.msg as pollyweb_msg
 from pollyweb_cli.tools.debug import print_echo_response
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.models import EchoResponse
-from pollyweb_cli.tools.transport import build_signed_message, send_request_message
+from pollyweb_cli.tools.transport import send_wallet_message
 
 
 ECHO_SUBJECT = "Echo@Domain"
@@ -157,22 +157,18 @@ def cmd_echo(
     try:
         require_configured_keys()
         key_pair = load_signing_key_pair()
-        request_message = build_signed_message(
+        response_payload, request_message, normalized_domain = send_wallet_message(
+            domain=domain,
             subject=ECHO_SUBJECT,
             body={},
             key_pair=key_pair,
-            domain=domain,
-        )
-        response_payload = send_request_message(
-            domain=domain,
-            request_message=request_message,
             debug=debug,
         )
         response, verification = parse_and_verify_echo_response(
             response_payload,
-            domain=domain,
-            request_correlation=str(request_message["Header"]["Correlation"]),
-            expected_to=domain,
+            domain=normalized_domain,
+            request_correlation=request_message.Correlation,
+            expected_to=normalized_domain,
         )
     except FileNotFoundError:
         raise UserFacingError(

@@ -11,7 +11,7 @@ from pathlib import Path
 from pollyweb_cli.features.bind import get_first_bind_for_domain, load_binds
 from pollyweb_cli.tools.debug import print_shell_response
 from pollyweb_cli.errors import UserFacingError
-from pollyweb_cli.tools.transport import post_signed_message
+from pollyweb_cli.tools.transport import send_wallet_message
 
 
 SHELL_SUBJECT = "Shell@Domain"
@@ -206,7 +206,7 @@ def cmd_shell(
         """Send a shell command and optionally return the raw response payload."""
 
         try:
-            response = post_signed_message(
+            response, _, _ = send_wallet_message(
                 domain=domain,
                 subject=SHELL_SUBJECT,
                 body={

@@ -7,8 +7,14 @@
 - `pw msg <message...>` also accepts Python files that expose a message object, raw JSON object strings, and inline `Key:Value` fields where non-header keys are collected into `Body`.
 - For `pw msg`, a `To` value ending in `.dom` is normalized to `.pollyweb.org` before signing the message and building the inbox URL.
 - `pw msg` should use the shared `pollyweb.normalize_domain_name()` helper for `.dom` expansion; `wallet-cli` now requires a published `pollyweb` release that includes that helper.
+- Wallet-backed CLI sends should go through `pollyweb.Wallet.send(...)` instead of custom signing and `urllib` transport helpers, so alias normalization and wire behavior stay aligned with the published library.
+- Because `Wallet.send(...)` is wallet-scoped, `pw msg` and `pw test` only support `From: Anonymous` or a UUID bind value; arbitrary domain `From` values are not valid wallet senders.
 - For inline `pw msg` arguments, header keys are case-insensitive for `to`, `subject`, `from`, `schema`, `body`, and `header`.
 - `pw test <path>` reads a wrapped YAML fixture, sends only its `Outbound` payload with the same signing rules as `pw msg`, and treats `Inbound` as an expected subset of the returned JSON payload.
 - Keep a pytest coverage hook that iterates every checked-in file under `test-msgs` and runs `cli.main(["test", <fixture>])`, so adding a new wrapped fixture automatically adds command coverage.
 - When upgrading `pollyweb` in an older local virtualenv, follow the package upgrade with `python -m pip install -e '.[dev]'` in that env so stale editable-install metadata does not keep pinning an older exact `pollyweb` version.
 - `pw bind` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
+- `pw bind` stores only the UUID portion of a `Bind:<UUID>` response in `~/.pollyweb/binds.yaml`; keep the wire response parsing compatible with the prefixed format.
+- Wallet-facing commands in `wallet-cli` should use `pollyweb.Wallet.send()` instead of custom signing or manual inbox POST code so alias normalization and wallet semantics match the shared library.
+- Because `wallet-cli` now follows `Wallet.send()` end-to-end for message delivery, explicit `From` values for `pw msg` and `pw test` must be `Anonymous` or a UUID bind value; arbitrary domain senders are no longer supported there.
+- Persist bind domains in canonical form and normalize lookup input the same way, so `.dom` and `.pollyweb.org` refer to the same stored bind.

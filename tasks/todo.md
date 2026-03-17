@@ -1,13 +1,15 @@
 # Task Plan
 
-- [x] Inspect the existing `pw bind` error handling and related docs/tests
-- [x] Add a human-readable network error message for unresolved bind inbox hosts
-- [x] Cover the new bind error behavior with tests
-- [x] Run targeted verification for the bind tests
-- [x] Capture the result and learning in project notes
+- [x] Review the written instructions, docs, and current `pw bind` implementation
+- [x] Normalize bind domains before signing, transport, and local bind persistence
+- [x] Replace the CLI's custom message transport with shared wallet-backed sending
+- [x] Add regression coverage for `.dom` bind requests and wallet-backed command behavior
+- [x] Update the docs and project notes to describe the wallet-backed transport rules
+- [x] Run targeted verification for the wallet CLI command suite
 
 # Review
 
-- Added a bind-specific DNS error formatter so `pw bind` no longer exposes raw `socket.gaierror` text.
-- Added regression coverage for unresolved inbox hosts during `pw bind`.
-- Verified with `./.venv/bin/python -m pytest -q tests/test_cli.py -k 'bind_reports_unresolved_inbox_host or msg_reports_unresolved_inbox_host or bind_requires_bind_token_in_response or bind_sends_signed_message_and_stores_bind'`.
+- Replaced the hand-rolled sign-and-POST transport path with `pollyweb.Wallet.send()` across `bind`, `echo`, `msg`, `test`, `shell`, and `sync`.
+- Normalized `.dom` aliases before bind signing, delivery, and local bind lookup/storage so `pw bind any-hoster.dom` stores and reuses the canonical PollyWeb domain.
+- Aligned `pw msg` and `pw test` with wallet semantics by rejecting arbitrary domain `From` values and documenting the supported `Anonymous` or UUID sender forms.
+- Verified the change with `./.venv/bin/python -m pytest -q tests/test_cli.py`.

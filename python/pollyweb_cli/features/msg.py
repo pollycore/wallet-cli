@@ -10,7 +10,7 @@ import urllib.error
 
 from pollyweb import normalize_domain_name
 from pollyweb_cli.errors import UserFacingError
-from pollyweb_cli.tools.transport import build_signed_message, send_request_message
+from pollyweb_cli.tools.transport import send_wallet_message
 
 import yaml
 
@@ -239,19 +239,14 @@ def cmd_msg(
         key_pair = load_signing_key_pair()
         request, source_name = parse_message_request(arguments)
 
-        request_message = build_signed_message(
+        response_payload, _, _ = send_wallet_message(
+            domain = str(request["To"]),
             subject = str(request["Subject"]),
             body = dict(request["Body"]),
             key_pair = key_pair,
-            domain = str(request["To"]),
+            debug = debug,
             from_value = request.get("From"),
             schema_value = request.get("Schema"),
-        )
-
-        response_payload = send_request_message(
-            domain = str(request["To"]),
-            request_message = request_message,
-            debug = debug,
         )
     except FileNotFoundError:
         if len(arguments) == 1 and Path(arguments[0]).suffix in MESSAGE_FILE_SUFFIXES:

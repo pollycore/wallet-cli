@@ -10,10 +10,10 @@ import urllib.error
 from pathlib import Path
 
 import yaml
-from pollyweb import KeyPair
+from pollyweb import KeyPair, normalize_domain_name
 
 from pollyweb_cli.errors import UserFacingError
-from pollyweb_cli.tools.transport import post_signed_message
+from pollyweb_cli.tools.transport import send_wallet_message
 
 
 BIND_SUBJECT = "Bind@Vault"
@@ -25,6 +25,20 @@ BIND_PATTERN = re.compile(
     r"[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{12}"
 )
+
+
+def normalize_bind_value(bind_value: str) -> str:
+    """Convert a bind token into the UUID-only value stored locally."""
+
+    if bind_value.startswith("Bind:"):
+        return bind_value.split(":", 1)[1]
+    return bind_value
+
+
+def normalize_bind_domain(domain: str) -> str:
+    """Normalize supported bind-domain aliases to canonical hostnames."""
+
+    return normalize_domain_name(domain)
 
 
 def serialize_public_key_value(public_key_pem: str) -> str:
@@ -129,14 +143,19 @@ def save_bind(
 ) -> None:
     """Store or replace the bind entry for a domain and schema combination."""
 
+    normalized_domain = normalize_bind_domain(domain)
     binds = load_binds(binds_path)
-    entry = {**bind_entry, "Domain": domain}
+    entry = {
+        **bind_entry,
+        "Bind": normalize_bind_value(bind_entry["Bind"]),
+        "Domain": normalized_domain,
+    }
     schema = entry.get(BIND_SCHEMA_KEY)
     binds = [
         existing
         for existing in binds
         if not (
-            existing["Domain"] == domain
+            existing["Domain"] == normalized_domain
             and existing.get(BIND_SCHEMA_KEY) == schema
         )
     ]
@@ -151,8 +170,9 @@ def get_first_bind_for_domain(
 ) -> str | None:
     """Return the first stored bind token for a domain."""
 
+    normalized_domain = normalize_bind_domain(domain)
     for bind in binds:
-        if bind["Domain"] == domain:
+        if bind["Domain"] == normalized_domain:
             return bind["Bind"]
     return None
 
@@ -165,22 +185,24 @@ def send_bind_message(
 ) -> dict[str, str]:
     """Send the bind request for a domain and parse the server response."""
 
+    normalized_domain = normalize_bind_domain(domain)
     public_key = serialize_public_key_value(
         public_key_path.read_text(encoding="utf-8")
     )
-    payload = post_signed_message(
-        domain=domain,
+    payload, _, _ = send_wallet_message(
+        domain=normalized_domain,
         subject=BIND_SUBJECT,
         body={"PublicKey": public_key},
         key_pair=key_pair,
         debug=debug,
-        schema_value=None,
     )
 
     try:
         return parse_bind_response(payload)
     except UserFacingError as exc:
-        raise UserFacingError(str(exc).replace("{domain}", domain)) from None
+        raise UserFacingError(
+            str(exc).replace("{domain}", normalized_domain)
+        ) from None
 
 
 def describe_bind_network_error(
@@ -189,10 +211,11 @@ def describe_bind_network_error(
 ) -> str:
     """Convert bind transport failures into user-facing guidance."""
 
+    normalized_domain = normalize_bind_domain(domain)
     if isinstance(reason, socket.gaierror):
         return (
             "Could not resolve PollyWeb inbox host "
-            f"pw.{domain}. Check that the domain name is correct and that "
+            f"pw.{normalized_domain}. Check that the domain name is correct and that "
             "its DNS record exists."
         )
 
@@ -240,6 +263,6 @@ def cmd_bind(
             f"Could not bind {domain}. Network request failed: {reason}"
         ) from None
 
-    print(f"Stored bind for {domain}: {bind_entry['Bind']}")
+    print(f"Stored bind for {domain}: {normalize_bind_value(bind_entry['Bind'])}")
     print(f"Updated {binds_path}")
     return 0

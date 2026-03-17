@@ -96,11 +96,6 @@ from pollyweb_cli.features.sync import (
     build_sync_files_map as _build_sync_files_map,
     cmd_sync as _cmd_sync,
 )
-from pollyweb_cli.tools.transport import (
-    build_signed_message,
-    post_signed_message,
-    send_request_message,
-)
 
 try:
     import readline
@@ -131,7 +126,6 @@ def _sync_runtime_dependencies() -> None:
     debug_tools.DEBUG_CONSOLE = DEBUG_CONSOLE
     debug_tools.SHELL_CONSOLE = SHELL_CONSOLE
     bind_feature.yaml = yaml
-    bind_feature.post_signed_message = post_signed_message
     config_feature.send_onboard_message = send_onboard_message
 
 

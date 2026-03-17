@@ -58,7 +58,15 @@ Bind your wallet to a domain:
 pw bind vault.example.com
 ```
 
-This sends a signed `Bind@Vault` request to `https://pw.vault.example.com/inbox` using the compact public-key value in the request body. When there is no wallet-specific sender yet, the CLI sends `From: Anonymous` and still omits `Schema`, then stores the returned bind token in `~/.pollyweb/binds.yaml`. Rebinding the same domain replaces the existing bind for that domain unless the server returns a different `Schema`, in which case both entries are kept.
+This sends a signed `Bind@Vault` request to `https://pw.vault.example.com/inbox` using the compact public-key value in the request body. The command now uses `pollyweb.Wallet.send()` directly, so when there is no wallet-specific sender yet it sends `From: Anonymous` with the standard PollyWeb schema and stores only the UUID portion of the returned bind token in `~/.pollyweb/binds.yaml`. Rebinding the same domain replaces the existing bind for that domain unless the server returns a different `Schema`, in which case both entries are kept.
+
+You can also use the PollyWeb shorthand domain suffix:
+
+```bash
+pw bind any-hoster.dom
+```
+
+That alias is normalized to `any-hoster.pollyweb.org` before signing, delivery, and local bind storage.
 
 Open an interactive shell against a domain:
 
@@ -98,7 +106,7 @@ Send a signed message from a file:
 pw msg ./message.yaml
 ```
 
-This reads a YAML, JSON, or Python message definition, or you can pass a raw JSON object string or inline `Key:Value` fields. The CLI signs the message with the configured wallet key, sends it to `https://pw.<To>/inbox`, and prints the raw synchronous response body.
+This reads a YAML, JSON, or Python message definition, or you can pass a raw JSON object string or inline `Key:Value` fields. The CLI signs the message with the configured wallet key through `pollyweb.Wallet.send()`, sends it to `https://pw.<To>/inbox`, and prints the raw synchronous response body.
 
 ```bash
 pw msg '{"To":"vault.example.com","Subject":"Echo@Domain","Body":{"Ping":"pong"}}'
@@ -106,7 +114,7 @@ pw msg To:any-domain.org Subject:topic@role DynamicBodyProperty:123
 pw msg to:any-domain.dom subject:Echo@Domain --debug
 ```
 
-For `pw msg`, inline header keys like `to` and `subject` are matched case-insensitively, and a `To` domain ending in `.dom` is expanded to `.pollyweb.org` before signing and sending.
+For `pw msg`, inline header keys like `to` and `subject` are matched case-insensitively, and a `To` domain ending in `.dom` is expanded to `.pollyweb.org` before signing and sending. Because the command now follows wallet semantics directly, `From` must be omitted, `Anonymous`, or a UUID bind value.
 
 Run a wrapped message test fixture:
 
