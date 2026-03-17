@@ -29,7 +29,7 @@ def skip_upgrade_check(
     if (
         request.node.name.startswith("test_preflight_")
         or request.node.name.startswith("test_get_latest_published_version_")
-        or request.node.name.startswith("test_version_flag_checks_for_upgrade_")
+        or request.node.name.startswith("test_version_command_checks_for_upgrade_")
     ):
         return
 

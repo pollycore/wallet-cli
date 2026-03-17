@@ -148,7 +148,7 @@ def print_error(message: str) -> None:
 
 
 def _get_cli_version() -> str:
-    """Resolve the installed package version for `pw --version`."""
+    """Resolve the installed package version for `pw version`."""
 
     try:
         return get_installed_version(PACKAGE_NAME)
@@ -329,6 +329,13 @@ def cmd_upgrade() -> int:
         return 1
 
     print(f"Upgraded {PACKAGE_NAME} from {installed_version} to {latest_version}.")
+    return 0
+
+
+def cmd_version() -> int:
+    """Print the installed CLI version."""
+
+    print(f"pw {_get_cli_version()}")
     return 0
 
 
@@ -591,6 +598,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "version":
+            return cmd_version()
         if args.command == "upgrade":
             return cmd_upgrade()
         if args.command == "config":

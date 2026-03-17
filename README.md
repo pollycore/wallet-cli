@@ -44,7 +44,7 @@ This command skips the preflight prompt and directly installs the latest publish
 To confirm which release is installed:
 
 ```bash
-pw --version
+pw version
 ```
 
 For more setup details, see [docs/install.md](docs/install.md).
@@ -170,6 +170,6 @@ This is useful when you want to inspect the exact message contents being sent or
 - `pw shell <domain>` starts an interactive remote shell session
 - `pw shell <domain>` remembers the last 20 commands per domain for arrow-key navigation
 - `pw shell --debug <domain>` shows the target inbox URL plus shell request and response payloads as colorized YAML
-- `pw --version` prints the installed CLI version after the same upgrade preflight check used by other `pw` commands
+- `pw version` prints the installed CLI version after the same upgrade preflight check used by other `pw` commands
 
 For more examples and command behavior, see [docs/usage.md](docs/usage.md) and the command-specific guides in `docs/commands/`.

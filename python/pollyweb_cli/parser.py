@@ -27,13 +27,12 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         prog="pw",
         description="PollyWeb command line wallet.",
     )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=f"%(prog)s {get_cli_version()}",
+    subparsers = parser.add_subparsers(dest="command")
+
+    version_parser = subparsers.add_parser(
+        "version",
         help="Show the installed CLI version and exit.",
     )
-    subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser(
         "upgrade",

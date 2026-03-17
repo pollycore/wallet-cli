@@ -54,19 +54,16 @@ def test_dependency_contract_requires_pollyweb_release_with_unsigned_uuid_send_s
     assert "Hash" not in payloads[0]
     assert "Signature" not in payloads[0]
 
-def test_version_flag_prints_installed_version(monkeypatch, capsys):
+def test_version_command_prints_installed_version(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_maybe_prompt_for_upgrade", lambda argv: None)
     monkeypatch.setattr(cli, "get_installed_version", lambda _: "1.2.3")
 
-    with pytest.raises(SystemExit) as exc:
-        cli.main(["--version"])
-
-    assert exc.value.code == 0
+    assert cli.main(["version"]) == 0
     captured = capsys.readouterr()
     assert captured.out.strip() == "pw 1.2.3"
     assert captured.err == ""
 
-def test_version_flag_checks_for_upgrade_before_printing_version(monkeypatch, capsys):
+def test_version_command_checks_for_upgrade_before_printing_version(monkeypatch, capsys):
     prompted = []
 
     def fake_preflight(argv):
@@ -76,11 +73,8 @@ def test_version_flag_checks_for_upgrade_before_printing_version(monkeypatch, ca
     monkeypatch.setattr(cli, "_maybe_prompt_for_upgrade", fake_preflight)
     monkeypatch.setattr(cli, "get_installed_version", lambda _: "1.2.3")
 
-    with pytest.raises(SystemExit) as exc:
-        cli.main(["--version"])
-
-    assert exc.value.code == 0
-    assert prompted == [["--version"]]
+    assert cli.main(["version"]) == 0
+    assert prompted == [["version"]]
     captured = capsys.readouterr()
     assert captured.out.strip() == "pw 1.2.3"
 

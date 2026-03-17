@@ -14,7 +14,7 @@ Command-specific guides:
 Quick examples:
 
 ```bash
-pw --version
+pw version
 pw config
 pw bind vault.example.com
 pw echo vault.example.com
