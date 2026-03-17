@@ -103,9 +103,10 @@ This reads a YAML, JSON, or Python message definition, or you can pass a raw JSO
 ```bash
 pw msg '{"To":"vault.example.com","Subject":"Echo@Domain","Body":{"Ping":"pong"}}'
 pw msg To:any-domain.org Subject:topic@role DynamicBodyProperty:123
+pw msg to:any-domain.dom subject:Echo@Domain --debug
 ```
 
-For `pw msg`, a `To` domain ending in `.dom` is expanded to `.pollyweb.org` before signing and sending.
+For `pw msg`, inline header keys like `to` and `subject` are matched case-insensitively, and a `To` domain ending in `.dom` is expanded to `.pollyweb.org` before signing and sending.
 
 Each command you enter is parsed into a base `Command` plus an `Arguments` dictionary, then sent as a signed `Shell@Domain` message whose `From` header is set to the first stored bind for that domain. Long flags like `--all 123` become `{"all":"123"}`, short flags like `-a 123` become `{"a":"123"}`, `key=value` tokens like `a=123` become `{"a":"123"}`, and plain positional arguments remain indexed as `{"0":"value"}`. `pw shell` also keeps the last 20 commands for that exact domain in `~/.pollyweb/history/`, so you can use the up/down arrows to revisit recent commands. Commands are recorded before the network request is sent, which means failed requests still appear in that domain's history.
 

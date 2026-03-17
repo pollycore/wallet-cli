@@ -22,6 +22,14 @@ HEADER_FIELDS = {
     "Body",
     "Header",
 }
+INLINE_HEADER_FIELD_MAP = {
+    "to": "To",
+    "subject": "Subject",
+    "from": "From",
+    "schema": "Schema",
+    "body": "Body",
+    "header": "Header",
+}
 MESSAGE_FILE_SUFFIXES = {
     ".yaml",
     ".yml",
@@ -171,8 +179,10 @@ def parse_inline_message_arguments(arguments: list[str]) -> dict[str, object]:
 
         value = yaml.safe_load(raw_value)
 
-        if key in HEADER_FIELDS:
-            request[key] = value
+        normalized_key = INLINE_HEADER_FIELD_MAP.get(key.lower(), key)
+
+        if normalized_key in HEADER_FIELDS:
+            request[normalized_key] = value
             continue
 
         body[key] = value

@@ -22,10 +22,11 @@ You can also pass a JSON object directly:
 pw msg '{"To":"vault.example.com","Subject":"Echo@Domain","Body":{"Ping":"pong"}}'
 ```
 
-Or build the message inline with `Key:Value` pairs. `To`, `Subject`, `From`, `Schema`, `Body`, and `Header` are treated as top-level fields, while any other keys are collected into `Body`:
+Or build the message inline with `Key:Value` pairs. `To`, `Subject`, `From`, `Schema`, `Body`, and `Header` are treated as top-level fields, while any other keys are collected into `Body`. Those header field names are matched case-insensitively for inline arguments, so `to:` and `subject:` work the same as `To:` and `Subject:`:
 
 ```bash
 pw msg To:any-domain.org Subject:topic@role DynamicBodyProperty:123
+pw msg to:any-domain.dom subject:Echo@Domain --debug
 ```
 
 For `pw msg`, domains ending in `.dom` are treated as shorthand for `.pollyweb.org`, so `To:any-domain.dom` is sent to `https://pw.any-domain.pollyweb.org/inbox` with `To: any-domain.pollyweb.org` in the signed message header.

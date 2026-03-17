@@ -1290,6 +1290,48 @@ def test_msg_expands_dom_suffix_from_json_argument(monkeypatch, tmp_path, capsys
     assert captured.out.strip() == "expanded-json"
 
 
+def test_msg_accepts_lowercase_inline_headers_with_debug(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        assert payload["Header"]["To"] == "any-domain.pollyweb.org"
+        assert payload["Header"]["Subject"] == "Echo@Domain"
+        assert payload["Body"] == {}
+        assert request.full_url == "https://pw.any-domain.pollyweb.org/inbox"
+        return DummyResponse(b'{"ok":true}')
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(
+        [
+            "msg",
+            "to:any-domain.dom",
+            "subject:Echo@Domain",
+            "--debug",
+        ]
+    )
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Outbound payload to https://pw.any-domain.pollyweb.org/inbox:" in captured.out
+    assert "To: any-domain.pollyweb.org" in captured.out
+    assert "Subject: Echo@Domain" in captured.out
+    assert "Inbound payload:" in captured.out
+    assert '{"ok":true}' not in captured.err
+
+
 def test_msg_accepts_python_message_file(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
