@@ -1,5 +1,6 @@
 - Create a symbolic link "AGENTS-user.md" pointing to "~/AGENTS.md" if it doesn't exist.
 - Read "AGENTS-user.md" for general instructions on AGENTS development.
+- Read `tasks/lessons.md` for historical lessons and maintenance gotchas that should inform new work without cluttering these active instructions.
 
 - Read the goal.yaml file
 - When answering questions about behavior, start by checking the written instructions and docs first, and be specific about what they do or do not say before using code to confirm runtime behavior.
@@ -12,9 +13,6 @@
 - For inline `pw msg` arguments, header keys are case-insensitive for `to`, `subject`, `from`, `schema`, `body`, and `header`.
 - `pw test <path>` reads a wrapped YAML fixture, sends only its `Outbound` payload with the same signing rules as `pw msg`, and treats `Inbound` as an expected subset of the returned JSON payload.
 - Keep a pytest coverage hook that iterates every checked-in file under `test-msgs` and runs `cli.main(["test", <fixture>])`, so adding a new wrapped fixture automatically adds command coverage.
-- When upgrading `pollyweb` in an older local virtualenv, follow the package upgrade with `python -m pip install -e '.[dev]'` in that env so stale editable-install metadata does not keep pinning an older exact `pollyweb` version.
 - `pw bind` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
 - `pw bind` stores only the UUID portion of a `Bind:<UUID>` response in `~/.pollyweb/binds.yaml`; keep the wire response parsing compatible with the prefixed format.
-- Wallet-facing commands in `wallet-cli` should use `pollyweb.Wallet.send()` instead of custom signing or manual inbox POST code so alias normalization and wallet semantics match the shared library.
-- Because `wallet-cli` now follows `Wallet.send()` end-to-end for message delivery, explicit `From` values for `pw msg` and `pw test` must be `Anonymous` or a UUID bind value; arbitrary domain senders are no longer supported there.
 - Persist bind domains in canonical form and normalize lookup input the same way, so `.dom` and `.pollyweb.org` refer to the same stored bind.
