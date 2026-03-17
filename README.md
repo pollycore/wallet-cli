@@ -7,6 +7,7 @@ It helps you:
 - create a local PollyWeb key pair
 - bind that identity to a PollyWeb-enabled domain
 - send an echo request to a domain and verify the signed reply
+- send a signed PollyWeb message from a file
 - listen for notifier chat events over AppSync Events
 - send signed shell commands to a remote domain
 
@@ -91,6 +92,14 @@ pw echo vault.example.com
 
 This sends a signed `Echo@Domain` message to `https://pw.<domain>/inbox`, expects a synchronous PollyWeb message in return, verifies the reply signature using the responding domain's DKIM key, and checks that the response `From`, `To`, `Subject`, and `Correlation` values match the target domain and the original request.
 
+Send a signed message loaded from a file:
+
+```bash
+pw msg ./message.yaml
+```
+
+This reads a YAML or JSON message definition, signs it with the configured wallet key, sends it to `https://pw.<To>/inbox`, and prints the raw synchronous response body.
+
 Each command you enter is parsed into a base `Command` plus an `Arguments` dictionary, then sent as a signed `Shell@Domain` message whose `From` header is set to the first stored bind for that domain. Long flags like `--all 123` become `{"all":"123"}`, short flags like `-a 123` become `{"a":"123"}`, `key=value` tokens like `a=123` become `{"a":"123"}`, and plain positional arguments remain indexed as `{"0":"value"}`. `pw shell` also keeps the last 20 commands for that exact domain in `~/.pollyweb/history/`, so you can use the up/down arrows to revisit recent commands. Commands are recorded before the network request is sent, which means failed requests still appear in that domain's history.
 
 To inspect the signed shell request and response for each command as colorized, indented YAML, including the full inbox URL the POST is sent to:
@@ -117,6 +126,8 @@ This is useful when you want to inspect the exact message contents being sent or
 - `pw bind --debug <domain>` shows the target inbox URL plus bind request and response payloads as colorized YAML
 - `pw echo <domain>` sends `Echo@Domain` and verifies the signed synchronous response
 - `pw echo --debug <domain>` shows the target inbox URL plus echo request and response payloads as colorized YAML
+- `pw msg <path>` sends a signed message loaded from a YAML or JSON file
+- `pw msg --debug <path>` shows the target inbox URL plus message request and response payloads as colorized YAML
 - `pw chat` listens for AppSync Events on the configured notifier and wallet channel
 - `pw chat [domain]` optionally overrides `Helpers.Notifier` for that run
 - `pw chat --test` publishes a `"TEST"` event immediately after connecting, then listens

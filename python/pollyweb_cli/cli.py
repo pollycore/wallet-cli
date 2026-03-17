@@ -68,6 +68,9 @@ from pollyweb_cli.features.echo import (
     cmd_echo as _cmd_echo,
     parse_and_verify_echo_response,
 )
+from pollyweb_cli.features.msg import (
+    cmd_msg as _cmd_msg,
+)
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.parser import build_parser as _build_parser
 from pollyweb_cli.features.shell import (
@@ -285,6 +288,19 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
     )
 
 
+def cmd_msg(path: str, debug: bool = False) -> int:
+    """Run the message-file command with the current filesystem paths."""
+
+    _sync_runtime_dependencies()
+    return _cmd_msg(
+        Path(path),
+        debug = debug,
+        config_dir = CONFIG_DIR,
+        require_configured_keys = require_configured_keys,
+        load_signing_key_pair = load_signing_key_pair,
+    )
+
+
 def cmd_chat(
     domain: str | None = None,
     debug: bool = False,
@@ -334,6 +350,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_bind(domain=args.domain, debug=args.debug)
         if args.command == "echo":
             return cmd_echo(domain=args.domain, debug=args.debug)
+        if args.command == "msg":
+            return cmd_msg(path=args.path, debug=args.debug)
         if args.command == "shell":
             return cmd_shell(domain=args.domain, debug=args.debug)
         if args.command == "chat":
