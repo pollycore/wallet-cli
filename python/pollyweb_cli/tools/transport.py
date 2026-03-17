@@ -26,6 +26,18 @@ def serialize_wallet_response(response: object) -> str:
     return str(response)
 
 
+def build_debug_outbound_payload(
+    wallet: Wallet,
+    request_message: Msg
+) -> dict[str, object]:
+    """Render the actual outbound payload shape used by `wallet.send()`."""
+
+    if wallet.ID == "Anonymous":
+        return request_message.to_dict()
+
+    return wallet.sign(request_message).to_dict()
+
+
 def _load_first_bind_for_domain(
     domain: str,
     binds_path: Path
@@ -146,7 +158,9 @@ def send_wallet_message(
         request_url = f"https://pw.{normalized_domain}/inbox"
         print_debug_payload(
             f"Outbound payload to {request_url}",
-            wallet.sign(request_message).to_dict(),
+            build_debug_outbound_payload(
+                wallet,
+                request_message),
         )
 
     response = wallet.send(request_message)

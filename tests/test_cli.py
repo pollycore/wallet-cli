@@ -2126,6 +2126,70 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
     assert captured.err == ""
 
 
+def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        assert request.full_url == "https://pw.any-domain.pollyweb.org/inbox"
+        assert payload["Header"]["To"] == "any-domain.pollyweb.org"
+        assert payload["Header"]["From"] == "Anonymous"
+        assert "Hash" not in payload
+        assert "Signature" not in payload
+        return DummyResponse(
+            make_echo_response_payload(
+                from_value = "any-domain.pollyweb.org",
+                correlation = payload["Header"]["Correlation"],
+                private_key = remote_key_pair.PrivateKey,
+            )
+        )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: (remote_key_pair.PublicKey, "ed25519"),
+    )
+
+    exit_code = cli.main(["echo", "--debug", "any-domain.dom"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert (
+        "\nOutbound payload to https://pw.any-domain.pollyweb.org/inbox:\n"
+        in captured.out
+    )
+    assert "Subject: Echo@Domain" in captured.out
+    assert "To: any-domain.pollyweb.org" in captured.out
+    outbound = captured.out.split("\n\nInbound payload:\n", 1)[0]
+    assert "From: Anonymous" in outbound
+    assert "Hash:" not in outbound
+    assert "Signature:" not in outbound
+    assert "\n\nInbound payload:\n" in captured.out
+    assert "From: any-domain.pollyweb.org" in captured.out
+    assert "Echo: ok" in captured.out
+    assert "Verified echo response from any-domain.dom:" in captured.out
+    assert (
+        " - Signature verified via DKIM lookup for selector default "
+        "on any-domain.pollyweb.org" in captured.out
+    )
+    assert " - From matched expected domain: any-domain.pollyweb.org" in captured.out
+    assert " - To matched expected sender: any-domain.pollyweb.org" in captured.out
+    assert captured.err == ""
+
+
 def test_print_echo_response_formats_payload(capsys):
     cli.print_echo_response(
         '{"Header":{"Subject":"Echo@Domain"},"Body":{"Echo":"ok"}}'
