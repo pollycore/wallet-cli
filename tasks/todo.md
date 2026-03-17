@@ -1,16 +1,16 @@
 # Task Plan
 
-- [x] Review the written instructions, docs, and current `pw echo` validation behavior
-- [x] Change echo response validation so a stored bind UUID for the target domain is accepted as a valid `To`
-- [x] Add regression coverage for bind-backed echo replies and keep invalid `To` failures intact
-- [x] Refresh docs and lessons to match the accepted echo behavior
-- [x] Run targeted verification and capture the review
+- [x] Review the written instructions, docs, and current domain-signing behavior for outbound messages
+- [x] Remove `Header.Algorithm` from domain-signed outbound messages at the `pollyweb` library layer
+- [x] Add regression coverage proving domain sends/signing omit `Algorithm` while wallet behavior still works
+- [x] Update `wallet-cli` only if it assumes `Algorithm` is present on domain messages
+- [x] Run targeted verification in both repos and capture the review
 
 # Review
 
-- Updated `python/pollyweb_cli/features/echo.py` so `pw echo` accepts a response `To` that matches either the normalized target domain or that domain's stored bind UUID from `binds.yaml`.
-- Threaded `BINDS_PATH` into the echo command entrypoint in `python/pollyweb_cli/cli.py` so echo verification can reuse the same canonical bind lookup rules as wallet-backed sending.
-- Added regression coverage in `tests/test_echo.py` for a bind-backed echo reply and for an unrelated UUID still failing the `To` check.
-- Extended `tests/cli_test_helpers.py` so tests can build signed raw JSON echo payloads for UUID `To` values, matching the server behavior that bypasses local `Msg` domain validation.
-- Updated `docs/commands/echo.md`, `README.md`, and `tasks/lessons.md` to document the accepted bind-backed echo behavior.
-- Verified with `./.venv/bin/python -m pytest -q tests/test_echo.py` and `git diff --check`.
+- Updated `/Users/jorgemf/Git/pollyweb-pypi/pollyweb/domain.py` so `Domain.sign()` signs with the DKIM-derived algorithm without serializing `Header.Algorithm` on domain messages.
+- Added `/Users/jorgemf/Git/pollyweb-pypi/pollyweb/msg.py` support for detached signing that preserves the exact wire payload while still using the selected algorithm for cryptographic signing.
+- Added regression coverage in `/Users/jorgemf/Git/pollyweb-pypi/tests/test_msg.py` to assert domain-signed messages and `Domain.send()` payloads omit `Algorithm`, while verification still succeeds.
+- Updated `/Users/jorgemf/Git/pollyweb-pypi/docs/domain/sign.md`, `/Users/jorgemf/Git/pollyweb-pypi/docs/msg.md`, `/Users/jorgemf/Git/pollyweb-pypi/docs/msg/verify.md`, and `/Users/jorgemf/Git/pollyweb-pypi/RELEASES.md` to document the DKIM-inferred behavior.
+- Recorded the new rule in `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md`; no `wallet-cli` runtime code changes were needed.
+- Verified with `cd /Users/jorgemf/Git/pollyweb-pypi && ./.venv/bin/python -m pytest -q tests/test_msg.py` and `cd /Users/jorgemf/Git/wallet-cli && ./.venv/bin/python -m pytest -q tests/test_msg_command.py tests/test_echo.py`.

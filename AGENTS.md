@@ -20,3 +20,4 @@
 - `pw bind` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
 - `pw bind` stores only the UUID portion of a `Bind:<UUID>` response in `~/.pollyweb/binds.yaml`; keep the wire response parsing compatible with the prefixed format.
 - Persist bind domains in canonical form and normalize lookup input the same way, so `.dom` and `.pollyweb.org` refer to the same stored bind.
+- Domain-signed PollyWeb messages should omit `Header.Algorithm`; receivers must infer the signature algorithm from DKIM using the declared `Selector`, and `wallet-cli` should not add or require that header for domain senders.
