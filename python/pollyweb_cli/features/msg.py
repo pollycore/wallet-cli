@@ -8,6 +8,7 @@ import runpy
 import socket
 import urllib.error
 
+from pollyweb import normalize_domain_name
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.tools.transport import build_signed_message, send_request_message
 
@@ -36,14 +37,6 @@ MESSAGE_FILE_SUFFIXES = {
     ".json",
     ".py",
 }
-POLLYWEB_DOMAIN_ALIAS_SUFFIX = ".dom"
-POLLYWEB_DOMAIN_CANONICAL_SUFFIX = ".pollyweb.org"
-
-try:
-    from pollyweb import normalize_domain_name as shared_normalize_domain_name
-except ImportError:
-    shared_normalize_domain_name = None
-
 
 def _normalize_loaded_message(
     loaded: object,
@@ -113,17 +106,7 @@ def _normalize_loaded_message(
 
 def normalize_message_domain(domain: str) -> str:
     """Expand supported domain aliases used by `pw msg`."""
-
-    if shared_normalize_domain_name is not None:
-        return shared_normalize_domain_name(domain)
-
-    stripped = domain.strip()
-    if stripped.endswith(POLLYWEB_DOMAIN_ALIAS_SUFFIX):
-        return (
-            stripped[: -len(POLLYWEB_DOMAIN_ALIAS_SUFFIX)]
-            + POLLYWEB_DOMAIN_CANONICAL_SUFFIX
-        )
-    return stripped
+    return normalize_domain_name(domain)
 
 
 def load_message_request(path: Path) -> dict[str, object]:
