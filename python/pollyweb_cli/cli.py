@@ -223,14 +223,15 @@ def _prompt_for_upgrade(installed_version: str, latest_version: str, argv: list[
     command_text = "pw"
     if argv:
         command_text = f"pw {shlex.join(argv)}"
+
     reply = input(
         (
             f"A newer {PACKAGE_NAME} release is available "
             f"({installed_version} -> {latest_version}). "
-            f"Upgrade now before running `{command_text}`? [Y/n] "
+            f"Upgrade now before running `{command_text}`? [y/N] "
         )
     ).strip().lower()
-    return reply in {"", "y", "yes"}
+    return reply in {"y", "yes"}
 
 
 def _upgrade_and_restart(argv: list[str], latest_version: str) -> int:

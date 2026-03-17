@@ -1,18 +1,15 @@
 # Task Plan
 
-- [x] Review the written instructions, docs, and current wallet-backed send behavior
-- [x] Add shared `--unsigned` and `--anonymous` handling for wallet-backed CLI send paths
-- [x] Extend the `pollyweb` transport rules so unsigned UUID-backed sends are valid
-- [x] Cover bind, msg, shell, sync, chat, and shared parser behavior with regression tests
-- [x] Refresh command docs and record the lesson after verification
-- [x] Run targeted verification in both `wallet-cli` and `pollyweb-pypi`
+- [x] Review the written instructions, docs, and current upgrade-preflight behavior
+- [x] Change the upgrade prompt so plain `Enter` declines instead of upgrading
+- [x] Add regression tests for explicit yes, explicit no, and empty-input prompt behavior
+- [x] Refresh the user-facing docs to match the safer default
+- [x] Run targeted verification and capture the lesson
 
 # Review
 
-- Added `--unsigned` and `--anonymous` to `pw msg`, `bind`, `test`, `shell`, `chat`, `sync`, and `echo`.
-- `--anonymous` now bypasses stored bind lookup and forces `From: Anonymous`; for `pw chat` it also switches the subscription channel and auth token body to `Anonymous`.
-- `--unsigned` now strips `Hash` and `Signature` while keeping the selected sender, including stored bind UUID senders.
-- Updated `pollyweb` so direct unsigned UUID-backed `Msg.send()` calls validate and transport cleanly.
-- Refreshed README, command docs, AGENTS guidance, lessons, and verification coverage for the new flags.
-- Verified with `./.venv/bin/python -m pytest -q tests/test_cli.py -k 'test_bind_ or test_msg_ or test_test_ or test_echo_ or test_shell_ or test_sync_ or test_chat_'` and `./.venv/bin/python -m pytest -q tests/test_msg.py -k 'TestWallet or unsigned'`.
-- Follow-up hardening: `wallet-cli` now requires the first published `pollyweb` release that includes unsigned UUID-send support, and the local pre-push hook should verify that contract with a clean-install smoke test.
+- Changed the self-upgrade prompt in `python/pollyweb_cli/cli.py` from `[Y/n]` to `[y/N]` and made empty input decline instead of upgrade.
+- Added focused regression tests in `tests/test_cli_core.py` for empty input, explicit `y`, and explicit `n`.
+- Updated `README.md` to state that only `y` or `yes` upgrades, and that pressing `Enter` declines.
+- Recorded the prompt-default lesson in `tasks/lessons.md`.
+- Verified with `./.venv/bin/python -m pytest -q tests/test_cli_core.py -k 'prompt_for_upgrade or preflight or version_flag'`.

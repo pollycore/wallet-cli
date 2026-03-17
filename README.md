@@ -31,7 +31,7 @@ After installation, the CLI is available as:
 pw --help
 ```
 
-Before running any `pw` command, the CLI checks PyPI for a newer published `pollyweb-cli` release. If it finds one and stdin is interactive, it prompts to upgrade first, installs the newer release into the current Python environment, and then reruns the original `pw ...` command on the upgraded code. If you decline, the CLI remembers that target release in `~/.pollyweb/declined-upgrades.yaml` and stops asking again until a newer release appears.
+Before running any `pw` command, the CLI checks PyPI for a newer published `pollyweb-cli` release. If it finds one and stdin is interactive, it prompts to upgrade first, installs the newer release into the current Python environment only when you answer `y` or `yes`, and then reruns the original `pw ...` command on the upgraded code. Pressing `Enter` declines the upgrade. If you decline, the CLI remembers that target release in `~/.pollyweb/declined-upgrades.yaml` and stops asking again until a newer release appears.
 
 To confirm which release is installed:
 

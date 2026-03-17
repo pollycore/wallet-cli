@@ -99,6 +99,42 @@ def test_preflight_skips_when_no_newer_release(monkeypatch):
     assert cli._maybe_prompt_for_upgrade(["bind", "vault.example.com"]) is None
     assert prompted["called"] is False
 
+def test_prompt_for_upgrade_defaults_to_decline_on_empty_input(monkeypatch):
+    monkeypatch.setattr(builtins, "input", lambda prompt: "")
+
+    assert (
+        cli._prompt_for_upgrade(
+            "0.1.61",
+            "0.1.62",
+            ["echo", "vault.example.com"],
+        )
+        is False
+    )
+
+def test_prompt_for_upgrade_accepts_explicit_yes(monkeypatch):
+    monkeypatch.setattr(builtins, "input", lambda prompt: "y")
+
+    assert (
+        cli._prompt_for_upgrade(
+            "0.1.61",
+            "0.1.62",
+            ["echo", "vault.example.com"],
+        )
+        is True
+    )
+
+def test_prompt_for_upgrade_rejects_explicit_no(monkeypatch):
+    monkeypatch.setattr(builtins, "input", lambda prompt: "n")
+
+    assert (
+        cli._prompt_for_upgrade(
+            "0.1.61",
+            "0.1.62",
+            ["echo", "vault.example.com"],
+        )
+        is False
+    )
+
 def test_preflight_prompts_and_persists_decline(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(cli, "DECLINED_UPGRADES_PATH", tmp_path / "declined-upgrades.yaml")
