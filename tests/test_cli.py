@@ -777,7 +777,9 @@ def test_config_onboards_with_configured_notifier(monkeypatch, tmp_path):
     assert send_calls[0][1] == public_key_path.read_bytes()
 
 
-def test_bind_sends_signed_message_and_stores_bind(monkeypatch, tmp_path, capsys):
+def test_bind_sends_unsigned_anonymous_message_and_stores_bind(
+    monkeypatch, tmp_path, capsys
+):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
     public_key_path = config_dir / "public.pem"
@@ -822,8 +824,8 @@ def test_bind_sends_signed_message_and_stores_bind(monkeypatch, tmp_path, capsys
     assert "-----BEGIN PUBLIC KEY-----" not in body
     assert "-----END PUBLIC KEY-----" not in body
     assert '\\n' not in body.split('"PublicKey":"', 1)[1].split('"', 1)[0]
-    assert '"Hash":"' in body
-    assert '"Signature":"' in body
+    assert '"Hash":"' not in body
+    assert '"Signature":"' not in body
 
     captured = capsys.readouterr()
     assert stored_bind_value in captured.out
@@ -917,6 +919,9 @@ def test_bind_debug_prints_outbound_and_inbound_payloads(monkeypatch, tmp_path, 
     assert "From: Anonymous" in captured.out
     assert "Schema: pollyweb.org/MSG:1.0" in captured.out
     assert "Domain: vault.example.com" in captured.out
+    outbound = captured.out.split("\n\nInbound payload:\n", 1)[0]
+    assert "Hash:" not in outbound
+    assert "Signature:" not in outbound
     assert "\n\nInbound payload:\n" in captured.out
     assert "Inbound payload:" in captured.out
     assert "Body:" in captured.out
