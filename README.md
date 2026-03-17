@@ -122,7 +122,7 @@ Run a wrapped message test fixture:
 pw test ./test.yaml
 ```
 
-This reads a YAML file with `Outbound` and optional `Inbound` sections. The CLI sends only `Outbound`, then if `Inbound` is present it parses the synchronous JSON response and verifies that the expected `Inbound` fields appear in the returned payload.
+This reads a YAML file with `Outbound` and optional `Inbound` sections. The CLI sends only `Outbound` with the same wallet-backed rules as `pw msg`, then if `Inbound` is present it parses the synchronous JSON response and verifies that the expected `Inbound` fields appear in the returned payload.
 
 Each command you enter is parsed into a base `Command` plus an `Arguments` dictionary, then sent as a signed `Shell@Domain` message whose `From` header is set to the first stored bind for that domain. Long flags like `--all 123` become `{"all":"123"}`, short flags like `-a 123` become `{"a":"123"}`, `key=value` tokens like `a=123` become `{"a":"123"}`, and plain positional arguments remain indexed as `{"0":"value"}`. `pw shell` also keeps the last 20 commands for that exact domain in `~/.pollyweb/history/`, so you can use the up/down arrows to revisit recent commands. Commands are recorded before the network request is sent, which means failed requests still appear in that domain's history.
 

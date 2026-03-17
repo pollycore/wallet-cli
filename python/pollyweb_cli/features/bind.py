@@ -192,7 +192,10 @@ def send_bind_message(
     payload, _, _ = send_wallet_message(
         domain=normalized_domain,
         subject=BIND_SUBJECT,
-        body={"PublicKey": public_key},
+        body={
+            "Domain": normalized_domain,
+            "PublicKey": public_key,
+        },
         key_pair=key_pair,
         debug=debug,
     )

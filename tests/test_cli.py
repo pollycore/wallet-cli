@@ -634,6 +634,7 @@ def test_bind_sends_signed_message_and_stores_bind(monkeypatch, tmp_path, capsys
     assert '"Schema":"pollyweb.org/MSG:1.0"' in body
     assert '"To":"vault.example.com"' in body
     assert '"Subject":"Bind@Vault"' in body
+    assert '"Domain":"vault.example.com"' in body
     assert "-----BEGIN PUBLIC KEY-----" not in body
     assert "-----END PUBLIC KEY-----" not in body
     assert '\\n' not in body.split('"PublicKey":"', 1)[1].split('"', 1)[0]
@@ -682,6 +683,7 @@ def test_bind_normalizes_dom_alias_when_using_wallet_send(
     body = request.data.decode()
     assert '"To":"any-hoster.pollyweb.org"' in body
     assert '"Schema":"pollyweb.org/MSG:1.0"' in body
+    assert '"Domain":"any-hoster.pollyweb.org"' in body
 
     captured = capsys.readouterr()
     assert "Stored bind for any-hoster.dom" in captured.out
@@ -730,6 +732,7 @@ def test_bind_debug_prints_outbound_and_inbound_payloads(monkeypatch, tmp_path, 
     assert "To: vault.example.com" in captured.out
     assert "From: Anonymous" in captured.out
     assert "Schema: pollyweb.org/MSG:1.0" in captured.out
+    assert "Domain: vault.example.com" in captured.out
     assert "\n\nInbound payload:\n" in captured.out
     assert "Inbound payload:" in captured.out
     assert "Body:" in captured.out
