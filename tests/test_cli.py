@@ -154,7 +154,7 @@ def test_parser_accepts_msg_command():
     args = parser.parse_args(["msg", "./message.yaml", "--debug"])
 
     assert args.command == "msg"
-    assert args.path == "./message.yaml"
+    assert args.message == ["./message.yaml"]
     assert args.debug is True
 
 
@@ -1151,6 +1151,112 @@ def test_msg_reports_missing_message_file(monkeypatch, tmp_path, capsys):
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "Message file not found" in captured.err
+
+
+def test_msg_accepts_json_argument(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        assert payload["Header"]["To"] == "vault.example.com"
+        assert payload["Header"]["Subject"] == "Echo@Domain"
+        assert payload["Body"] == {"Ping": "pong"}
+        return DummyResponse(b'{"ok":true}')
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(
+        [
+            "msg",
+            '{"To":"vault.example.com","Subject":"Echo@Domain","Body":{"Ping":"pong"}}',
+        ]
+    )
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == '{"ok":true}'
+
+
+def test_msg_accepts_inline_arguments(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        assert payload["Header"]["To"] == "any-domain.org"
+        assert payload["Header"]["Subject"] == "topic@role"
+        assert payload["Body"] == {"DynamicBodyProperty": 123}
+        return DummyResponse(b"inline")
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(
+        [
+            "msg",
+            "To:any-domain.org",
+            "Subject:topic@role",
+            "DynamicBodyProperty:123",
+        ]
+    )
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "inline"
+
+
+def test_msg_accepts_python_message_file(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    message_path = tmp_path / "message.py"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    message_path.write_text(
+        (
+            "MESSAGE = {\n"
+            '    "To": "vault.example.com",\n'
+            '    "Subject": "Echo@Domain",\n'
+            '    "Body": {"Ping": "pong"},\n'
+            "}\n"
+        ),
+        encoding = "utf-8")
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        assert payload["Header"]["To"] == "vault.example.com"
+        assert payload["Header"]["Subject"] == "Echo@Domain"
+        assert payload["Body"] == {"Ping": "pong"}
+        return DummyResponse(b"python")
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["msg", str(message_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "python"
 
 
 def test_echo_fails_when_response_headers_do_not_make_sense(

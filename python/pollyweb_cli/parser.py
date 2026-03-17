@@ -62,11 +62,12 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
 
     msg_parser = subparsers.add_parser(
         "msg",
-        help="Send a signed message loaded from a file.",
+        help="Send a signed message from a file, JSON object, or inline fields.",
     )
     msg_parser.add_argument(
-        "path",
-        help="Path to a YAML or JSON message file.",
+        "message",
+        nargs = "+",
+        help="Message input as a file path, JSON object, or inline Key:Value fields.",
     )
     msg_parser.add_argument(
         "--debug",

@@ -18,6 +18,8 @@ pw config
 pw bind vault.example.com
 pw echo vault.example.com
 pw msg ./message.yaml
+pw msg '{"To":"vault.example.com","Subject":"Echo@Domain","Body":{"Ping":"pong"}}'
+pw msg To:any-domain.org Subject:topic@role DynamicBodyProperty:123
 pw chat
 pw shell vault.example.com
 pw sync vault.example.com

@@ -288,12 +288,12 @@ def cmd_shell(domain: str, debug: bool = False) -> int:
     )
 
 
-def cmd_msg(path: str, debug: bool = False) -> int:
-    """Run the message-file command with the current filesystem paths."""
+def cmd_msg(message: list[str], debug: bool = False) -> int:
+    """Run the flexible message command with the current filesystem paths."""
 
     _sync_runtime_dependencies()
     return _cmd_msg(
-        Path(path),
+        message,
         debug = debug,
         config_dir = CONFIG_DIR,
         require_configured_keys = require_configured_keys,
@@ -351,7 +351,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "echo":
             return cmd_echo(domain=args.domain, debug=args.debug)
         if args.command == "msg":
-            return cmd_msg(path=args.path, debug=args.debug)
+            return cmd_msg(message=args.message, debug=args.debug)
         if args.command == "shell":
             return cmd_shell(domain=args.domain, debug=args.debug)
         if args.command == "chat":
