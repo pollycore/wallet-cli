@@ -29,9 +29,18 @@ def skip_upgrade_check(
         request.node.name.startswith("test_preflight_")
         or request.node.name.startswith("test_get_latest_published_version_")
         or request.node.name.startswith("test_version_command_checks_for_upgrade_")
+        or request.node.name.startswith("test_requires_published_runtime_")
     ):
         return
 
     env_name = getattr(cli, "SKIP_UPGRADE_CHECK_ENV", None)
     if env_name:
         monkeypatch.setenv(env_name, "1")
+
+    # Most command tests exercise feature behavior rather than the version
+    # preflight, so force the normal "skip upgrade" branch even when the local
+    # editable/dev runtime would otherwise require a published release.
+    monkeypatch.setattr(
+        cli,
+        "_requires_published_runtime",
+        lambda: False)
