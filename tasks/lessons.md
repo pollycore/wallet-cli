@@ -36,6 +36,7 @@
 - For `pw echo --debug`, label the DNSSEC Debugger click-through URL as a test link for the verified `pw.<domain>` branch so the terminal output makes that direct check obvious too.
 - For `pw echo --debug`, label the Google DNS click-through URL as a test link for the verified `pw.<domain>` branch so the terminal output makes that resolver check obvious too.
 - For `pw echo --debug`, include a labeled Google DNS A-record test URL for the verified `pw.<domain>` branch so users can jump straight to the `type=A` resolver view.
+- When `pw echo` reply validation migrates into `pollyweb`, move both the strict top-level wire-field check and the expected header checks into the published library API, then keep `wallet-cli` focused on calling `Msg.parse()` / `Msg.verify_details()` and translating failures into concise CLI wording.
 - For `pw msg`, render successful synchronous responses as YAML by default using the same formatter family as `--debug`, and reserve raw response output for an explicit `--json` flag.
 - When `pw msg` combines `--debug` with `--json`, keep the final response raw for scripts but render the debug payloads as raw JSON instead of the default YAML-style formatter.
 - For `pw test`, accept `--json` for shared-flag parity, but keep successful runs concise; the flag matters for parser compatibility and for raw JSON debug payloads when combined with `--debug`.

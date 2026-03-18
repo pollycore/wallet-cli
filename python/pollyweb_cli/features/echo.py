@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import base64
 from dataclasses import asdict
-import hashlib
 import json
 import urllib.error
 from pathlib import Path
 from urllib.parse import quote
 
-from pollyweb import Msg
-import pollyweb.msg as pollyweb_msg
+from pollyweb import Msg, MsgValidationError
 
 from pollyweb_cli.tools.debug import print_debug_payload, print_echo_response
 from pollyweb_cli.errors import UserFacingError
@@ -20,7 +17,6 @@ from pollyweb_cli.features.bind import (
     get_first_bind_for_domain,
     load_binds,
 )
-from pollyweb_cli.models import EchoResponse
 from pollyweb_cli.tools.transport import send_wallet_message
 
 
@@ -114,154 +110,30 @@ def _print_echo_dns_reference_links(
 
     print()
 
-
-def parse_and_verify_echo_response(
-    payload: str,
+def _to_echo_user_facing_error(
+    exc: MsgValidationError,
     *,
-    domain: str,
-    request_correlation: str,
-    expected_to: str,
-    allowed_to: set[str] | None = None
-) -> tuple[EchoResponse, object | None]:
-    """Parse and verify an echo response, supporting legacy payload variants."""
+    domain: str
+) -> UserFacingError:
+    """Translate library verification failures into echo-specific CLI wording."""
 
-    try:
-        loaded_payload = json.loads(payload)
-    except json.JSONDecodeError:
-        loaded_payload = None
+    message = str(exc)
+    diagnostics = getattr(exc, "dns_diagnostics", None)
 
-    if isinstance(loaded_payload, dict):
-        unexpected_fields = sorted(
-            set(loaded_payload.keys()) - ALLOWED_ECHO_RESPONSE_FIELDS)
-        if unexpected_fields:
-            joined_fields = ", ".join(unexpected_fields)
-            raise UserFacingError(
-                f"Echo response from {domain} had unexpected top-level field(s): "
-                f"{joined_fields}. Expected only Body, Hash, Header, and Signature."
-            ) from None
+    if message.startswith("Unexpected top-level field(s):"):
+        lowered_message = message[0].lower() + message[1:]
+        return UserFacingError(
+            f"Echo response from {domain} had {lowered_message}",
+            diagnostics = diagnostics)
 
-    try:
-        response = Msg.parse(payload)
-    except Exception as parse_exc:
-        try:
-            if not isinstance(loaded_payload, dict):
-                loaded_payload = json.loads(payload)
-            header = loaded_payload["Header"]
-            body = loaded_payload.get("Body", {})
-            signature_b64 = loaded_payload["Signature"]
-            payload_hash = loaded_payload["Hash"]
-            canonical_payload = {"Body": body, "Header": header}
-            canonical = json.dumps(
-                canonical_payload,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-            ).encode("utf-8")
-        except Exception:
-            raise UserFacingError(
-                f"Could not parse the echo response from {domain}: {parse_exc}"
-            ) from None
-        try:
-            if payload_hash != hashlib.sha256(canonical).hexdigest():
-                raise UserFacingError(
-                    f"Echo response from {domain} did not verify: Hash mismatch"
-                ) from None
+    if message.startswith("Unexpected "):
+        return UserFacingError(
+            f"Echo response from {domain} had an {message[0].lower() + message[1:]}",
+            diagnostics = diagnostics)
 
-            public_key, key_type, dns_diagnostics = pollyweb_msg._resolve_dkim_public_key(
-                header["From"],
-                header["Selector"],
-            )
-            signature_algorithm = header.get("Algorithm") or None
-            if public_key is not None and signature_algorithm is None:
-                signature_algorithm = pollyweb_msg.signature_algorithm_for_public_key(
-                    public_key
-                )
-            pollyweb_msg.verify_signature(
-                public_key,
-                base64.b64decode(signature_b64),
-                canonical,
-                signature_algorithm=signature_algorithm,
-                key_type=key_type,
-            )
-        except UserFacingError:
-            raise
-        except Exception as exc:
-            details = str(exc) or (
-                "Invalid signature"
-                if exc.__class__.__name__ == "InvalidSignature"
-                else exc.__class__.__name__
-            )
-            raise UserFacingError(
-                f"Echo response from {domain} did not verify: {details}",
-                diagnostics = (
-                    getattr(exc, "dns_diagnostics", None)
-                    or dns_diagnostics
-                ),
-            ) from None
-        parsed_response = EchoResponse(
-            From=header["From"],
-            To=header["To"],
-            Subject=header["Subject"],
-            Correlation=header["Correlation"],
-            Schema=str(header["Schema"]),
-            Selector=header.get("Selector", ""),
-            Algorithm=header.get("Algorithm", ""),
-        )
-        verification = pollyweb_msg.VerificationDetails(
-            schema=str(header["Schema"]),
-            required_headers_present=True,
-            hash_valid=True,
-            signature_valid=True,
-            dns_lookup_used=True,
-            from_value=header["From"],
-            to_value=header["To"],
-            subject=header["Subject"],
-            correlation=header["Correlation"],
-            selector=header.get("Selector", ""),
-            algorithm=signature_algorithm or "",
-            dns_diagnostics=dns_diagnostics,
-        )
-    else:
-        parsed_response = EchoResponse(
-            From=response.From,
-            To=response.To,
-            Subject=response.Subject,
-            Correlation=response.Correlation,
-            Schema=str(response.Schema),
-            Selector=response.Selector,
-            Algorithm=response.Algorithm,
-        )
-        try:
-            verification = (
-                response.verify_details() if hasattr(response, "verify_details") else None
-            )
-            if verification is None:
-                response.verify()
-        except Exception as exc:
-            raise UserFacingError(
-                f"Echo response from {domain} did not verify: {exc}",
-                diagnostics = getattr(exc, "dns_diagnostics", None),
-            ) from None
-
-    if parsed_response.From != domain:
-        raise UserFacingError(
-            f"Echo response from {domain} had an unexpected From value: {parsed_response.From}"
-        ) from None
-    if parsed_response.Subject != ECHO_SUBJECT:
-        raise UserFacingError(
-            f"Echo response from {domain} had an unexpected Subject: {parsed_response.Subject}"
-        ) from None
-    if parsed_response.Correlation != request_correlation:
-        raise UserFacingError(
-            f"Echo response from {domain} had an unexpected Correlation: {parsed_response.Correlation}"
-        ) from None
-    valid_to_values = {expected_to} if allowed_to is None else allowed_to
-    if parsed_response.To not in valid_to_values:
-        raise UserFacingError(
-            f"Echo response from {domain} had an unexpected To value: {parsed_response.To}"
-        ) from None
-
-    return parsed_response, verification
+    return UserFacingError(
+        f"Echo response from {domain} did not verify: {message}",
+        diagnostics = diagnostics)
 
 
 def cmd_echo(
@@ -306,14 +178,31 @@ def cmd_echo(
         if stored_bind is not None:
             allowed_to.add(stored_bind)
 
-        response, verification = parse_and_verify_echo_response(
-            response_payload,
-            domain=normalized_domain,
-            request_correlation=request_message.Correlation,
-            expected_to=normalized_domain,
-            allowed_to=allowed_to,
-        )
-        dns_diagnostics = getattr(verification, "dns_diagnostics", None)
+        try:
+            response = Msg.parse(
+                response_payload,
+                allowed_top_level_fields = ALLOWED_ECHO_RESPONSE_FIELDS)
+        except MsgValidationError as exc:
+            raise _to_echo_user_facing_error(
+                exc,
+                domain = normalized_domain) from None
+        except Exception as exc:
+            raise UserFacingError(
+                f"Could not parse the echo response from {normalized_domain}: {exc}"
+            ) from None
+
+        try:
+            verification = response.verify_details(
+                expected_from = normalized_domain,
+                expected_subject = ECHO_SUBJECT,
+                expected_correlation = request_message.Correlation,
+                allowed_to_values = allowed_to)
+        except MsgValidationError as exc:
+            raise _to_echo_user_facing_error(
+                exc,
+                domain = normalized_domain) from None
+
+        dns_diagnostics = verification.dns_diagnostics
     except UserFacingError as exc:
         dns_diagnostics = getattr(exc, "diagnostics", dns_diagnostics)
         if debug:

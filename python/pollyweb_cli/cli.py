@@ -76,9 +76,7 @@ from pollyweb_cli.tools.debug import (
 )
 from pollyweb_cli.features.echo import (
     ECHO_SUBJECT,
-    EchoResponse,
     cmd_echo as _cmd_echo,
-    parse_and_verify_echo_response,
 )
 from pollyweb_cli.features.msg import (
     cmd_msg as _cmd_msg,
