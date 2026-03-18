@@ -14,32 +14,15 @@ python3 -m pip install pollyweb-cli
 
 The CLI pulls in its runtime dependencies from PyPI, including `pollyweb`, `PyYAML`, and `rich`. You do not need to install or use `cryptography` serialization APIs directly when using `pw config`.
 
-If you want to install from a local checkout of this repository instead, run the commands from the repository root. In that case, `.` means "this folder":
+This project only supports running the published PyPI build of `pollyweb-cli`. Local editable or development installs are not supported as a runtime; the CLI will replace them with the latest published release before running commands.
+
+For local development, use an isolated test environment instead of running `pw` from an editable checkout:
 
 ```bash
-pipx install .
-```
-
-or:
-
-```bash
-python3 -m pip install .
-```
-
-If your system Python blocks global installs with an `externally-managed-environment` error, create a local virtual environment instead:
-
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -e .
-```
-
-For local development with the test dependencies included:
-
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
+python3 -m venv .venv-tests
+. .venv-tests/bin/activate
 python -m pip install -e '.[dev]'
+./.venv-tests/bin/python -m pytest
 ```
 
 After installation, confirm the CLI is available:

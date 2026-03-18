@@ -90,6 +90,7 @@ def test_version_command_checks_for_upgrade_before_printing_version(monkeypatch,
 
 def test_preflight_skips_when_no_newer_release(monkeypatch):
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.62")
+    monkeypatch.setattr(cli, "_distribution_uses_direct_url", lambda: False)
     monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
 
     assert cli._maybe_upgrade_before_command(["bind", "vault.example.com"]) is None
@@ -97,6 +98,7 @@ def test_preflight_skips_when_no_newer_release(monkeypatch):
 def test_preflight_treats_dev_version_as_older_than_stable(monkeypatch):
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.dev43")
     monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.61")
+    monkeypatch.setattr(cli, "_distribution_uses_direct_url", lambda: False)
 
     seen = []
 
@@ -108,6 +110,60 @@ def test_preflight_treats_dev_version_as_older_than_stable(monkeypatch):
 
     assert cli._maybe_upgrade_before_command(["bind", "vault.example.com"]) == 0
     assert seen == [(["bind", "vault.example.com"], "0.1.dev43", "0.1.61")]
+
+def test_requires_published_runtime_for_direct_url_install(monkeypatch):
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.118")
+    monkeypatch.setattr(cli, "_distribution_uses_direct_url", lambda: True)
+
+    assert cli._requires_published_runtime() is True
+
+def test_preflight_reinstalls_latest_release_for_direct_url_runtime(monkeypatch):
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.118")
+    monkeypatch.setattr(cli, "_distribution_uses_direct_url", lambda: True)
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.118")
+
+    seen = []
+
+    def fake_upgrade(argv, installed, latest):
+        seen.append((list(argv), installed, latest))
+        return 0
+
+    monkeypatch.setattr(cli, "_upgrade_and_restart", fake_upgrade)
+
+    assert cli._maybe_upgrade_before_command(["echo", "vault.example.com"]) == 0
+    assert seen == [(["echo", "vault.example.com"], "0.1.118", "0.1.118")]
+
+def test_preflight_ignores_skip_env_for_non_pypi_runtime(monkeypatch):
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.dev43")
+    monkeypatch.setattr(cli, "_distribution_uses_direct_url", lambda: False)
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.61")
+    monkeypatch.setenv(cli.SKIP_UPGRADE_CHECK_ENV, "1")
+
+    seen = []
+
+    def fake_upgrade(argv, installed, latest):
+        seen.append((list(argv), installed, latest))
+        return 0
+
+    monkeypatch.setattr(cli, "_upgrade_and_restart", fake_upgrade)
+
+    assert cli._maybe_upgrade_before_command(["bind", "vault.example.com"]) == 0
+    assert seen == [(["bind", "vault.example.com"], "0.1.dev43", "0.1.61")]
+
+def test_preflight_fails_closed_when_non_pypi_runtime_cannot_check_latest(
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.dev43")
+    monkeypatch.setattr(cli, "_distribution_uses_direct_url", lambda: False)
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: None)
+
+    assert cli._maybe_upgrade_before_command(["bind", "vault.example.com"]) == 1
+    captured = capsys.readouterr()
+    assert (
+        "Error: This pollyweb-cli runtime is not a published PyPI release, "
+        "and the latest published release could not be determined."
+    ) in captured.err
 
 def test_get_latest_published_version_uses_uncached_json_request(monkeypatch):
     seen = {}
@@ -133,6 +189,7 @@ def test_preflight_upgrades_and_reexecs_requested_command(monkeypatch):
     recorded: dict[str, object] = {}
 
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.61")
+    monkeypatch.setattr(cli, "_distribution_uses_direct_url", lambda: False)
     monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
     monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: False)
 
@@ -175,6 +232,7 @@ def test_preflight_upgrades_and_reexecs_requested_command(monkeypatch):
 
 def test_preflight_shows_transient_upgrade_status_and_final_notice(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.61")
+    monkeypatch.setattr(cli, "_distribution_uses_direct_url", lambda: False)
     monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
     monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: True)
 
@@ -343,6 +401,7 @@ def test_cmd_upgrade_returns_error_when_install_fails(monkeypatch):
 
 def test_preflight_continues_when_upgrade_install_fails(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.72")
+    monkeypatch.setattr(cli, "_distribution_uses_direct_url", lambda: False)
     monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.73")
     monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: False)
 
@@ -510,6 +569,7 @@ def test_print_debug_payload_wraps_public_key_even_when_shorter_than_width(capsy
     assert "MCowBQYDK2VwAyEA1234567890abcdefghijklmnopqrstuv==" in captured.out
 
 def test_main_renders_user_facing_errors_in_red(monkeypatch):
+    monkeypatch.setattr(cli, "_maybe_upgrade_before_command", lambda argv: None)
     monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: True)
     monkeypatch.setattr(
         cli,
@@ -536,6 +596,7 @@ def test_main_renders_user_facing_errors_in_red(monkeypatch):
     ]
 
 def test_main_renders_bind_errors_in_red(monkeypatch):
+    monkeypatch.setattr(cli, "_maybe_upgrade_before_command", lambda argv: None)
     monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: True)
     monkeypatch.setattr(
         cli,

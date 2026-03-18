@@ -31,7 +31,7 @@ After installation, the CLI is available as:
 pw --help
 ```
 
-Before running any `pw` command, the CLI checks PyPI for a newer published `pollyweb-cli` release. If it finds one, it automatically installs the newer release into the current Python environment and reruns the original `pw ...` command on the upgraded code. If the upgrade install fails, the CLI prints a notice and continues running the original command on the currently installed version.
+Before running any `pw` command, the CLI checks PyPI for a newer published `pollyweb-cli` release. If it finds one, it automatically installs the newer release into the current Python environment and reruns the original `pw ...` command on the upgraded code. If the current runtime is a development, editable, or other non-PyPI install, the CLI replaces it with the latest published PyPI release before continuing.
 
 To force an upgrade directly, run:
 

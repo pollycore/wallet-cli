@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError, version as get_installed_version
+from importlib.metadata import (
+    PackageNotFoundError,
+    distribution as get_distribution,
+    version as get_installed_version,
+)
 import json
 import os
 from pathlib import Path
@@ -10,6 +14,7 @@ import subprocess
 import sys
 import time
 import urllib
+from urllib.parse import urlparse
 
 from packaging.version import InvalidVersion, Version
 import yaml
@@ -155,6 +160,47 @@ def _get_cli_version() -> str:
         return get_installed_version(PACKAGE_NAME)
     except PackageNotFoundError:
         return "0+unknown"
+
+
+def _distribution_uses_direct_url() -> bool:
+    """Return whether the installed CLI came from a direct URL or local path."""
+
+    try:
+        distribution = get_distribution(PACKAGE_NAME)
+    except PackageNotFoundError:
+        return False
+
+    direct_url = distribution.read_text("direct_url.json")
+    if not direct_url:
+        return False
+
+    try:
+        payload = json.loads(direct_url)
+    except ValueError:
+        return True
+
+    if isinstance(payload.get("dir_info"), dict):
+        return True
+
+    url = payload.get("url")
+    if not isinstance(url, str) or url == "":
+        return True
+
+    return urlparse(url).scheme == "file"
+
+
+def _requires_published_runtime() -> bool:
+    """Return whether the current CLI runtime must be replaced by a PyPI release."""
+
+    installed_version = _get_cli_version()
+    parsed_version = _parse_version(installed_version)
+    if parsed_version is None:
+        return True
+
+    if parsed_version.is_devrelease:
+        return True
+
+    return _distribution_uses_direct_url()
 
 
 def _get_latest_published_version() -> str | None:
@@ -315,17 +361,44 @@ def _upgrade_and_restart(
 def _maybe_upgrade_before_command(argv: list[str]) -> int | None:
     """Upgrade before any `pw` command when a newer release exists."""
 
-    if os.environ.get(SKIP_UPGRADE_CHECK_ENV) == "1":
+    requires_published_runtime = _requires_published_runtime()
+
+    if (
+        os.environ.get(SKIP_UPGRADE_CHECK_ENV) == "1"
+        and not requires_published_runtime
+    ):
         return None
 
     installed_version = _get_cli_version()
     latest_version = _get_latest_published_version()
     if not latest_version:
+        if requires_published_runtime:
+            print_error(
+                "Error: This pollyweb-cli runtime is not a published PyPI release, "
+                "and the latest published release could not be determined."
+            )
+            return 1
         return None
 
     installed = _parse_version(installed_version)
     latest = _parse_version(latest_version)
-    if installed is None or latest is None or latest <= installed:
+    if latest is None:
+        if requires_published_runtime:
+            print_error(
+                "Error: This pollyweb-cli runtime is not a published PyPI release, "
+                "and the latest published release could not be parsed."
+            )
+            return 1
+        return None
+
+    if requires_published_runtime:
+        return _upgrade_and_restart(
+            argv,
+            installed_version,
+            latest_version,
+        )
+
+    if installed is None or latest <= installed:
         return None
 
     return _upgrade_and_restart(
