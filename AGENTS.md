@@ -25,6 +25,7 @@
 - When a `pw test` send fails with an HTTP response whose body includes an `error` field, append that inbound error detail to the existing `Error: HTTP ...` output so the red failure area explains the server-side cause without requiring `--debug`.
 - `pw bind` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
 - `pw echo` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
+- `pw echo` verification should reject any extra top-level response fields beyond `Header`, `Body`, `Hash`, and `Signature`, so misplaced properties such as a top-level `Request` fail loudly instead of being hidden by debug formatting.
 - `pw bind` expects a bare UUID bind value in successful responses and stores that UUID in `~/.pollyweb/binds.yaml`; keep the legacy `Bind:<UUID>` parser path compatible so older hosts still work.
 - Persist bind domains in canonical form and normalize lookup input the same way, so `.dom` and `.pollyweb.org` refer to the same stored bind.
 - `pw bind` should append wallet-managed bind-change audit entries to `~/.pollyweb/binds.log` whenever it writes `~/.pollyweb/binds.yaml`, including the canonical domain plus the previous and new bind UUIDs for replacements.

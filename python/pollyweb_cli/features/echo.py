@@ -23,6 +23,7 @@ from pollyweb_cli.tools.transport import send_wallet_message
 
 
 ECHO_SUBJECT = "Echo@Domain"
+ALLOWED_ECHO_RESPONSE_FIELDS = frozenset({"Body", "Hash", "Header", "Signature"})
 
 
 def parse_and_verify_echo_response(
@@ -36,14 +37,30 @@ def parse_and_verify_echo_response(
     """Parse and verify an echo response, supporting legacy payload variants."""
 
     try:
+        loaded_payload = json.loads(payload)
+    except json.JSONDecodeError:
+        loaded_payload = None
+
+    if isinstance(loaded_payload, dict):
+        unexpected_fields = sorted(
+            set(loaded_payload.keys()) - ALLOWED_ECHO_RESPONSE_FIELDS)
+        if unexpected_fields:
+            joined_fields = ", ".join(unexpected_fields)
+            raise UserFacingError(
+                f"Echo response from {domain} had unexpected top-level field(s): "
+                f"{joined_fields}. Expected only Body, Hash, Header, and Signature."
+            ) from None
+
+    try:
         response = Msg.parse(payload)
     except Exception as parse_exc:
         try:
-            loaded = json.loads(payload)
-            header = loaded["Header"]
-            body = loaded.get("Body", {})
-            signature_b64 = loaded["Signature"]
-            payload_hash = loaded["Hash"]
+            if not isinstance(loaded_payload, dict):
+                loaded_payload = json.loads(payload)
+            header = loaded_payload["Header"]
+            body = loaded_payload.get("Body", {})
+            signature_b64 = loaded_payload["Signature"]
+            payload_hash = loaded_payload["Hash"]
             canonical_payload = {"Body": body, "Header": header}
             canonical = json.dumps(
                 canonical_payload,

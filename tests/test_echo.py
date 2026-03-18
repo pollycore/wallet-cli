@@ -15,6 +15,7 @@ import pytest
 from pollyweb import Msg
 from pollyweb_cli import cli
 from pollyweb_cli.features import chat as chat_feature
+from pollyweb_cli.features import echo as echo_feature
 from pollyweb_cli.features import test as test_feature
 from pollyweb_cli.tools import transport as transport_tools
 
@@ -264,6 +265,74 @@ def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
     assert " - From matched expected domain: any-domain.pollyweb.org" in captured.out
     assert " - To matched expected sender: any-domain.pollyweb.org" in captured.out
     assert captured.err == ""
+
+
+def test_echo_debug_rejects_unexpected_top_level_response_fields(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+    request_message = Msg(
+        To = "any-domain.pollyweb.org",
+        Subject = "Echo@Domain",
+        Correlation = "123e4567-e89b-12d3-a456-426614174000",
+        Body = {},
+    )
+    response_payload = cli.json.dumps(
+        {
+            "Body": {"Echo": "ok"},
+            "Header": {
+                "Algorithm": "ed25519-sha256",
+                "Correlation": request_message.Correlation,
+                "From": "any-domain.pollyweb.org",
+                "Schema": "pollyweb.org/MSG:1.0",
+                "Selector": "default",
+                "Subject": "Echo@Domain",
+                "Timestamp": "2026-03-18T16:18:38.411Z",
+                "To": "any-domain.pollyweb.org",
+            },
+            "Hash": "fb79347b8a1117f5a74eae029be8629e7e6d8286c0e3020a08641d0e512add49",
+            "Request": {
+                "Body": {},
+                "Header": {
+                    "From": "Anonymous",
+                },
+            },
+            "Signature": (
+                "78QEPU+LdK1Fxu0DdXJLlh/pcWs024KkJ3ToCOFpk+KddEfebVh6xK9rmzvoLVS1"
+                "qxmagMETICfnYiZA/IZECg=="
+            ),
+        }
+    )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            response_payload,
+            request_message,
+            "any-domain.pollyweb.org",
+        ),
+    )
+
+    exit_code = cli.main(["echo", "--debug", "any-domain.dom"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert (
+        "unexpected top-level field(s): Request. "
+        "Expected only Body, Hash, Header, and Signature."
+        in captured.err
+    )
+    assert "\nEcho response:\n" not in captured.out
 
 
 def test_echo_accepts_response_to_stored_bind(

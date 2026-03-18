@@ -1,5 +1,17 @@
 # Task Plan
 
+- [x] Inspect the current `pw echo --debug` verification path and confirm where extra response fields are silently tolerated
+- [x] Reject unexpected top-level echo-response fields before debug rendering so misplaced properties fail loudly
+- [x] Add regression coverage for a top-level `Request` leak and verify the affected echo tests
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so `pw echo` now validates the raw synchronous response object before parsing and rejects any top-level fields outside `Body`, `Hash`, `Header`, and `Signature`.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` coverage for a debug echo response that incorrectly includes a top-level `Request`, locking in the new failure message and ensuring the CLI stops before rendering a misleading formatted response.
+- Updated `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to record the stricter response-shape rule for future work.
+
+# Task Plan
+
 - [x] Review the current `pw test` HTTP-failure output and the shared transport error-body handling
 - [x] Append inbound `error` details to the existing `pw test` HTTP error line when the response body provides them
 - [x] Add regression coverage for inbound HTTP error details and verify with the repo test interpreter
