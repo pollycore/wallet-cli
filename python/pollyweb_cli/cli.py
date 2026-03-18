@@ -227,19 +227,21 @@ def _upgrade_and_restart(
     """Install the requested release into the current environment and re-exec."""
 
     upgrade_message = f"Upgrading from v{installed_version} to v{latest_version}"
-    upgraded_message = f"ℹ️ Upgrade from from v{installed_version} to v{latest_version}"
+    upgraded_message = f"ℹ️ Upgraded from v{installed_version} to v{latest_version}"
 
     if sys.stderr.isatty():
         with UPGRADE_CONSOLE.status(
             upgrade_message,
             spinner = "dots",
-            transient = True,
         ):
             installed = _install_upgrade(
                 installed_version,
                 latest_version,
                 quiet = True,
             )
+
+        # Clear the spinner line before leaving the final upgrade notice behind.
+        print("\r\033[2K", end = "", file = sys.stderr)
     else:
         installed = _install_upgrade(
             installed_version,

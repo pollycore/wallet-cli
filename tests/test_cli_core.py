@@ -179,11 +179,10 @@ def test_preflight_shows_transient_upgrade_status_and_final_notice(monkeypatch, 
             return False
 
     class FakeConsole:
-        def status(self, message, spinner, transient):
+        def status(self, message, spinner):
             recorded["status"] = {
                 "message": message,
                 "spinner": spinner,
-                "transient": transient,
             }
             return FakeStatus()
 
@@ -211,13 +210,14 @@ def test_preflight_shows_transient_upgrade_status_and_final_notice(monkeypatch, 
     assert recorded["status"] == {
         "message": "Upgrading from v0.1.61 to v0.1.62",
         "spinner": "dots",
-        "transient": True,
     }
     assert recorded["entered"] is True
     assert recorded["exited"] is True
     assert recorded["stdout"] is cli.subprocess.DEVNULL
     assert recorded["stderr"] is cli.subprocess.DEVNULL
-    assert captured.err.strip() == "ℹ️ Upgrade from from v0.1.61 to v0.1.62"
+    assert captured.err.replace("\x1b[2K", "").strip() == (
+        "ℹ️ Upgrade from from v0.1.61 to v0.1.62"
+    )
 
 def test_cmd_upgrade_installs_latest_release(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.72")
