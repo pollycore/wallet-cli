@@ -243,10 +243,12 @@ def cmd_test(
     """Send one or more wrapped test fixtures and verify expected responses."""
 
     fixture_paths = get_test_fixture_paths(test_path)
+    show_fixture_path = test_path is not None
 
     for fixture_path in fixture_paths:
         run_message_test_fixture(
             fixture_path,
+            show_fixture_path = show_fixture_path,
             debug = debug,
             config_dir = config_dir,
             binds_path = binds_path,
@@ -289,6 +291,7 @@ def get_test_fixture_paths(
 def run_message_test_fixture(
     fixture_path: Path,
     *,
+    show_fixture_path: bool,
     debug: bool,
     config_dir: Path,
     binds_path: Path,
@@ -354,4 +357,8 @@ def run_message_test_fixture(
             expected_inbound,
             "response")
 
-    print(response_payload)
+    if show_fixture_path:
+        print(f"✅ Test passed: {fixture_path}")
+        return
+
+    print("✅ Test passed")

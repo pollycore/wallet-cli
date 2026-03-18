@@ -33,6 +33,8 @@ Use `--anonymous` to ignore any stored bind and force `From: Anonymous`. Use `--
 
 This makes wrapped fixtures useful for end-to-end checks where you want one file to describe both the request and the expected response.
 
+On success, `pw test` keeps the default output short. When you run a specific fixture path, it prints `✅ Test passed: <path>`. When you run the default `pw-tests` directory sweep, each passing fixture prints `✅ Test passed`.
+
 Print the outbound payload, the full inbox URL the POST is sent to, and the inbound response body as colorized, indented YAML:
 
 ```bash
