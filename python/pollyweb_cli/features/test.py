@@ -245,15 +245,19 @@ def cmd_test(
     fixture_paths = get_test_fixture_paths(test_path)
 
     for fixture_path in fixture_paths:
-        run_message_test_fixture(
-            fixture_path,
-            debug = debug,
-            config_dir = config_dir,
-            binds_path = binds_path,
-            unsigned = unsigned,
-            anonymous = anonymous,
-            require_configured_keys = require_configured_keys,
-            load_signing_key_pair = load_signing_key_pair)
+        try:
+            run_message_test_fixture(
+                fixture_path,
+                debug = debug,
+                config_dir = config_dir,
+                binds_path = binds_path,
+                unsigned = unsigned,
+                anonymous = anonymous,
+                require_configured_keys = require_configured_keys,
+                load_signing_key_pair = load_signing_key_pair)
+        except UserFacingError:
+            print(f"❌ Failed: {fixture_path.stem}")
+            raise
 
     return 0
 
