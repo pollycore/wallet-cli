@@ -223,9 +223,17 @@ def send_wallet_message(
     try:
         response = outbound_message.send()
     except urllib.error.HTTPError as exc:
+        error_body = None
+
+        try:
+            error_body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            error_body = None
+
+        setattr(exc, "pollyweb_error_body", error_body)
+
         if debug:
             try:
-                error_body = exc.read().decode("utf-8", errors="replace")
                 debug_printer = print_debug_json_payload if debug_json else print_debug_payload
                 debug_printer(
                     "Inbound payload",

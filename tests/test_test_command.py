@@ -615,6 +615,55 @@ def test_test_reports_http_failures_with_fixture_path(
     assert "HTTP 502 Bad Gateway." in captured.err
     assert f"❌ Failed: {test_path.stem}" in captured.out
 
+def test_test_reports_inbound_error_details_for_http_failures(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    def raise_http_error(**kwargs):
+        error = urllib.error.HTTPError(
+            "https://pw.vault.example.com/inbox",
+            400,
+            "Bad Request",
+            hdrs = None,
+            fp = None)
+        setattr(
+            error,
+            "pollyweb_error_body",
+            json.dumps(
+                {
+                    "error": (
+                        "Legacy proxy request failed with HTTP 401: "
+                        "{\"error\": \"Signature verification failed: Missing Selector\"}"
+                    )
+                }
+            ),
+        )
+        raise error
+
+    monkeypatch.setattr(test_feature, "send_wallet_message", raise_http_error)
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert (
+        "HTTP 400 Bad Request. Legacy proxy request failed with HTTP 401"
+        in captured.err
+    )
+    assert "Signature verification failed: Missing Selector" in captured.err
+    assert f"❌ Failed: {test_path.stem}" in captured.out
+
 def test_test_reports_dns_failures_without_http_code(
     monkeypatch, tmp_path, capsys
 ):

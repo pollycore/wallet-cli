@@ -1,5 +1,17 @@
 # Task Plan
 
+- [x] Review the current `pw test` HTTP-failure output and the shared transport error-body handling
+- [x] Append inbound `error` details to the existing `pw test` HTTP error line when the response body provides them
+- [x] Add regression coverage for inbound HTTP error details and verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/transport.py` so wallet-send HTTP failures preserve the decoded response body on the raised `HTTPError`, which keeps the debug path working while letting feature commands reuse the inbound payload details.
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py` so `pw test` now appends an inbound JSON `error` field to the existing `HTTP <code> <reason>.` message when the server returns one, keeping the extra detail in the same red stderr area.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py` coverage for an HTTP 400 response whose inbound payload includes a nested signature-verification error and confirmed the failure output includes both the HTTP line and the server detail.
+- Recorded the new `pw test` HTTP-error-detail rule in `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md`.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_test_command.py` (`16 passed, 1 skipped`).
+
 - [x] Review the written `pw test` guidance plus current parser/transport behavior for `--json`
 - [x] Add `--json` support to `pw test` so its response and debug output rules match the shared wallet send path
 - [x] Update regression coverage, docs, and repo guidance for the new `pw test --json` behavior

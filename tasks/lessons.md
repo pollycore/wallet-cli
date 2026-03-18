@@ -29,3 +29,4 @@
 - When adding default fixture discovery to `pw test`, make the path optional in the parser and keep batch execution deterministic by reading `./pw-tests/*.yaml` in alphabetical order.
 - For `pw test` fixture placeholders, resolve wallet-derived values such as `"<PublicKey>"` through the same helper used by the real command path so tests and bind requests serialize the public key identically.
 - For `pw test` success output, keep the non-debug path terse: print `✅ Passed: <filename-without-extension>` for each passing fixture, including default directory sweeps, and never dump the received message.
+- For `pw test` HTTP failures, preserve any parsed inbound `error` field from the response body and append it to the existing `Error: HTTP ...` line so users can see the server-side cause even without reading the debug payload.

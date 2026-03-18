@@ -22,7 +22,30 @@ from pollyweb_cli.features.msg import (
     describe_message_network_error,
     parse_message_request,
 )
+from pollyweb_cli.tools.debug import parse_debug_payload
 from pollyweb_cli.tools.transport import send_wallet_message
+
+
+def describe_http_test_error(exc: urllib.error.HTTPError) -> str:
+    """Build the user-facing HTTP failure message for `pw test`."""
+
+    message = f"HTTP {exc.code} {exc.reason}."
+    error_body = getattr(exc, "pollyweb_error_body", None)
+
+    if not isinstance(error_body, str) or not error_body.strip():
+        return message
+
+    try:
+        parsed_body = parse_debug_payload(error_body)
+    except Exception:
+        parsed_body = None
+
+    if isinstance(parsed_body, dict):
+        error_value = parsed_body.get("error")
+        if isinstance(error_value, str) and error_value.strip():
+            return f"{message} {error_value}"
+
+    return message
 
 PLACEHOLDER_PATTERN = re.compile(r"^\{BindOf\(([^)]+)\)\}$")
 PUBLIC_KEY_PLACEHOLDER = "<PublicKey>"
@@ -339,7 +362,7 @@ def run_message_test_fixture(
         ) from None
     except urllib.error.HTTPError as exc:
         raise UserFacingError(
-            f"HTTP {exc.code} {exc.reason}."
+            describe_http_test_error(exc)
         ) from None
     except urllib.error.URLError as exc:
         if isinstance(exc.reason, socket.gaierror):
