@@ -8,6 +8,7 @@ import hashlib
 import json
 import urllib.error
 from pathlib import Path
+from urllib.parse import quote
 
 from pollyweb import Msg
 import pollyweb.msg as pollyweb_msg
@@ -19,11 +20,7 @@ from pollyweb_cli.features.bind import (
     get_first_bind_for_domain,
     load_binds,
 )
-from pollyweb_cli.models import (
-    DnsQueryDiagnostic,
-    EchoDnsDiagnostics,
-    EchoResponse,
-)
+from pollyweb_cli.models import EchoResponse
 from pollyweb_cli.tools.transport import send_wallet_message
 
 
@@ -48,109 +45,30 @@ def _extract_response_header(
     return header
 
 
-def _make_dns_query_diagnostic(
-    answer,
-    *,
-    query_name: str,
-    record_type: str
-) -> DnsQueryDiagnostic:
-    """Convert one dnspython answer object into a serializable diagnostic."""
-
-    import dns.flags
-    import dns.rcode
-
-    response = getattr(answer, "response", None)
-    flags = getattr(response, "flags", 0) if response is not None else 0
-    rcode_value = (
-        dns.rcode.to_text(response.rcode())
-        if response is not None
-        else ""
-    )
-
-    return DnsQueryDiagnostic(
-        Name = query_name,
-        Type = record_type,
-        ResponseCode = rcode_value,
-        AuthenticData = bool(flags & dns.flags.AD),
-        Answers = [record.to_text() for record in answer],
-    )
-
-
-def _collect_echo_dns_diagnostics(
+def _echo_dns_reference_links(
     domain: str,
     selector: str
-) -> EchoDnsDiagnostics:
-    """Collect DNS/DNSSEC state for the PollyWeb branch and DKIM record."""
+) -> dict[str, str]:
+    """Build click-through DNS inspection links for the verified selector."""
 
-    import dns.flags
-    import dns.resolver
+    branch = f"pw.{domain}"
 
-    branch = pollyweb_msg.pollyweb_domain(domain)
-    dkim_name = pollyweb_msg.dkim_dns_name(domain, selector)
-    resolver = dns.resolver.Resolver()
-    resolver.use_edns(
-        edns = 0,
-        ednsflags = dns.flags.DO,
-        payload = 4096)
-
-    queries: list[DnsQueryDiagnostic] = []
-
-    try:
-        branch_answer = resolver.resolve(
-            branch,
-            "DS",
-            raise_on_no_answer = False)
-        queries.append(
-            _make_dns_query_diagnostic(
-                branch_answer,
-                query_name = branch,
-                record_type = "DS"))
-    except Exception as exc:
-        queries.append(
-            DnsQueryDiagnostic(
-                Name = branch,
-                Type = "DS",
-                ResponseCode = "",
-                AuthenticData = False,
-                Answers = [],
-                Error = str(exc)))
-
-    try:
-        dkim_answer = resolver.resolve(
-            dkim_name,
-            "TXT",
-            raise_on_no_answer = False)
-        queries.append(
-            _make_dns_query_diagnostic(
-                dkim_answer,
-                query_name = dkim_name,
-                record_type = "TXT"))
-    except Exception as exc:
-        queries.append(
-            DnsQueryDiagnostic(
-                Name = dkim_name,
-                Type = "TXT",
-                ResponseCode = "",
-                AuthenticData = False,
-                Answers = [],
-                Error = str(exc)))
-
-    return EchoDnsDiagnostics(
-        Domain = domain,
-        PollyWebBranch = branch,
-        Selector = selector,
-        DkimName = dkim_name,
-        DnssecRequested = True,
-        Nameservers = [str(item) for item in resolver.nameservers],
-        Queries = queries)
+    return {
+        "MXToolbox": (
+            "https://mxtoolbox.com/SuperTool.aspx?action="
+            f"{quote(f'dkim:{branch}:{selector}', safe='')}&run=toolpage"
+        ),
+        "DNSSEC Debugger": f"https://dnssec-debugger.verisignlabs.com/{branch}",
+        "Google DNS": f"https://dns.google/query?name={branch}",
+    }
 
 
-def _maybe_collect_echo_dns_diagnostics(
+def _echo_dns_context(
     payload: str,
     *,
     fallback_domain: str
-) -> EchoDnsDiagnostics | None:
-    """Collect DNS diagnostics when the inbound echo response exposes a selector."""
+) -> tuple[str, str] | None:
+    """Extract the response domain and selector used for echo verification."""
 
     header = _extract_response_header(payload)
     if header is None:
@@ -163,24 +81,11 @@ def _maybe_collect_echo_dns_diagnostics(
     from_value = header.get("From")
     domain = from_value if isinstance(from_value, str) and from_value else fallback_domain
 
-    try:
-        return _collect_echo_dns_diagnostics(
-            domain,
-            selector)
-    except Exception as exc:
-        return EchoDnsDiagnostics(
-            Domain = domain,
-            PollyWebBranch = pollyweb_msg.pollyweb_domain(domain),
-            Selector = selector,
-            DkimName = pollyweb_msg.dkim_dns_name(domain, selector),
-            DnssecRequested = True,
-            Nameservers = [],
-            Queries = [],
-            Error = str(exc))
+    return domain, selector
 
 
 def _print_echo_dns_diagnostics(
-    diagnostics: EchoDnsDiagnostics | None
+    diagnostics
 ) -> None:
     """Render DNS verification diagnostics for the echo debug path."""
 
@@ -190,6 +95,23 @@ def _print_echo_dns_diagnostics(
     print_debug_payload(
         "DNS verification diagnostics",
         asdict(diagnostics))
+
+
+def _print_echo_dns_reference_links(
+    domain: str,
+    selector: str
+) -> None:
+    """Render click-through external DNS inspection links."""
+
+    print()
+    print("External DNS checks:")
+
+    for label, url in _echo_dns_reference_links(
+        domain,
+        selector).items():
+        print(f"{label}: {url}")
+
+    print()
 
 
 def parse_and_verify_echo_response(
@@ -244,7 +166,7 @@ def parse_and_verify_echo_response(
                     f"Echo response from {domain} did not verify: Hash mismatch"
                 ) from None
 
-            public_key, key_type = pollyweb_msg._resolve_dkim_public_key(
+            public_key, key_type, dns_diagnostics = pollyweb_msg._resolve_dkim_public_key(
                 header["From"],
                 header["Selector"],
             )
@@ -269,7 +191,11 @@ def parse_and_verify_echo_response(
                 else exc.__class__.__name__
             )
             raise UserFacingError(
-                f"Echo response from {domain} did not verify: {details}"
+                f"Echo response from {domain} did not verify: {details}",
+                diagnostics = (
+                    getattr(exc, "dns_diagnostics", None)
+                    or dns_diagnostics
+                ),
             ) from None
         parsed_response = EchoResponse(
             From=header["From"],
@@ -292,6 +218,7 @@ def parse_and_verify_echo_response(
             correlation=header["Correlation"],
             selector=header.get("Selector", ""),
             algorithm=signature_algorithm or "",
+            dns_diagnostics=dns_diagnostics,
         )
     else:
         parsed_response = EchoResponse(
@@ -311,7 +238,8 @@ def parse_and_verify_echo_response(
                 response.verify()
         except Exception as exc:
             raise UserFacingError(
-                f"Echo response from {domain} did not verify: {exc}"
+                f"Echo response from {domain} did not verify: {exc}",
+                diagnostics = getattr(exc, "dns_diagnostics", None),
             ) from None
 
     if parsed_response.From != domain:
@@ -348,7 +276,8 @@ def cmd_echo(
 ) -> int:
     """Run the echo command and verify the signed response."""
 
-    dns_diagnostics: EchoDnsDiagnostics | None = None
+    dns_diagnostics = None
+    dns_link_context: tuple[str, str] | None = None
 
     try:
         require_configured_keys()
@@ -364,7 +293,7 @@ def cmd_echo(
             unsigned=unsigned,
         )
         if debug:
-            dns_diagnostics = _maybe_collect_echo_dns_diagnostics(
+            dns_link_context = _echo_dns_context(
                 response_payload,
                 fallback_domain = normalized_domain)
         allowed_to = {normalized_domain}
@@ -383,9 +312,13 @@ def cmd_echo(
             expected_to=normalized_domain,
             allowed_to=allowed_to,
         )
-    except UserFacingError:
+        dns_diagnostics = getattr(verification, "dns_diagnostics", None)
+    except UserFacingError as exc:
+        dns_diagnostics = getattr(exc, "diagnostics", dns_diagnostics)
         if debug:
             _print_echo_dns_diagnostics(dns_diagnostics)
+            if dns_link_context is not None:
+                _print_echo_dns_reference_links(*dns_link_context)
         raise
     except FileNotFoundError:
         raise UserFacingError(
@@ -409,6 +342,8 @@ def cmd_echo(
 
     print_echo_response(response_payload)
     _print_echo_dns_diagnostics(dns_diagnostics)
+    if dns_link_context is not None:
+        _print_echo_dns_reference_links(*dns_link_context)
     print(f"Verified echo response from {domain}:")
     if verification is not None:
         print(f" - Schema validated: {verification.schema}")

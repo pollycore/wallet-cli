@@ -24,6 +24,7 @@
 - For `pw echo`, translate `urllib.error.URLError` resolver failures into a human-readable PollyWeb inbox-host message instead of exposing raw `socket.gaierror(...)` text.
 - For `pw echo`, validate the raw synchronous response shape before pretty-printing it: reject any top-level fields outside `Header`, `Body`, `Hash`, and `Signature` so misplaced server properties are caught immediately.
 - For `pw echo --debug`, collect and print the PollyWeb branch `DS` lookup and DKIM `TXT` lookup details, including the queried DNS names, returned record text, and DNSSEC AD-flag state, and print those diagnostics even when signature verification fails after the response is received.
+- For `pw echo --debug`, the CLI must not perform its own parallel DNS trust check; render only the `pollyweb` package's DNS diagnostics, and pair them with click-through external links so users can compare the package verdict against MXToolbox, DNSSEC Debugger, and Google DNS.
 - For `pw msg`, render successful synchronous responses as YAML by default using the same formatter family as `--debug`, and reserve raw response output for an explicit `--json` flag.
 - When `pw msg` combines `--debug` with `--json`, keep the final response raw for scripts but render the debug payloads as raw JSON instead of the default YAML-style formatter.
 - For `pw test`, accept `--json` for shared-flag parity, but keep successful runs concise; the flag matters for parser compatibility and for raw JSON debug payloads when combined with `--debug`.
@@ -32,3 +33,4 @@
 - For `pw test` fixture placeholders, resolve wallet-derived values such as `"<PublicKey>"` through the same helper used by the real command path so tests and bind requests serialize the public key identically.
 - For `pw test` success output, keep the non-debug path terse: print `✅ Passed: <filename-without-extension>` for each passing fixture, including default directory sweeps, and never dump the received message.
 - For `pw test` HTTP failures, preserve any parsed inbound `error` field from the response body and append it to the existing `Error: HTTP ...` line so users can see the server-side cause even without reading the debug payload.
+- When verifying local CLI edits through a repo virtualenv, avoid invoking the installed `pw` entry point directly if self-upgrade preflight is enabled, because it can replace the editable build with the latest published release mid-check.

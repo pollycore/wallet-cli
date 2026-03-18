@@ -12,7 +12,7 @@ from pathlib import Path
 import pollyweb.msg as pollyweb_msg
 import pytest
 
-from pollyweb import Msg
+from pollyweb import DnsQueryDiagnostic, DnsVerificationDiagnostics, Msg
 from pollyweb_cli import cli
 from pollyweb_cli.features import chat as chat_feature
 from pollyweb_cli.features import echo as echo_feature
@@ -37,7 +37,7 @@ def _fake_dns_diagnostics(
 ):
     """Build stable DNS diagnostics for echo debug output tests."""
 
-    return echo_feature.EchoDnsDiagnostics(
+    return DnsVerificationDiagnostics(
         Domain = domain,
         PollyWebBranch = f"pw.{domain}",
         Selector = selector,
@@ -45,14 +45,14 @@ def _fake_dns_diagnostics(
         DnssecRequested = True,
         Nameservers = ["1.1.1.1"],
         Queries = [
-            echo_feature.DnsQueryDiagnostic(
+            DnsQueryDiagnostic(
                 Name = f"pw.{domain}",
                 Type = "DS",
                 ResponseCode = "NOERROR",
                 AuthenticData = True,
                 Answers = ["12345 13 2 ABCDEF"],
             ),
-            echo_feature.DnsQueryDiagnostic(
+            DnsQueryDiagnostic(
                 Name = f"{selector}._domainkey.pw.{domain}",
                 Type = "TXT",
                 ResponseCode = "NOERROR",
@@ -97,7 +97,11 @@ def test_echo_sends_signed_message_and_verifies_response(
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
-        lambda domain, selector: (remote_key_pair.PublicKey, "ed25519"),
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
     )
 
     exit_code = cli.main(["echo", "vault.example.com"])
@@ -135,7 +139,11 @@ def test_echo_fails_when_signature_does_not_verify(monkeypatch, tmp_path, capsys
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
-        lambda domain, selector: (wrong_key_pair.PublicKey, "ed25519"),
+        lambda domain, selector: (
+            wrong_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
     )
 
     exit_code = cli.main(["echo", "vault.example.com"])
@@ -174,7 +182,11 @@ def test_echo_fails_when_response_headers_do_not_make_sense(
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
-        lambda domain, selector: (remote_key_pair.PublicKey, "ed25519"),
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
     )
 
     exit_code = cli.main(["echo", "vault.example.com"])
@@ -212,13 +224,11 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
-        lambda domain, selector: (remote_key_pair.PublicKey, "ed25519"),
-    )
-    monkeypatch.setattr(
-        echo_feature,
-        "_maybe_collect_echo_dns_diagnostics",
-        lambda payload, fallback_domain: _fake_dns_diagnostics(
-            domain = fallback_domain),
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
     )
 
     exit_code = cli.main(["echo", "--debug", "vault.example.com"])
@@ -237,6 +247,10 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
     assert "DkimName: default._domainkey.pw.vault.example.com" in captured.out
     assert "DnssecRequested: true" in captured.out
     assert "AuthenticData: true" in captured.out
+    assert "External DNS checks:" in captured.out
+    assert "mxtoolbox.com/SuperTool.aspx?action=dkim%3Apw.vault.example.com%3Adefault&run=toolpage" in captured.out
+    assert "dnssec-debugger.verisignlabs.com/pw.vault.example.com" in captured.out
+    assert "dns.google/query?name=pw.vault.example.com" in captured.out
     assert "Verified echo response from vault.example.com:" in captured.out
     assert " - Schema validated: pollyweb.org/MSG:1.0" in captured.out
     assert " - Required signed headers were present" in captured.out
@@ -281,13 +295,11 @@ def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
-        lambda domain, selector: (remote_key_pair.PublicKey, "ed25519"),
-    )
-    monkeypatch.setattr(
-        echo_feature,
-        "_maybe_collect_echo_dns_diagnostics",
-        lambda payload, fallback_domain: _fake_dns_diagnostics(
-            domain = fallback_domain),
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
     )
 
     exit_code = cli.main(["echo", "--debug", "any-domain.dom"])
@@ -309,6 +321,7 @@ def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
     assert "Echo: ok" in captured.out
     assert "\nDNS verification diagnostics:\n" in captured.out
     assert "PollyWebBranch: pw.any-domain.pollyweb.org" in captured.out
+    assert "dns.google/query?name=pw.any-domain.pollyweb.org" in captured.out
     assert "Verified echo response from any-domain.dom:" in captured.out
     assert (
         " - Signature verified via DKIM lookup for selector default "
@@ -374,13 +387,6 @@ def test_echo_debug_rejects_unexpected_top_level_response_fields(
             "any-domain.pollyweb.org",
         ),
     )
-    monkeypatch.setattr(
-        echo_feature,
-        "_maybe_collect_echo_dns_diagnostics",
-        lambda payload, fallback_domain: _fake_dns_diagnostics(
-            domain = fallback_domain),
-    )
-
     exit_code = cli.main(["echo", "--debug", "any-domain.dom"])
 
     assert exit_code == 1
@@ -390,7 +396,8 @@ def test_echo_debug_rejects_unexpected_top_level_response_fields(
         "Expected only Body, Hash, Header, and Signature."
         in captured.err
     )
-    assert "\nDNS verification diagnostics:\n" in captured.out
+    assert "\nDNS verification diagnostics:\n" not in captured.out
+    assert "External DNS checks:" in captured.out
     assert "\nEcho response:\n" not in captured.out
 
 
@@ -425,14 +432,11 @@ def test_echo_debug_prints_dns_diagnostics_on_verification_failure(
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
-        lambda domain, selector: (wrong_key_pair.PublicKey, "ed25519"),
-    )
-    monkeypatch.setattr(
-        echo_feature,
-        "_maybe_collect_echo_dns_diagnostics",
-        lambda payload, fallback_domain: _fake_dns_diagnostics(
-            domain = fallback_domain,
-            selector = "pw1"),
+        lambda domain, selector: (
+            wrong_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
     )
 
     exit_code = cli.main(["echo", "--debug", "vault.example.com"])
@@ -443,6 +447,7 @@ def test_echo_debug_prints_dns_diagnostics_on_verification_failure(
     assert "\nDNS verification diagnostics:\n" in captured.out
     assert "Selector: pw1" in captured.out
     assert "DkimName: pw1._domainkey.pw.vault.example.com" in captured.out
+    assert "dnssec-debugger.verisignlabs.com/pw.vault.example.com" in captured.out
 
 
 def test_echo_accepts_response_to_stored_bind(
@@ -488,7 +493,11 @@ def test_echo_accepts_response_to_stored_bind(
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
-        lambda domain, selector: (remote_key_pair.PublicKey, "ed25519"),
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
     )
 
     exit_code = cli.main(["echo", "any-hoster.pollyweb.org"])
@@ -542,7 +551,11 @@ def test_echo_rejects_unrelated_response_to_value(
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
-        lambda domain, selector: (remote_key_pair.PublicKey, "ed25519"),
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
     )
 
     exit_code = cli.main(["echo", "vault.example.com"])
