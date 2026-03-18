@@ -1,0 +1,8 @@
+# Test: is Echo@Domain working on any-hoster.pollyweb.org?
+# Purpose: checking if the domain inbox is working.
+# Note: don't change the content
+
+Outbound:
+  Header:
+    To: any-dumy.dom
+    Subject: Echo@Domain
