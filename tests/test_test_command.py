@@ -217,6 +217,85 @@ def test_test_reports_missing_bind_for_placeholder(
     assert "Run `pw bind any-hoster.pollyweb.org` first." in captured.err
 
 
+def test_test_resolves_public_key_placeholder_from_wallet(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    test_path = tmp_path / "test.yaml"
+    public_key_path = config_dir / "public.pem"
+    key_pair = cli.KeyPair()
+    expected_public_key = cli.serialize_public_key_value(
+        key_pair.public_pem_bytes().decode("utf-8")
+    )
+
+    config_dir.mkdir()
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.pollyweb.org\n"
+            "  Subject: Echo@Domain\n"
+            "  Body:\n"
+            "    PublicKey: '<PublicKey>'\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    def fake_send_wallet_message(**kwargs):
+        assert kwargs["body"]["PublicKey"] == expected_public_key
+        return (
+            '{"Header":{"From":"any-hoster.pollyweb.org","To":"any-hoster.pollyweb.org","Subject":"Echo@Domain"}}',
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert '"Subject":"Echo@Domain"' in captured.out
+
+
+def test_test_reports_missing_public_key_for_placeholder(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    test_path = tmp_path / "test.yaml"
+
+    config_dir.mkdir()
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.pollyweb.org\n"
+            "  Subject: Echo@Domain\n"
+            "  Body:\n"
+            "    PublicKey: '<PublicKey>'\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert (
+        f"Missing PollyWeb public key in {config_dir / 'public.pem'}."
+        in captured.err
+    )
+    assert "Run `pw config` first." in captured.err
+
+
 def test_test_without_path_runs_pw_tests_yaml_files_in_alphabetical_order(
     monkeypatch, tmp_path, capsys
 ):
@@ -253,7 +332,11 @@ def test_test_without_path_runs_pw_tests_yaml_files_in_alphabetical_order(
             "any-hoster.pollyweb.org",
         )
 
-    def fake_load_message_test_fixture(path, binds_path):
+    def fake_load_message_test_fixture(
+        path,
+        binds_path,
+        public_key_path
+    ):
         return {
             "Outbound": {
                 "To": "any-hoster.dom",
