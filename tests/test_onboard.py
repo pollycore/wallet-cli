@@ -66,8 +66,8 @@ def test_send_onboard_message_posts_to_notifier_inbox(monkeypatch):
     assert body["Header"]["From"] == "Anonymous"
     assert body["Body"]["Language"] == cli.NOTIFIER_LANGUAGE
     assert body["Body"]["PublicKey"] == "MCowBQYDK2VwAyEAtest=="
-    assert "Hash" in body
-    assert "Signature" in body
+    assert "Hash" not in body
+    assert "Signature" not in body
 
     # Verify the parsed response is returned
     assert result == {"Wallet": "wallet-abc-123"}
@@ -99,8 +99,8 @@ def test_send_onboard_message_debug_prints_payloads(monkeypatch, capsys):
     assert "-----END PUBLIC KEY-----" not in captured.out
     assert "PublicKey:" in captured.out
     assert "MCowBQYDK2VwAyEAtest==" in captured.out
-    assert "Hash:" in captured.out
-    assert "Signature:" in captured.out
+    assert "Hash:" not in captured.out
+    assert "Signature:" not in captured.out
     assert "Inbound payload:" in captured.out
     assert "Wallet: wallet-abc-123" in captured.out
 
@@ -132,4 +132,3 @@ def test_send_onboard_message_raises_for_non_dict_json_response(monkeypatch):
             b"-----BEGIN PUBLIC KEY-----\ntest==\n-----END PUBLIC KEY-----\n",
             "any-notifier.pollyweb.org",
         )
-

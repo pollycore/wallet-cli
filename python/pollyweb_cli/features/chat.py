@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import secrets
 
-from pollyweb import KeyPair, Msg
+from pollyweb import KeyPair, Msg, Wallet
 import yaml
 from websocket import WebSocket
 from websocket import WebSocketConnectionClosedException
@@ -325,8 +325,13 @@ def build_auth_token(
         Subject = CONNECT_SUBJECT,
         Body = {"Wallet": wallet_id},
     )
-    if not unsigned:
-        message = message.sign(key_pair.PrivateKey)
+
+    # Use the published wallet signing flow for non-anonymous sessions.
+    if not unsigned and wallet_id != "Anonymous":
+        message = Wallet(
+            KeyPair = key_pair,
+            ID = wallet_id,
+        ).sign(message)
 
     payload = json.dumps(
         message.to_dict(),

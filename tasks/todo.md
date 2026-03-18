@@ -1,5 +1,17 @@
 # Task Plan
 
+- [x] Confirm the latest published `pollyweb` release and compare it with the repo floor
+- [x] Run a PyPI-backed upgrade in the repo test virtualenv
+- [x] Verify the repo with the required `./.venv-tests/bin/python -m pytest` command
+
+# Review
+
+- Upgraded the repo test virtualenv from `pollyweb 1.0.68` to the newer published PyPI release `1.0.70` with `./.venv-tests/bin/python -m pip install --upgrade pollyweb`.
+- Raised the package floor in `/Users/jorgemf/Git/wallet-cli/pyproject.toml` to `pollyweb>=1.0.70`, updated wallet-backed signing to use `pollyweb.Wallet.sign(...)`, switched the domain-signed echo fixture helper to `Msg.sign_with(...)`, and updated `/Users/jorgemf/Git/wallet-cli/AGENTS.md` plus `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to match.
+- Verified the full suite against the repo source with `PYTHONPATH=$PWD/python ./.venv-tests/bin/python -m pytest` (`165 passed, 1 skipped`).
+
+# Task Plan
+
 - [x] Inspect the current bind-alert metadata and find the version source
 - [x] Add CLI version details to bind-change alert logs and user-facing errors
 - [x] Verify the updated bind alert coverage with the repo test interpreter

@@ -145,7 +145,10 @@ def send_onboard_message(
             "PublicKey": public_key_value,
         },
     )
-    payload = msg.sign(key_pair.PrivateKey).to_dict()
+
+    # PollyWeb wallets cannot sign as Anonymous, so onboarding stays as the
+    # unsigned anonymous request that the notifier already accepts.
+    payload = msg.to_dict()
 
     if debug:
         print_debug_payload(

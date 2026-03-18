@@ -90,7 +90,14 @@ def make_echo_response_payload(
         Correlation = correlation,
         Selector = selector,
         Body = body or {"Echo": "ok"},
-    ).sign(private_key)
+    ).sign_with(
+        lambda canonical: sign_message(
+            private_key,
+            canonical,
+            signature_algorithm = "ed25519-sha256",
+        )[0],
+        signature_algorithm = "ed25519-sha256",
+    )
 
     return json.dumps(msg.to_dict()).encode("utf-8")
 

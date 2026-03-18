@@ -46,3 +46,5 @@
 - Automatic self-upgrades should suppress pip's normal install output, show a transient spinner line reading `Upgrading from v<old> to v<new>`, and then leave the concise notice `ℹ️ Upgraded from v<old> to v<new>`.
 - Automatic self-upgrades should retry a failed pip install once before surfacing a notice, and when the CLI is not running inside a virtualenv, fall back to `python -m pip install --user ...` to avoid common permission failures.
 - In this repo, run tests through the project virtualenv such as `./.venv-tests/bin/python -m pytest`; the plain `pytest` on some machines resolves to a different interpreter and can hide or invent dependency failures.
+- The current tested PollyWeb floor in this repo is `pollyweb>=1.0.70`; when a newer published `pollyweb` release is required and the suite passes on it, bump the dependency floor immediately instead of relying on a locally upgraded environment.
+- For wallet-backed signing in this repo, do not call `Msg.sign(...)`; on current PollyWeb releases use `pollyweb.Wallet.sign(...)`, and use `Msg.sign_with(...)` only for explicit non-wallet helpers such as domain-signed fixture builders.

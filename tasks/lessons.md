@@ -15,6 +15,7 @@
 - For automatic self-upgrades, suppress pip's normal install chatter; show a transient spinner with `Upgrading from v<old> to v<new>` while the install runs, then replace it with `ℹ️ Upgraded from v<old> to v<new>`.
 - For automatic self-upgrades, retry the pip install once before giving up; when running outside a virtualenv, add a final `--user` fallback because global/system installs fail often on permissions or externally-managed environments.
 - Treat editable, direct-url, local-path, missing-metadata, and `*.dev*` `pollyweb-cli` runtimes as invalid for command execution; before running any command, replace them with the latest published PyPI release instead of trusting the local checkout.
+- On `pollyweb>=1.0.70`, `Msg.sign(...)` is gone; use `pollyweb.Wallet.sign(...)` for wallet-scoped signing and `Msg.sign_with(...)` only for explicit non-wallet signing helpers such as domain-signed test fixtures.
 - When changing Rich-based terminal status output, verify against the actual installed API surface in the repo venv; `Console.status()` here does not accept `transient=`, so compatibility checks should include a real runtime call, not only mocked tests.
 - The CLI exposes its installed release as the explicit `pw version` subcommand rather than a top-level `--version` flag, while keeping the same upgrade preflight and output format.
 - When upgrading `pollyweb` in an older local virtualenv, follow the package upgrade with `python -m pip install -e '.[dev]'` in that env so stale editable-install metadata does not keep pinning an older exact `pollyweb` version.
@@ -23,7 +24,7 @@
 - For wallet-backed sends, the CLI should only override `msg.From` when it has something concrete to provide, such as a stored bind UUID for the target domain; otherwise let `pollyweb.Wallet` apply its own default `Anonymous` sender.
 - Treat `--anonymous` and `--unsigned` as transport-level controls in the shared send helper: `--anonymous` must override stored binds and explicit wallet UUID senders, while `--unsigned` must remove `Hash` and `Signature` without changing the chosen `From`.
 - When `wallet-cli` starts depending on new `pollyweb` behavior, bump the minimum published `pollyweb` version immediately and keep a clean-install smoke check in the push path so local editable installs cannot hide unreleased dependency requirements.
-- The current test and runtime surface needs `pollyweb>=1.0.68`; if repo code or tests import newer PollyWeb diagnostics/types, bump the version floor right away instead of relying on a locally upgraded venv.
+- The current test and runtime surface needs `pollyweb>=1.0.70`; if repo code or tests import newer PollyWeb diagnostics/types, bump the version floor right away instead of relying on a locally upgraded venv.
 - When a user asks to update the CLI, check the `wallet-cli` source repo first instead of only refreshing the pipx-installed `pw` environment.
 - For `pw echo`, do not assume the synchronous reply `To` will always echo the target domain; if the target domain has a stored bind, treat that bind UUID as an equally valid echoed recipient.
 - For plain `pw echo` success output, keep the command quiet and print only `✅ Verified echo response`; reserve the echoed payload for `--debug` so the default path stays concise.
