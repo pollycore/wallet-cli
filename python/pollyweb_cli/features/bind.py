@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version as get_installed_version
 import json
 import re
 import socket
@@ -31,6 +32,7 @@ BIND_PATTERN = re.compile(
     rf"Bind:{UUID_PATTERN.pattern}"
 )
 MACOS_NOTIFICATION_TITLE = "PollyWeb bind changed"
+CLI_PACKAGE_NAME = "pollyweb-cli"
 
 
 def normalize_bind_value(bind_value: str) -> str:
@@ -181,6 +183,15 @@ def get_bind_change_script_path() -> str:
         return script_path
 
 
+def get_bind_change_version() -> str:
+    """Return the installed CLI version for bind-change diagnostics."""
+
+    try:
+        return get_installed_version(CLI_PACKAGE_NAME)
+    except PackageNotFoundError:
+        return "0+unknown"
+
+
 def append_bind_change_log(
     binds_path: Path,
     domain: str,
@@ -221,7 +232,8 @@ def append_bind_alert_log(
     domain: str,
     previous_entry: dict[str, str],
     new_entry: dict[str, str],
-    script_path: str
+    script_path: str,
+    version: str
 ) -> None:
     """Append a high-signal alert entry for an unexpected bind change."""
 
@@ -231,6 +243,7 @@ def append_bind_alert_log(
         f"[{timestamp}] ALERT bind changed for {domain}",
         f"  binds_file: {binds_path}",
         f"  script_path: {script_path}",
+        f"  version: {version}",
         f"  previous_bind: {normalize_bind_value(previous_entry['Bind'])}",
         f"  new_bind: {normalize_bind_value(new_entry['Bind'])}",
     ]
@@ -282,12 +295,14 @@ def raise_bind_change_error(
     previous_bind = normalize_bind_value(previous_entry["Bind"])
     new_bind = normalize_bind_value(new_entry["Bind"])
     script_path = get_bind_change_script_path()
+    version = get_bind_change_version()
     append_bind_alert_log(
         binds_path,
         domain,
         previous_entry,
         new_entry,
-        script_path)
+        script_path,
+        version)
     notify_bind_change(
         domain,
         previous_bind,
@@ -300,6 +315,7 @@ def raise_bind_change_error(
                 f"Previous bind: {previous_bind}",
                 f"New bind: {new_bind}",
                 f"Script path: {script_path}",
+                f"Version: {version}",
                 f"See {get_binds_log_path(binds_path)} for the alert entry.",
                 (
                     "This usually means another process or concurrent test is "

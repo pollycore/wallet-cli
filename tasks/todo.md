@@ -1,5 +1,18 @@
 # Task Plan
 
+- [x] Inspect the current bind-alert metadata and find the version source
+- [x] Add CLI version details to bind-change alert logs and user-facing errors
+- [x] Verify the updated bind alert coverage with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py` so bind-change discovery now records the installed CLI version alongside the script path in both the `ALERT` log entry and the raised `UserFacingError`.
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/test_bind.py` to assert the new version field is logged and surfaced in the bind-change error text.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/bind.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the new caller-version diagnostic is documented for future work.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_bind.py` (`16 passed`).
+
+# Task Plan
+
 - [x] Review the current bind-alert behavior and identify where to attach caller-script diagnostics
 - [x] Add the triggering script path to bind-change alert logs and user-facing errors
 - [x] Verify the updated bind alert coverage with the repo test interpreter
