@@ -15,6 +15,7 @@
 - Treat `--anonymous` and `--unsigned` as transport-level controls in the shared send helper: `--anonymous` must override stored binds and explicit wallet UUID senders, while `--unsigned` must remove `Hash` and `Signature` without changing the chosen `From`.
 - When `wallet-cli` starts depending on new `pollyweb` behavior, bump the minimum published `pollyweb` version immediately and keep a clean-install smoke check in the push path so local editable installs cannot hide unreleased dependency requirements.
 - For `pw echo`, do not assume the synchronous reply `To` will always echo the target domain; if the target domain has a stored bind, treat that bind UUID as an equally valid echoed recipient.
+- For plain `pw echo` success output, keep the command quiet and print only `✅ Verified echo response`; reserve the echoed payload for `--debug` so the default path stays concise.
 - For domain-signed PollyWeb messages, do not serialize `Header.Algorithm`; signing still uses the DKIM-declared key type for the selected selector, and verification should infer that algorithm from DNS unless an explicit header is present and mismatched.
 - When adding default fixture discovery to `pw test`, make the path optional in the parser and keep batch execution deterministic by reading `./pw-tests/*.yaml` in alphabetical order.
 - For `pw test` fixture placeholders, resolve wallet-derived values such as `"<PublicKey>"` through the same helper used by the real command path so tests and bind requests serialize the public key identically.

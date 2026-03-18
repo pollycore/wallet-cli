@@ -23,5 +23,6 @@
 - `pw bind` stores only the UUID portion of a `Bind:<UUID>` response in `~/.pollyweb/binds.yaml`; keep the wire response parsing compatible with the prefixed format.
 - Persist bind domains in canonical form and normalize lookup input the same way, so `.dom` and `.pollyweb.org` refer to the same stored bind.
 - Domain-signed PollyWeb messages should omit `Header.Algorithm`; receivers must infer the signature algorithm from DKIM using the declared `Selector`, and `wallet-cli` should not add or require that header for domain senders.
+- `pw echo` should stay quiet on success and print only `✅ Verified echo response` unless `--debug` is set, in which case it may include the outbound and inbound payload details.
 - The CLI reports its installed release via `pw version`; do not reintroduce a top-level `pw --version` flag without an explicit product change.
 - The CLI self-update preflight should upgrade automatically when PyPI has a newer release; do not ask for confirmation or persist declined versions unless the product requirement changes.

@@ -70,10 +70,7 @@ def test_echo_sends_signed_message_and_verifies_response(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert "\nEcho response:\n" in captured.out
-    assert "Subject: Echo@Domain" in captured.out
-    assert "Echo: ok" in captured.out
-    assert "Verified echo response: ✅" in captured.out
+    assert captured.out == "Verified echo response: ✅\n"
     assert captured.err == ""
 
 def test_echo_fails_when_signature_does_not_verify(monkeypatch, tmp_path, capsys):

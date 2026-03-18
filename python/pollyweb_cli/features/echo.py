@@ -204,11 +204,11 @@ def cmd_echo(
             f"Echo request to {domain} failed: {reason}"
         ) from None
 
-    print_echo_response(response_payload)
     if not debug:
         print("Verified echo response: ✅")
         return 0
 
+    print_echo_response(response_payload)
     print(f"Verified echo response from {domain}:")
     if verification is not None:
         print(f" - Schema validated: {verification.schema}")
