@@ -212,7 +212,16 @@ def assert_expected_subset(
 ) -> None:
     """Assert that a response contains the expected fixture subset."""
 
-    empty_values = ("", "''", None)
+    def is_empty_value(value: Any) -> bool:
+        """Return whether a fixture value should count as empty."""
+
+        if value in ("", "''", None):
+            return True
+
+        if value == {}:
+            return True
+
+        return False
 
     if isinstance(expected, dict):
         if not isinstance(actual, dict):
@@ -225,7 +234,7 @@ def assert_expected_subset(
             # A fixture can still assert an explicit empty value when the
             # response includes it, but omission is also accepted so callers
             # can express "blank or absent" fields such as Header.Algorithm.
-            if key not in actual and expected_value in empty_values:
+            if key not in actual and is_empty_value(expected_value):
                 continue
 
             if key not in actual:
@@ -271,7 +280,7 @@ def assert_expected_subset(
 
         return
 
-    if expected in empty_values and actual in empty_values:
+    if is_empty_value(expected) and is_empty_value(actual):
         return
 
     if actual != expected:

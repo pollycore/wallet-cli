@@ -624,6 +624,45 @@ def test_test_accepts_literal_double_quote_empty_marker_in_response(
     captured = capsys.readouterr()
     assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
 
+def test_test_accepts_empty_object_as_empty_in_response(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  Header:\n"
+            "    Algorithm: ''\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            json.dumps(
+                {
+                    "Header": {
+                        "Subject": "Echo@Domain",
+                        "Algorithm": {},
+                    }
+                }
+            ),
+            None,
+            "vault.example.com",
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+
 def test_test_accepts_uuid_wildcard_in_inbound_expectation(
     monkeypatch, tmp_path, capsys
 ):
