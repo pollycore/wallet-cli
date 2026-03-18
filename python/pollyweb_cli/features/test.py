@@ -354,4 +354,4 @@ def run_message_test_fixture(
             expected_inbound,
             "response")
 
-    print(f"✅ Passed: {fixture_path.name}")
+    print(f"✅ Passed: {fixture_path.stem}")

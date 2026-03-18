@@ -23,6 +23,6 @@
 # Review
 
 - Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py` so successful `pw test` runs no longer print the received message and now format success output based on whether the user supplied fixture paths.
-- Tightened `/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py` to lock in `✅ Passed: <filename>` for explicit fixture runs and default `pw-tests` sweeps alike.
+- Tightened `/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py` to lock in `✅ Passed: <filename-without-extension>` for explicit fixture runs and default `pw-tests` sweeps alike.
 - Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/test.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to document the concise success-output rule.
 - Verified with `./.venv/bin/python -m pytest -q tests/test_test_command.py` (`12 passed, 1 skipped`).
