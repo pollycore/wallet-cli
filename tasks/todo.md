@@ -78,3 +78,15 @@
 - Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/msg.py` so `pw msg` now renders its synchronous response with the shared YAML formatter by default and only prints the raw response when `--json` is set.
 - Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/parser.py`, `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/cli.py`, and `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/debug.py` to expose the new flag and reuse the existing debug YAML rendering logic without duplicating formatting code.
 - Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/msg.md` and the `pw msg` regression tests to reflect the new default YAML output and the `--json` override.
+
+# Task Plan
+
+- [x] Review the upgrade guidance and current installer path for likely failure modes
+- [x] Add retry and non-venv fallback behavior to make automatic upgrades more robust
+- [ ] Add regression coverage and verify the hardened self-upgrade flow
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/cli.py` so automatic upgrades retry the pip install once before failing and fall back to `--user` when the CLI is running outside a virtualenv.
+- Expanded `/Users/jorgemf/Git/wallet-cli/tests/test_cli_core.py` to lock in the new pip command shape, retry behavior, and the `--user` fallback path.
+- Recorded the new self-upgrade reliability rule in `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md`.

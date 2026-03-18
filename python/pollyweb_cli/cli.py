@@ -189,6 +189,33 @@ def _parse_version(value: str) -> Version | None:
         return None
 
 
+def _is_virtual_environment() -> bool:
+    """Return whether the current Python interpreter is running in a virtualenv."""
+
+    return (
+        hasattr(sys, "real_prefix")
+        or sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+    )
+
+
+def _run_upgrade_install_command(
+    command: list[str],
+    *,
+    quiet: bool,
+) -> subprocess.CompletedProcess:
+    """Run one upgrade-install subprocess with the configured output policy."""
+
+    run_kwargs: dict[str, object] = {"check": False}
+    if quiet:
+        run_kwargs["stdout"] = subprocess.DEVNULL
+        run_kwargs["stderr"] = subprocess.DEVNULL
+
+    return subprocess.run(
+        command,
+        **run_kwargs,
+    )
+
+
 def _install_upgrade(
     installed_version: str,
     latest_version: str,
@@ -198,20 +225,40 @@ def _install_upgrade(
     """Install the requested release and report whether the install succeeded."""
 
     install_target = f"{PACKAGE_NAME}=={latest_version}"
+    base_command = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-U",
+        "--disable-pip-version-check",
+        install_target,
+    ]
 
-    # Keep automatic upgrades quiet so the command flow stays focused.
-    command = [sys.executable, "-m", "pip", "install", "-U", install_target]
-    run_kwargs: dict[str, object] = {"check": False}
-    if quiet:
-        run_kwargs["stdout"] = subprocess.DEVNULL
-        run_kwargs["stderr"] = subprocess.DEVNULL
-
-    result = subprocess.run(
-        command,
-        **run_kwargs,
+    # Retry once for transient pip/network failures before surfacing a notice.
+    result = _run_upgrade_install_command(
+        base_command,
+        quiet = quiet,
     )
     if result.returncode == 0:
         return True
+
+    retry_result = _run_upgrade_install_command(
+        base_command,
+        quiet = quiet,
+    )
+    if retry_result.returncode == 0:
+        return True
+
+    # Outside virtualenvs, fall back to a user install to avoid common
+    # permission and externally-managed-environment failures.
+    if not _is_virtual_environment():
+        user_result = _run_upgrade_install_command(
+            [*base_command[:-1], "--user", install_target],
+            quiet = quiet,
+        )
+        if user_result.returncode == 0:
+            return True
 
     print_error(
         f"⚠️ Notice: Failed to upgrade {PACKAGE_NAME} to {latest_version}; "

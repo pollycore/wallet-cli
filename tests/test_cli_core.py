@@ -153,6 +153,7 @@ def test_preflight_upgrades_and_reexecs_requested_command(monkeypatch):
         "pip",
         "install",
         "-U",
+        "--disable-pip-version-check",
         "pollyweb-cli==0.1.62",
     ]
     assert recorded["stdout"] is cli.subprocess.DEVNULL
@@ -218,6 +219,90 @@ def test_preflight_shows_transient_upgrade_status_and_final_notice(monkeypatch, 
     assert captured.err.replace("\x1b[2K", "").strip() == (
         "ℹ️ Upgraded from v0.1.61 to v0.1.62"
     )
+
+def test_install_upgrade_retries_once_before_failing(monkeypatch):
+    commands = []
+    returncodes = iter([1, 0])
+
+    def fake_run(command, check, stdout=None, stderr=None):
+        commands.append(command)
+
+        class Result:
+            returncode = next(returncodes)
+
+        return Result()
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli, "_is_virtual_environment", lambda: True)
+
+    assert cli._install_upgrade("0.1.72", "0.1.73", quiet = True) is True
+    assert commands == [
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-U",
+            "--disable-pip-version-check",
+            "pollyweb-cli==0.1.73",
+        ],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-U",
+            "--disable-pip-version-check",
+            "pollyweb-cli==0.1.73",
+        ],
+    ]
+
+def test_install_upgrade_falls_back_to_user_install_outside_virtualenv(monkeypatch):
+    commands = []
+    returncodes = iter([1, 1, 0])
+
+    def fake_run(command, check, stdout=None, stderr=None):
+        commands.append(command)
+
+        class Result:
+            returncode = next(returncodes)
+
+        return Result()
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli, "_is_virtual_environment", lambda: False)
+
+    assert cli._install_upgrade("0.1.72", "0.1.73", quiet = True) is True
+    assert commands == [
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-U",
+            "--disable-pip-version-check",
+            "pollyweb-cli==0.1.73",
+        ],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-U",
+            "--disable-pip-version-check",
+            "pollyweb-cli==0.1.73",
+        ],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-U",
+            "--disable-pip-version-check",
+            "--user",
+            "pollyweb-cli==0.1.73",
+        ],
+    ]
 
 def test_cmd_upgrade_installs_latest_release(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.72")
