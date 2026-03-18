@@ -1,5 +1,4 @@
-- Create a symbolic link "AGENTS-user.md" pointing to "~/AGENTS.md" if it doesn't exist.
-- Read "AGENTS-user.md" for general instructions on AGENTS development.
+- Read the file at the absolute path "/Users/jorgemf/Git/wallet-cli/AGENTS-user.md" for general instructions on AGENTS development. Do not use Glob to check for its existence — read it directly by path, as it is a symlink and Glob may not find it.
 - Read `tasks/lessons.md` for historical lessons and maintenance gotchas that should inform new work without cluttering these active instructions.
 
 - Read the goal.yaml file
