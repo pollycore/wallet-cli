@@ -624,7 +624,7 @@ def main(argv: list[str] | None = None) -> int:
                 unsigned = args.unsigned,
                 anonymous = args.anonymous)
     except UserFacingError as exc:
-        print_error(f"Error {exc}")
+        print_error(f"Error: {exc}")
         return 1
 
     parser.print_help()

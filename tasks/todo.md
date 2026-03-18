@@ -54,3 +54,15 @@
 - Added `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` coverage that simulates `pw echo any-non-existing.dom` failing with `socket.gaierror(...)` and locks in the user-facing message.
 - Recorded the new expectation in `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md`.
 - Verification is running with the repo test interpreter and a direct CLI repro for `pw echo any-non-existing.dom`.
+
+# Task Plan
+
+- [x] Inspect the pre-push failures in `pw` error rendering and `pw test` DNS handling
+- [x] Restore the expected user-facing error prefixes without broad CLI behavior changes
+- [ ] Run the targeted test coverage and retry the guarded push
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/cli.py` so the top-level `UserFacingError` renderer prints `Error: ...` again, matching the documented CLI contract and the existing regression coverage.
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py` so DNS failures in `pw test` continue to surface the human-readable inbox-host guidance while preserving the expected `HTTP 502 Bad Gateway.` prefix.
+- Verification is next: targeted pytest for the three failing cases, then the guarded `git push` retry.

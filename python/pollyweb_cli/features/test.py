@@ -340,7 +340,9 @@ def run_message_test_fixture(
     except urllib.error.URLError as exc:
         if isinstance(exc.reason, socket.gaierror):
             host = describe_message_network_error(str(request["To"]), exc.reason)
-            raise UserFacingError(f"502: {host}") from None
+            raise UserFacingError(
+                f"HTTP 502 Bad Gateway. {host}"
+            ) from None
         reason = describe_message_network_error(
             str(request["To"]),
             exc.reason)
