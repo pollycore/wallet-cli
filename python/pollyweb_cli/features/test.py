@@ -211,6 +211,8 @@ def assert_expected_subset(
 ) -> None:
     """Assert that a response contains the expected fixture subset."""
 
+    empty_values = ("", "''", None)
+
     if isinstance(expected, dict):
         if not isinstance(actual, dict):
             raise UserFacingError(
@@ -222,7 +224,7 @@ def assert_expected_subset(
             # A fixture can still assert an explicit empty value when the
             # response includes it, but omission is also accepted so callers
             # can express "blank or absent" fields such as Header.Algorithm.
-            if key not in actual and expected_value in ("", None):
+            if key not in actual and expected_value in empty_values:
                 continue
 
             if key not in actual:
@@ -251,6 +253,9 @@ def assert_expected_subset(
                 f"Expected {location} to be a valid UUID, but got {actual!r}."
             ) from None
 
+        return
+
+    if expected in empty_values and actual in empty_values:
         return
 
     if actual != expected:

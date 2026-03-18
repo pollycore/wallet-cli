@@ -18,7 +18,7 @@
 - `pw test [path]` reads a wrapped YAML fixture, sends only its `Outbound` payload with the same signing rules as `pw msg`, and treats `Inbound` as an expected subset of the returned JSON payload.
 - `pw test` with no path looks for `./pw-tests`, then runs each `*.yaml` fixture there in alphabetical order using the same wrapped fixture rules.
 - `pw test --json` should be accepted for parity with the shared wallet send path; it keeps the normal concise pass/fail output, and when combined with `--debug` it switches debug payload rendering to raw JSON.
-- `pw test` inbound validation should treat an expected empty scalar value such as `''` or `null` as satisfied by either the same empty value in the response or no field at all, so fixtures can describe intentionally blank optional fields without failing when the service omits them.
+- `pw test` inbound validation should treat an expected empty scalar value such as `''` or `null` as satisfied by the same empty value, the literal string `''`, or no field at all, so fixtures can describe intentionally blank optional fields without failing when services serialize or omit them differently.
 - `pw test` also resolves any string exactly matching `{BindOf(<domain>)}` from `~/.pollyweb/binds.yaml` before sending, and the lookup should reuse canonical domain normalization so `.dom` and `.pollyweb.org` placeholders share the same stored bind.
 - `pw test` also resolves the exact string `"<PublicKey>"` from `~/.pollyweb/public.pem` before sending, using the same PEM-stripping serialization as `pw bind`.
 - Keep a pytest coverage hook that iterates every checked-in file under `test-msgs` and runs `cli.main(["test", <fixture>])`, so adding a new wrapped fixture automatically adds command coverage.
@@ -28,6 +28,10 @@
 - `pw echo` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
 - `pw echo` verification should reject any extra top-level response fields beyond `Header`, `Body`, `Hash`, and `Signature`, so misplaced properties such as a top-level `Request` fail loudly instead of being hidden by debug formatting.
 - `pw echo --debug` should print DNS verification diagnostics for the PollyWeb branch `DS` lookup and DKIM `TXT` lookup, including the DNS names queried, the collected record values, and whether each response carried the DNSSEC AD flag; keep those diagnostics visible even when verification fails after the response arrives.
+- `pw echo --debug` should label the click-through MXToolbox URL as an explicit DKIM test link for the verified `pw.<domain>` branch and selector so users can open it directly.
+- `pw echo --debug` should also label the DNSSEC Debugger URL as an explicit test link for the verified `pw.<domain>` branch so users can open the exact DNSSEC check directly.
+- `pw echo --debug` should also label the Google DNS URL as an explicit test link for the verified `pw.<domain>` branch so users can open the exact resolver view directly.
+- `pw echo --debug` should also include and label a Google DNS A-record test URL for the verified `pw.<domain>` branch so users can open the direct `type=A` resolver view.
 - `pw bind` expects a bare UUID bind value in successful responses and stores that UUID in `~/.pollyweb/binds.yaml`; keep the legacy `Bind:<UUID>` parser path compatible so older hosts still work.
 - Persist bind domains in canonical form and normalize lookup input the same way, so `.dom` and `.pollyweb.org` refer to the same stored bind.
 - `pw bind` should append wallet-managed bind-change audit entries to `~/.pollyweb/binds.log` whenever it writes `~/.pollyweb/binds.yaml`, including the canonical domain plus the previous and new bind UUIDs for replacements.
@@ -35,6 +39,7 @@
 - `pw echo` should stay quiet on success and print only `✅ Verified echo response` unless `--debug` is set, in which case it may include the outbound and inbound payload details.
 - The CLI reports its installed release via `pw version`; do not reintroduce a top-level `pw --version` flag without an explicit product change.
 - The CLI self-update preflight should upgrade automatically when PyPI has a newer release; do not ask for confirmation or persist declined versions unless the product requirement changes.
+- The CLI runtime itself must always come from a published PyPI release; if `pollyweb-cli` is running from an editable checkout, local path, direct URL, or dev version, replace it with the latest published release before executing the requested command.
 - Automatic self-upgrades should suppress pip's normal install output, show a transient spinner line reading `Upgrading from v<old> to v<new>`, and then leave the concise notice `ℹ️ Upgraded from v<old> to v<new>`.
 - Automatic self-upgrades should retry a failed pip install once before surfacing a notice, and when the CLI is not running inside a virtualenv, fall back to `python -m pip install --user ...` to avoid common permission failures.
 - In this repo, run tests through the project virtualenv such as `./.venv-tests/bin/python -m pytest`; the plain `pytest` on some machines resolves to a different interpreter and can hide or invent dependency failures.
