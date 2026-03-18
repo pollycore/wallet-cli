@@ -43,4 +43,5 @@ def skip_upgrade_check(
     monkeypatch.setattr(
         cli,
         "_requires_published_runtime",
-        lambda: False)
+        lambda: False,
+        raising = False)
