@@ -1,5 +1,19 @@
 # Task Plan
 
+- [x] Inspect the current pytest and pre-push setup for real-profile leakage
+- [x] Add global test-profile isolation plus pre-push `HOME` isolation
+- [x] Verify the guarded paths with focused pytest runs and the smoke-test selector
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/conftest.py` with an autouse fixture that redirects `cli` profile paths, `transport.DEFAULT_BINDS_PATH`, and process `HOME`/`USERPROFILE` into a per-test temp `.pollyweb` tree.
+- Updated `/Users/jorgemf/Git/wallet-cli/githooks/pre-push` so both the main test suite and the clean-install smoke test run with an isolated `HOME`, closing the path back to the real `~/.pollyweb` profile.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_cli_core.py` coverage that asserts the autouse fixture is actually isolating the CLI and transport bind paths.
+- Updated `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so future test work keeps the profile-isolation rule intact.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_cli_core.py tests/test_bind.py` (`50 passed`) and `HOME="$PWD/.git/.manual-pre-push-home" USERPROFILE="$PWD/.git/.manual-pre-push-home" ./.venv-tests/bin/python -m pytest -q tests/test_cli_core.py -k 'dependency_contract'` (`1 passed, 33 deselected`).
+
+# Task Plan
+
 - [x] Review the written bind behavior and identify the exact same-domain replacement path
 - [x] Raise a loud discovery-time error for same-domain same-schema bind churn, with alert logging and local notification
 - [x] Add regression coverage and verify the bind flow with the repo test interpreter

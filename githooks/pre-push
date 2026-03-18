@@ -17,7 +17,10 @@ if [ ! -x ".venv/bin/python" ]; then
 fi
 
 printf '%s\n' "pre-push: running test suite..."
-.venv/bin/python -m pytest
+test_home=".git/.pre-push-home"
+rm -rf "$test_home"
+mkdir -p "$test_home"
+HOME="$repo_root/$test_home" USERPROFILE="$repo_root/$test_home" .venv/bin/python -m pytest
 printf '%s\n' "pre-push: tests passed."
 
 smoke_venv=".git/.pre-push-smoke-venv"
@@ -27,5 +30,5 @@ printf '%s\n' "pre-push: running clean-install smoke test..."
 python3 -m venv "$smoke_venv"
 "$smoke_venv/bin/python" -m pip install --upgrade pip >/dev/null
 "$smoke_venv/bin/python" -m pip install '.[dev]' >/dev/null
-"$smoke_venv/bin/python" -m pytest -q tests/test_cli_core.py -k 'dependency_contract'
+HOME="$repo_root/$test_home" USERPROFILE="$repo_root/$test_home" "$smoke_venv/bin/python" -m pytest -q tests/test_cli_core.py -k 'dependency_contract'
 printf '%s\n' "pre-push: clean-install smoke test passed."

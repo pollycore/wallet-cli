@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import json
+import os
 import socket
 import stat
 import sys
@@ -53,6 +54,15 @@ def test_dependency_contract_requires_pollyweb_release_with_unsigned_uuid_send_s
     assert payloads[0]["Header"]["From"] == VALID_WALLET_ID
     assert "Hash" not in payloads[0]
     assert "Signature" not in payloads[0]
+
+
+def test_autouse_fixture_isolates_cli_profile_paths(tmp_path):
+    fake_home = tmp_path / "home"
+
+    assert cli.CONFIG_DIR == fake_home / ".pollyweb"
+    assert cli.BINDS_PATH == fake_home / ".pollyweb" / "binds.yaml"
+    assert transport_tools.DEFAULT_BINDS_PATH == fake_home / ".pollyweb" / "binds.yaml"
+    assert Path(os.environ["HOME"]) == fake_home
 
 def test_version_command_prints_installed_version(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_maybe_upgrade_before_command", lambda argv: None)

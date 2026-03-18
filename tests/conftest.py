@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -16,6 +17,7 @@ if str(PYTHON_SOURCE) not in sys.path:
     sys.path.insert(0, str(PYTHON_SOURCE))
 
 from pollyweb_cli import cli
+from pollyweb_cli.tools import transport as transport_tools
 
 
 @pytest.fixture(autouse = True)
@@ -45,3 +47,38 @@ def skip_upgrade_check(
         "_requires_published_runtime",
         lambda: False,
         raising = False)
+
+
+@pytest.fixture(autouse = True)
+def isolate_profile_paths(
+    monkeypatch,
+    tmp_path
+):
+    """Redirect CLI profile state into a per-test temp home directory."""
+
+    fake_home = tmp_path / "home"
+    config_dir = fake_home / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_path = config_dir / "config.yaml"
+    binds_path = config_dir / "binds.yaml"
+    history_dir = config_dir / "history"
+    sync_dir = config_dir / "sync"
+
+    config_dir.mkdir(parents = True, exist_ok = True)
+    history_dir.mkdir(parents = True, exist_ok = True)
+    sync_dir.mkdir(parents = True, exist_ok = True)
+
+    # Keep any code that consults the process home directory away from the
+    # real user profile during tests and pre-push runs.
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(cli, "SYNC_DIR", sync_dir)
+    monkeypatch.setattr(transport_tools, "DEFAULT_BINDS_PATH", binds_path)
