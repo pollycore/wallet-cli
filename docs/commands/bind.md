@@ -12,7 +12,7 @@ By default, the request uses a stored bind UUID from `~/.pollyweb/binds.yaml` wh
 
 Domains ending in `.dom` are normalized to `.pollyweb.org` before the message is signed and sent, so `pw bind any-hoster.dom` targets `https://pw.any-hoster.pollyweb.org/inbox` and stores the canonical domain name locally.
 
-When the domain replies with a payload like `Bind:123e4567-e89b-12d3-a456-426614174000`, the CLI stores only the UUID portion in `~/.pollyweb/binds.yaml` as a YAML list item with `Bind` and `Domain` fields, replacing any existing bind for that domain unless the reply includes a different `Schema`.
+When the domain replies with a payload like `123e4567-e89b-12d3-a456-426614174000`, the CLI stores that UUID in `~/.pollyweb/binds.yaml` as a YAML list item with `Bind` and `Domain` fields, replacing any existing bind for that domain unless the reply includes a different `Schema`. The legacy `Bind:<UUID>` response format is still accepted for compatibility.
 
 Use `--anonymous` to ignore any stored bind and force `From: Anonymous`. Use `--unsigned` to remove `Hash` and `Signature` before sending.
 

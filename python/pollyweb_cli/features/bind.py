@@ -18,12 +18,15 @@ from pollyweb_cli.tools.transport import send_wallet_message
 
 BIND_SUBJECT = "Bind@Vault"
 BIND_SCHEMA_KEY = "Schema"
-BIND_PATTERN = re.compile(
-    r"Bind:[0-9a-fA-F]{8}-"
+UUID_PATTERN = re.compile(
+    r"[0-9a-fA-F]{8}-"
     r"[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{12}"
+)
+BIND_PATTERN = re.compile(
+    rf"Bind:{UUID_PATTERN.pattern}"
 )
 
 
@@ -33,6 +36,21 @@ def normalize_bind_value(bind_value: str) -> str:
     if bind_value.startswith("Bind:"):
         return bind_value.split(":", 1)[1]
     return bind_value
+
+
+def parse_bind_candidate(bind_candidate: object) -> str | None:
+    """Normalize a supported bind reply value into the stored UUID."""
+
+    if not isinstance(bind_candidate, str):
+        return None
+
+    if BIND_PATTERN.fullmatch(bind_candidate):
+        return normalize_bind_value(bind_candidate)
+
+    if UUID_PATTERN.fullmatch(bind_candidate):
+        return bind_candidate
+
+    return None
 
 
 def normalize_bind_domain(domain: str) -> str:
@@ -51,8 +69,12 @@ def serialize_public_key_value(public_key_pem: str) -> str:
 def parse_bind_response(payload: str) -> dict[str, str]:
     """Extract the bind token and optional schema from a bind response."""
 
-    match = BIND_PATTERN.search(payload)
-    bind_value = match.group(0) if match is not None else None
+    bind_value = parse_bind_candidate(payload.strip())
+
+    if bind_value is None:
+        match = BIND_PATTERN.search(payload)
+        bind_value = normalize_bind_value(match.group(0)) if match is not None else None
+
     schema_value: str | None = None
 
     try:
@@ -61,8 +83,8 @@ def parse_bind_response(payload: str) -> dict[str, str]:
         parsed = None
 
     if isinstance(parsed, dict):
-        bind_candidate = parsed.get("Bind")
-        if isinstance(bind_candidate, str) and BIND_PATTERN.fullmatch(bind_candidate):
+        bind_candidate = parse_bind_candidate(parsed.get("Bind"))
+        if bind_candidate is not None:
             bind_value = bind_candidate
 
         schema_candidate = parsed.get(BIND_SCHEMA_KEY)
@@ -71,8 +93,8 @@ def parse_bind_response(payload: str) -> dict[str, str]:
 
         body = parsed.get("Body")
         if isinstance(body, dict):
-            bind_candidate = body.get("Bind")
-            if isinstance(bind_candidate, str) and BIND_PATTERN.fullmatch(bind_candidate):
+            bind_candidate = parse_bind_candidate(body.get("Bind"))
+            if bind_candidate is not None:
                 bind_value = bind_candidate
             schema_candidate = body.get(BIND_SCHEMA_KEY)
             if isinstance(schema_candidate, str):
@@ -87,7 +109,8 @@ def parse_bind_response(payload: str) -> dict[str, str]:
                 [
                     "Could not bind {domain}.",
                     "The server replied, but it did not include a bind token.",
-                    "Expected a value like `Bind:<UUID>` in the response body.",
+                    "Expected a bare UUID bind value in the response body.",
+                    "The legacy `Bind:<UUID>` format is still accepted for compatibility.",
                     (
                         f"Response preview: {preview}"
                         if preview

@@ -416,6 +416,42 @@ def test_bind_requires_bind_token_in_response(monkeypatch, tmp_path, capsys):
     assert "Could not bind vault.example.com." in captured.err
     assert "did not include a bind token" in captured.err
 
+
+def test_bind_accepts_json_bind_value_without_prefix(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    bind_uuid = str(uuid.uuid4())
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(
+        cli.urllib.request,
+        "urlopen",
+        lambda request: DummyResponse(
+            cli.json.dumps({"Bind": bind_uuid}).encode("utf-8")
+        ),
+    )
+
+    exit_code = cli.main(["bind", "any-hoster.pollyweb.org"])
+
+    assert exit_code == 0
+    assert cli.yaml.safe_load(binds_path.read_text()) == [
+        {"Bind": bind_uuid, "Domain": "any-hoster.pollyweb.org"}
+    ]
+    captured = capsys.readouterr()
+    assert f"Stored bind for any-hoster.pollyweb.org: {bind_uuid}" in captured.out
+
+
 def test_bind_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
@@ -445,4 +481,3 @@ def test_bind_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
         "Could not resolve PollyWeb inbox host pw.any-host.pollyweb.org"
         in captured.err
     )
-

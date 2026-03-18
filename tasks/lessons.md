@@ -1,6 +1,6 @@
 # Lessons
 
-- When `pw bind` receives a `Bind:<UUID>` response, keep the prefix in wire parsing only and normalize persisted values to the bare UUID so `binds.yaml` stays clean and `pw shell` can still derive the sender value from either format.
+- When `pw bind` receives a successful response, treat a bare UUID as the primary bind shape, but keep the legacy `Bind:<UUID>` parser path compatible so older hosts still persist the same bare UUID locally.
 - When a CLI command in this repo is acting as a wallet, prefer `pollyweb.Wallet.send()` over custom signing, `urllib` request code, or manual inbox POST helpers so `.dom` alias normalization, message shape, and wallet semantics stay aligned with the published library.
 - If a command is wallet-backed, treat `From` as wallet identity, not an arbitrary sender override: accept `Anonymous` or a UUID bind value, and reject domain `From` values early.
 - If the server scopes bind allocation by domain, `pw bind` must send the normalized target domain in `Body.Domain`, not just the public key, or multiple domains can still collapse into one bind pool.

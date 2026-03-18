@@ -1,5 +1,19 @@
 # Task Plan
 
+- [x] Review the written bind-response contract and confirm the parser mismatch against the reported JSON response
+- [x] Accept JSON bind replies that return either `Bind:<UUID>` or a bare UUID while preserving current storage behavior
+- [x] Add regression coverage for the bare-UUID JSON bind response and verify the bind test suite
+- [x] Capture the review and record the lesson in repo guidance
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py` so `pw bind` now treats a bare UUID as the primary successful bind response shape, keeps legacy `Bind:<UUID>` compatibility, and reports the accepted formats accurately in bind-token errors.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_bind.py` coverage for a JSON bind response whose `Bind` value is a bare UUID and verified that the stored bind stays UUID-only.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/bind.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the repo guidance now documents bare UUID responses as the expected shape while preserving prefixed compatibility.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_bind.py` (`13 passed`).
+
+# Task Plan
+
 - [x] Review the written instructions and current `pw echo` success output behavior
 - [x] Keep non-debug `pw echo` success output to the verification line only
 - [x] Update regression coverage to prevent the response payload from printing on success
