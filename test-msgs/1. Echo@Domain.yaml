@@ -10,5 +10,4 @@ Outbound:
 Inbound:
   Header:
     From: any-hoster.pollyweb.org
-    To: any-hoster.pollyweb.org
     Subject: Echo@Domain

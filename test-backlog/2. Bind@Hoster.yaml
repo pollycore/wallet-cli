@@ -1,0 +1,11 @@
+# Test: is Bind@Hoster working on any-hoster.pollyweb.org?
+# Purpose: bind the wallet ahead of the next test
+# Note: don't change the content
+
+Outbound:
+  Header:
+    To: any-hoster.dom
+    Subject: Bind@Vault
+
+Inbound:
+  Bind: <uuid>
