@@ -335,7 +335,7 @@ def run_message_test_fixture(
         ) from None
     except urllib.error.HTTPError as exc:
         raise UserFacingError(
-            f"HTTP {exc.code}."
+            f"HTTP {exc.code} {exc.reason}."
         ) from None
     except urllib.error.URLError as exc:
         reason = describe_message_network_error(
