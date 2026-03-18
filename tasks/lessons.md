@@ -19,4 +19,4 @@
 - For domain-signed PollyWeb messages, do not serialize `Header.Algorithm`; signing still uses the DKIM-declared key type for the selected selector, and verification should infer that algorithm from DNS unless an explicit header is present and mismatched.
 - When adding default fixture discovery to `pw test`, make the path optional in the parser and keep batch execution deterministic by reading `./pw-tests/*.yaml` in alphabetical order.
 - For `pw test` fixture placeholders, resolve wallet-derived values such as `"<PublicKey>"` through the same helper used by the real command path so tests and bind requests serialize the public key identically.
-- For `pw test` success output, keep the non-debug path terse: file-backed runs should print `✅ Test passed: <path>`, default directory sweeps should print only `✅ Test passed`, and neither path should dump the received message.
+- For `pw test` success output, keep the non-debug path terse: print `✅ Passed: <filename>` for each passing fixture, including default directory sweeps, and never dump the received message.

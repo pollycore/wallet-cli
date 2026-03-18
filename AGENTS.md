@@ -19,7 +19,7 @@
 - `pw test` also resolves any string exactly matching `{BindOf(<domain>)}` from `~/.pollyweb/binds.yaml` before sending, and the lookup should reuse canonical domain normalization so `.dom` and `.pollyweb.org` placeholders share the same stored bind.
 - `pw test` also resolves the exact string `"<PublicKey>"` from `~/.pollyweb/public.pem` before sending, using the same PEM-stripping serialization as `pw bind`.
 - Keep a pytest coverage hook that iterates every checked-in file under `test-msgs` and runs `cli.main(["test", <fixture>])`, so adding a new wrapped fixture automatically adds command coverage.
-- Successful `pw test` runs should stay concise: print only `✅ Test passed` for default directory sweeps, and include the fixture path only when the user explicitly referenced file paths; do not print the received message outside `--debug`.
+- Successful `pw test` runs should stay concise: print `✅ Passed: <filename>` for each passing fixture, including default directory sweeps, and do not print the received message outside `--debug`.
 - `pw bind` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
 - `pw bind` stores only the UUID portion of a `Bind:<UUID>` response in `~/.pollyweb/binds.yaml`; keep the wire response parsing compatible with the prefixed format.
 - Persist bind domains in canonical form and normalize lookup input the same way, so `.dom` and `.pollyweb.org` refer to the same stored bind.
