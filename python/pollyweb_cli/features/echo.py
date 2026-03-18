@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import asdict
 import hashlib
 import json
 import urllib.error
@@ -11,19 +12,184 @@ from pathlib import Path
 from pollyweb import Msg
 import pollyweb.msg as pollyweb_msg
 
-from pollyweb_cli.tools.debug import print_echo_response
+from pollyweb_cli.tools.debug import print_debug_payload, print_echo_response
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.features.bind import (
     describe_bind_network_error,
     get_first_bind_for_domain,
     load_binds,
 )
-from pollyweb_cli.models import EchoResponse
+from pollyweb_cli.models import (
+    DnsQueryDiagnostic,
+    EchoDnsDiagnostics,
+    EchoResponse,
+)
 from pollyweb_cli.tools.transport import send_wallet_message
 
 
 ECHO_SUBJECT = "Echo@Domain"
 ALLOWED_ECHO_RESPONSE_FIELDS = frozenset({"Body", "Hash", "Header", "Signature"})
+
+
+def _extract_response_header(
+    payload: str
+) -> dict[str, object] | None:
+    """Extract the raw response header when the payload is valid JSON."""
+
+    try:
+        loaded_payload = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+
+    header = loaded_payload.get("Header")
+    if not isinstance(header, dict):
+        return None
+
+    return header
+
+
+def _make_dns_query_diagnostic(
+    answer,
+    *,
+    query_name: str,
+    record_type: str
+) -> DnsQueryDiagnostic:
+    """Convert one dnspython answer object into a serializable diagnostic."""
+
+    import dns.flags
+    import dns.rcode
+
+    response = getattr(answer, "response", None)
+    flags = getattr(response, "flags", 0) if response is not None else 0
+    rcode_value = (
+        dns.rcode.to_text(response.rcode())
+        if response is not None
+        else ""
+    )
+
+    return DnsQueryDiagnostic(
+        Name = query_name,
+        Type = record_type,
+        ResponseCode = rcode_value,
+        AuthenticData = bool(flags & dns.flags.AD),
+        Answers = [record.to_text() for record in answer],
+    )
+
+
+def _collect_echo_dns_diagnostics(
+    domain: str,
+    selector: str
+) -> EchoDnsDiagnostics:
+    """Collect DNS/DNSSEC state for the PollyWeb branch and DKIM record."""
+
+    import dns.flags
+    import dns.resolver
+
+    branch = pollyweb_msg.pollyweb_domain(domain)
+    dkim_name = pollyweb_msg.dkim_dns_name(domain, selector)
+    resolver = dns.resolver.Resolver()
+    resolver.use_edns(
+        edns = 0,
+        ednsflags = dns.flags.DO,
+        payload = 4096)
+
+    queries: list[DnsQueryDiagnostic] = []
+
+    try:
+        branch_answer = resolver.resolve(
+            branch,
+            "DS",
+            raise_on_no_answer = False)
+        queries.append(
+            _make_dns_query_diagnostic(
+                branch_answer,
+                query_name = branch,
+                record_type = "DS"))
+    except Exception as exc:
+        queries.append(
+            DnsQueryDiagnostic(
+                Name = branch,
+                Type = "DS",
+                ResponseCode = "",
+                AuthenticData = False,
+                Answers = [],
+                Error = str(exc)))
+
+    try:
+        dkim_answer = resolver.resolve(
+            dkim_name,
+            "TXT",
+            raise_on_no_answer = False)
+        queries.append(
+            _make_dns_query_diagnostic(
+                dkim_answer,
+                query_name = dkim_name,
+                record_type = "TXT"))
+    except Exception as exc:
+        queries.append(
+            DnsQueryDiagnostic(
+                Name = dkim_name,
+                Type = "TXT",
+                ResponseCode = "",
+                AuthenticData = False,
+                Answers = [],
+                Error = str(exc)))
+
+    return EchoDnsDiagnostics(
+        Domain = domain,
+        PollyWebBranch = branch,
+        Selector = selector,
+        DkimName = dkim_name,
+        DnssecRequested = True,
+        Nameservers = [str(item) for item in resolver.nameservers],
+        Queries = queries)
+
+
+def _maybe_collect_echo_dns_diagnostics(
+    payload: str,
+    *,
+    fallback_domain: str
+) -> EchoDnsDiagnostics | None:
+    """Collect DNS diagnostics when the inbound echo response exposes a selector."""
+
+    header = _extract_response_header(payload)
+    if header is None:
+        return None
+
+    selector = header.get("Selector")
+    if not isinstance(selector, str) or selector == "":
+        return None
+
+    from_value = header.get("From")
+    domain = from_value if isinstance(from_value, str) and from_value else fallback_domain
+
+    try:
+        return _collect_echo_dns_diagnostics(
+            domain,
+            selector)
+    except Exception as exc:
+        return EchoDnsDiagnostics(
+            Domain = domain,
+            PollyWebBranch = pollyweb_msg.pollyweb_domain(domain),
+            Selector = selector,
+            DkimName = pollyweb_msg.dkim_dns_name(domain, selector),
+            DnssecRequested = True,
+            Nameservers = [],
+            Queries = [],
+            Error = str(exc))
+
+
+def _print_echo_dns_diagnostics(
+    diagnostics: EchoDnsDiagnostics | None
+) -> None:
+    """Render DNS verification diagnostics for the echo debug path."""
+
+    if diagnostics is None:
+        return
+
+    print_debug_payload(
+        "DNS verification diagnostics",
+        asdict(diagnostics))
 
 
 def parse_and_verify_echo_response(
@@ -182,6 +348,8 @@ def cmd_echo(
 ) -> int:
     """Run the echo command and verify the signed response."""
 
+    dns_diagnostics: EchoDnsDiagnostics | None = None
+
     try:
         require_configured_keys()
         key_pair = load_signing_key_pair()
@@ -195,6 +363,10 @@ def cmd_echo(
             anonymous=anonymous,
             unsigned=unsigned,
         )
+        if debug:
+            dns_diagnostics = _maybe_collect_echo_dns_diagnostics(
+                response_payload,
+                fallback_domain = normalized_domain)
         allowed_to = {normalized_domain}
 
         # Some hosts echo back the caller bind UUID instead of the target domain.
@@ -211,6 +383,10 @@ def cmd_echo(
             expected_to=normalized_domain,
             allowed_to=allowed_to,
         )
+    except UserFacingError:
+        if debug:
+            _print_echo_dns_diagnostics(dns_diagnostics)
+        raise
     except FileNotFoundError:
         raise UserFacingError(
             f"Missing PollyWeb keys in {config_dir}. Run `pw config` first."
@@ -232,6 +408,7 @@ def cmd_echo(
         return 0
 
     print_echo_response(response_payload)
+    _print_echo_dns_diagnostics(dns_diagnostics)
     print(f"Verified echo response from {domain}:")
     if verification is not None:
         print(f" - Schema validated: {verification.schema}")

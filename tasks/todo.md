@@ -160,3 +160,16 @@
 - Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/cli.py` so automatic upgrades retry the pip install once before failing and fall back to `--user` when the CLI is running outside a virtualenv.
 - Expanded `/Users/jorgemf/Git/wallet-cli/tests/test_cli_core.py` to lock in the new pip command shape, retry behavior, and the `--user` fallback path.
 - Recorded the new self-upgrade reliability rule in `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md`.
+
+# Task Plan
+
+- [x] Review the current `pw echo` DNS/DKIM verification path and define the missing debug diagnostics
+- [x] Add DNS/DNSSEC/DKIM tracing to `pw echo --debug` without changing the normal success path
+- [x] Update docs and regression coverage, then verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so `pw echo --debug` now captures the PollyWeb branch `DS` lookup and DKIM `TXT` lookup, including queried names, returned values, nameservers, and the DNSSEC AD-flag state, and it prints those diagnostics on both successful verification and post-response verification failures.
+- Added `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/models.py` data models plus `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` regression coverage for the richer debug output, including the failure path where signature verification fails after the response is received.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/README.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to document the expanded `pw echo --debug` contract.
+- Verification passed with `./.venv-tests/bin/python -m pytest tests/test_echo.py`.

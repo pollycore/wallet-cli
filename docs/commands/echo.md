@@ -10,7 +10,7 @@ This sends an `Echo@Domain` message to the target domain, parses the synchronous
 
 Use `--anonymous` to force `From: Anonymous` and ignore any stored bind lookup. Use `--unsigned` to remove `Hash` and `Signature` before sending.
 
-Print the outbound echo payload, the full inbox URL the POST is sent to, and the inbound signed response while keeping the same verification checks:
+Print the outbound echo payload, the full inbox URL the POST is sent to, the inbound signed response, and DNS verification diagnostics for the PollyWeb branch and DKIM lookup while keeping the same verification checks. The debug view includes the DNS names queried, the returned `DS` and `TXT` values, and whether each response was authenticated with the DNSSEC AD flag. If verification fails after the response is received, `--debug` still prints the DNS diagnostics before returning the error:
 
 ```bash
 pw echo --debug vault.example.com
