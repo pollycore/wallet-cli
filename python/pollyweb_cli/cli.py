@@ -457,7 +457,7 @@ def cmd_msg(
 
 
 def cmd_test(
-    path: str,
+    path: str | None,
     debug: bool = False,
     unsigned: bool = False,
     anonymous: bool = False

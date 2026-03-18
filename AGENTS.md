@@ -14,7 +14,8 @@
 - `--anonymous` on wallet-backed send commands must bypass stored bind lookup and force `From: Anonymous`, even if the input payload or local binds would otherwise select a UUID sender.
 - `--unsigned` on wallet-backed send commands must keep the selected sender but strip `Hash` and `Signature` before transport; this includes UUID-backed senders as well as anonymous ones.
 - For inline `pw msg` arguments, header keys are case-insensitive for `to`, `subject`, `from`, `schema`, `body`, and `header`.
-- `pw test <path>` reads a wrapped YAML fixture, sends only its `Outbound` payload with the same signing rules as `pw msg`, and treats `Inbound` as an expected subset of the returned JSON payload.
+- `pw test [path]` reads a wrapped YAML fixture, sends only its `Outbound` payload with the same signing rules as `pw msg`, and treats `Inbound` as an expected subset of the returned JSON payload.
+- `pw test` with no path looks for `./pw-tests`, then runs each `*.yaml` fixture there in alphabetical order using the same wrapped fixture rules.
 - `pw test` also resolves any string exactly matching `{BindOf(<domain>)}` from `~/.pollyweb/binds.yaml` before sending, and the lookup should reuse canonical domain normalization so `.dom` and `.pollyweb.org` placeholders share the same stored bind.
 - Keep a pytest coverage hook that iterates every checked-in file under `test-msgs` and runs `cli.main(["test", <fixture>])`, so adding a new wrapped fixture automatically adds command coverage.
 - `pw bind` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.

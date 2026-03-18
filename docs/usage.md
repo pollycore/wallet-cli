@@ -22,6 +22,7 @@ pw msg ./message.yaml
 pw msg '{"To":"vault.example.com","Subject":"Echo@Domain","Body":{"Ping":"pong"}}'
 pw msg To:any-domain.org Subject:topic@role DynamicBodyProperty:123
 pw test ./test.yaml
+pw test
 pw chat
 pw shell vault.example.com
 pw sync vault.example.com

@@ -103,6 +103,7 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
     )
     test_parser.add_argument(
         "path",
+        nargs = "?",
         help="Path to a YAML test fixture with Outbound and optional Inbound sections.",
     )
     test_parser.add_argument(

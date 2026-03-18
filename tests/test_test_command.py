@@ -217,6 +217,82 @@ def test_test_reports_missing_bind_for_placeholder(
     assert "Run `pw bind any-hoster.pollyweb.org` first." in captured.err
 
 
+def test_test_without_path_runs_pw_tests_yaml_files_in_alphabetical_order(
+    monkeypatch, tmp_path, capsys
+):
+    tests_dir = tmp_path / "pw-tests"
+    first_path = tests_dir / "a-first.yaml"
+    second_path = tests_dir / "b-second.yaml"
+    observed_paths: list[str] = []
+
+    tests_dir.mkdir()
+    first_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+    second_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    def fake_send_wallet_message(**kwargs):
+        observed_paths.append(kwargs["subject"])
+        return (
+            json.dumps({"Header": {"Subject": kwargs["subject"]}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    def fake_load_message_test_fixture(path, binds_path):
+        return {
+            "Outbound": {
+                "To": "any-hoster.dom",
+                "Subject": path.name,
+            }
+        }
+
+    monkeypatch.setattr(
+        test_feature,
+        "load_message_test_fixture",
+        fake_load_message_test_fixture)
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    exit_code = cli.main(["test"])
+
+    assert exit_code == 0
+    assert observed_paths == ["a-first.yaml", "b-second.yaml"]
+    captured = capsys.readouterr()
+    assert '"Subject": "a-first.yaml"' in captured.out
+    assert '"Subject": "b-second.yaml"' in captured.out
+
+
+def test_test_without_path_reports_missing_pw_tests_directory(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["test"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert f"No test path was provided and {tmp_path / 'pw-tests'} does not exist." in captured.err
+
+
 @pytest.mark.parametrize(
     "fixture_path",
     sorted(TEST_MSGS_DIR.glob("*")),

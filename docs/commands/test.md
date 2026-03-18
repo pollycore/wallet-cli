@@ -6,6 +6,12 @@ Send a wrapped PollyWeb message test fixture and verify the response:
 pw test ./test.yaml
 ```
 
+If you omit the path, `pw test` looks for a `pw-tests` directory in the current working directory and runs every `*.yaml` fixture inside it in alphabetical order:
+
+```bash
+pw test
+```
+
 The file must contain an `Outbound` object and may also contain an `Inbound` object:
 
 ```yaml

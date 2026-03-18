@@ -16,3 +16,4 @@
 - When `wallet-cli` starts depending on new `pollyweb` behavior, bump the minimum published `pollyweb` version immediately and keep a clean-install smoke check in the push path so local editable installs cannot hide unreleased dependency requirements.
 - For `pw echo`, do not assume the synchronous reply `To` will always echo the target domain; if the target domain has a stored bind, treat that bind UUID as an equally valid echoed recipient.
 - For domain-signed PollyWeb messages, do not serialize `Header.Algorithm`; signing still uses the DKIM-declared key type for the selected selector, and verification should infer that algorithm from DNS unless an explicit header is present and mismatched.
+- When adding default fixture discovery to `pw test`, make the path optional in the parser and keep batch execution deterministic by reading `./pw-tests/*.yaml` in alphabetical order.

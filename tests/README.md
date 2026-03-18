@@ -7,7 +7,7 @@ This folder is organized by CLI feature so future changes can stay local:
 - `test_config.py`: `pw config` and config persistence behavior
 - `test_bind.py`: `pw bind`, bind storage, and bind-network error handling
 - `test_msg_command.py`: `pw msg` input parsing and wallet-backed sending
-- `test_test_command.py`: `pw test` fixture loading, placeholder resolution, and subset assertions
+- `test_test_command.py`: `pw test` fixture loading, placeholder resolution, subset assertions, and default `pw-tests` directory discovery
 - `test_echo.py`: `pw echo` transport and response verification
 - `test_shell.py`: `pw shell`, shell argument parsing, and shell response rendering
 - `test_sync.py`: `pw sync` and sync file map generation

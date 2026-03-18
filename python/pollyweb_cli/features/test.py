@@ -25,6 +25,7 @@ from pollyweb_cli.tools.transport import send_wallet_message
 
 PLACEHOLDER_PATTERN = re.compile(r"^\{BindOf\(([^)]+)\)\}$")
 UUID_WILDCARD = "<uuid>"
+DEFAULT_TESTS_DIR = "pw-tests"
 
 
 def resolve_bind_placeholder(
@@ -196,7 +197,7 @@ def assert_expected_subset(
 
 
 def cmd_test(
-    test_path: str,
+    test_path: str | None,
     *,
     debug: bool,
     config_dir: Path,
@@ -206,14 +207,70 @@ def cmd_test(
     require_configured_keys,
     load_signing_key_pair
 ) -> int:
+    """Send one or more wrapped test fixtures and verify expected responses."""
+
+    fixture_paths = get_test_fixture_paths(test_path)
+
+    for fixture_path in fixture_paths:
+        run_message_test_fixture(
+            fixture_path,
+            debug = debug,
+            config_dir = config_dir,
+            binds_path = binds_path,
+            unsigned = unsigned,
+            anonymous = anonymous,
+            require_configured_keys = require_configured_keys,
+            load_signing_key_pair = load_signing_key_pair)
+
+    return 0
+
+
+def get_test_fixture_paths(
+    test_path: str | None
+) -> list[Path]:
+    """Resolve explicit or default `pw test` fixture paths."""
+
+    if test_path is not None:
+        return [Path(test_path)]
+
+    tests_dir = Path.cwd() / DEFAULT_TESTS_DIR
+    if not tests_dir.exists():
+        raise UserFacingError(
+            f"No test path was provided and {tests_dir} does not exist."
+        ) from None
+
+    if not tests_dir.is_dir():
+        raise UserFacingError(
+            f"No test path was provided and {tests_dir} is not a directory."
+        ) from None
+
+    fixture_paths = sorted(tests_dir.glob("*.yaml"))
+    if not fixture_paths:
+        raise UserFacingError(
+            f"No YAML test fixtures were found in {tests_dir}."
+        ) from None
+
+    return fixture_paths
+
+
+def run_message_test_fixture(
+    fixture_path: Path,
+    *,
+    debug: bool,
+    config_dir: Path,
+    binds_path: Path,
+    unsigned: bool,
+    anonymous: bool,
+    require_configured_keys,
+    load_signing_key_pair
+) -> None:
     """Send one wrapped test fixture and verify its expected inbound response."""
 
-    source_name = f"test file {test_path}"
+    source_name = f"test file {fixture_path}"
 
     try:
         require_configured_keys()
         key_pair = load_signing_key_pair()
-        fixture_path = Path(test_path)
         fixture = load_message_test_fixture(
             fixture_path,
             binds_path)
@@ -233,9 +290,9 @@ def cmd_test(
             unsigned = unsigned,
         )
     except FileNotFoundError:
-        if Path(test_path).suffix in {".yaml", ".yml", ".json"}:
+        if fixture_path.suffix in {".yaml", ".yml", ".json"}:
             raise UserFacingError(
-                f"Test file not found: {test_path}"
+                f"Test file not found: {fixture_path}"
             ) from None
         raise UserFacingError(
             f"Missing PollyWeb keys in {config_dir}. Run `pw config` first."
@@ -264,4 +321,3 @@ def cmd_test(
             "response")
 
     print(response_payload)
-    return 0

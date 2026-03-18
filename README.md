@@ -132,6 +132,12 @@ Run a wrapped message test fixture:
 pw test ./test.yaml
 ```
 
+Or, when the current directory contains `pw-tests`, run every `*.yaml` fixture in that folder in alphabetical order:
+
+```bash
+pw test
+```
+
 This reads a YAML file with `Outbound` and optional `Inbound` sections. The CLI sends only `Outbound` with the same wallet-backed rules as `pw msg`, then if `Inbound` is present it parses the synchronous JSON response and verifies that the expected `Inbound` fields appear in the returned payload. Fixtures can also use `{BindOf(domain)}` string placeholders, which resolve against `~/.pollyweb/binds.yaml` with the same canonical domain normalization as `pw bind`. Inside `Inbound`, the special string `"<uuid>"` matches any valid UUID value in the returned payload. `--anonymous` ignores stored binds, and `--unsigned` removes `Hash` and `Signature` before sending.
 
 Each command you enter is parsed into a base `Command` plus an `Arguments` dictionary, then sent as a `Shell@Domain` message whose `From` header is set to the first stored bind for that domain by default. Long flags like `--all 123` become `{"all":"123"}`, short flags like `-a 123` become `{"a":"123"}`, `key=value` tokens like `a=123` become `{"a":"123"}`, and plain positional arguments remain indexed as `{"0":"value"}`. `--anonymous` skips the bind requirement and forces `From: Anonymous`, while `--unsigned` removes `Hash` and `Signature` before each send. `pw shell` also keeps the last 20 commands for that exact domain in `~/.pollyweb/history/`, so you can use the up/down arrows to revisit recent commands. Commands are recorded before the network request is sent, which means failed requests still appear in that domain's history.
@@ -162,8 +168,9 @@ This is useful when you want to inspect the exact message contents being sent or
 - `pw echo --debug <domain>` shows the target inbox URL plus echo request and response payloads as colorized YAML
 - `pw msg <message...>` sends a signed message from a YAML, JSON, or Python file, a JSON object string, or inline `Key:Value` fields
 - `pw msg --debug <message...>` shows the target inbox URL plus message request and response payloads as colorized YAML
-- `pw test <path>` sends a wrapped `Outbound` fixture and verifies the returned payload against `Inbound`
-- `pw test --debug <path>` shows the target inbox URL plus test request and response payloads as colorized YAML
+- `pw test [path]` sends a wrapped `Outbound` fixture and verifies the returned payload against `Inbound`
+- `pw test` without a path runs every `*.yaml` fixture under `./pw-tests` in alphabetical order
+- `pw test --debug [path]` shows the target inbox URL plus test request and response payloads as colorized YAML
 - `pw chat` listens for AppSync Events on the configured notifier and wallet channel
 - `pw chat [domain]` optionally overrides `Helpers.Notifier` for that run
 - `pw chat --test` publishes a `"TEST"` event immediately after connecting, then listens

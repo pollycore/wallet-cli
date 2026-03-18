@@ -307,6 +307,16 @@ def test_parser_accepts_test_command():
     assert args.path == "./test.yaml"
     assert args.debug is True
 
+
+def test_parser_accepts_test_command_without_path():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["test", "--debug"])
+
+    assert args.command == "test"
+    assert args.path is None
+    assert args.debug is True
+
 def test_print_debug_payload_wraps_long_unbroken_strings_as_literal_blocks(capsys):
     cli.print_debug_payload(
         "Outbound payload",
