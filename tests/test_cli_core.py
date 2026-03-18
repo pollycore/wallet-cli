@@ -355,11 +355,12 @@ def test_parser_accepts_shared_unsigned_and_anonymous_flags():
 def test_parser_accepts_msg_command():
     parser = cli.build_parser()
 
-    args = parser.parse_args(["msg", "./message.yaml", "--debug"])
+    args = parser.parse_args(["msg", "./message.yaml", "--debug", "--json"])
 
     assert args.command == "msg"
     assert args.message == ["./message.yaml"]
     assert args.debug is True
+    assert args.json is True
 
 def test_parser_accepts_test_command():
     parser = cli.build_parser()

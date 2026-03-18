@@ -546,7 +546,7 @@ def test_test_reports_http_failures_with_fixture_path(
     assert "HTTP 502 Bad Gateway." in captured.err
     assert f"❌ Failed: {test_path.stem}" in captured.out
 
-def test_test_reports_dns_failures_as_502(
+def test_test_reports_dns_failures_without_http_code(
     monkeypatch, tmp_path, capsys
 ):
     test_path = tmp_path / "test.yaml"
@@ -571,5 +571,5 @@ def test_test_reports_dns_failures_as_502(
 
     assert exit_code == 1
     captured = capsys.readouterr()
-    assert "HTTP 502 Bad Gateway." in captured.err
+    assert "Could not resolve PollyWeb inbox host pw.vault.example.com" in captured.err
     assert f"❌ Failed: {test_path.stem}" in captured.out

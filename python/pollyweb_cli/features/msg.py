@@ -10,6 +10,7 @@ import urllib.error
 
 from pollyweb import normalize_domain_name
 from pollyweb_cli.errors import UserFacingError
+from pollyweb_cli.tools.debug import parse_debug_payload, print_yaml_payload
 from pollyweb_cli.tools.transport import send_wallet_message
 
 import yaml
@@ -226,6 +227,7 @@ def cmd_msg(
     arguments: list[str],
     *,
     debug: bool,
+    json_output: bool,
     config_dir: Path,
     unsigned: bool,
     anonymous: bool,
@@ -272,5 +274,9 @@ def cmd_msg(
             f"Message request from {source_name} failed: {reason}"
         ) from None
 
-    print(response_payload)
+    if json_output:
+        print(response_payload)
+        return 0
+
+    print_yaml_payload(parse_debug_payload(response_payload))
     return 0

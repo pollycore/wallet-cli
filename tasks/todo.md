@@ -66,3 +66,15 @@
 - Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/cli.py` so the top-level `UserFacingError` renderer prints `Error: ...` again, matching the documented CLI contract and the existing regression coverage.
 - Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py` so DNS failures in `pw test` continue to surface the human-readable inbox-host guidance while preserving the expected `HTTP 502 Bad Gateway.` prefix.
 - Verification is next: targeted pytest for the three failing cases, then the guarded `git push` retry.
+
+# Task Plan
+
+- [x] Review the written `pw msg` output guidance and inspect the current response rendering path
+- [x] Change `pw msg` to print YAML-formatted responses by default while adding `--json` for raw output
+- [ ] Update docs and regression coverage, then verify the affected command paths
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/msg.py` so `pw msg` now renders its synchronous response with the shared YAML formatter by default and only prints the raw response when `--json` is set.
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/parser.py`, `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/cli.py`, and `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/debug.py` to expose the new flag and reuse the existing debug YAML rendering logic without duplicating formatting code.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/msg.md` and the `pw msg` regression tests to reflect the new default YAML output and the `--json` override.

@@ -6,7 +6,7 @@ Send a PollyWeb message from a YAML, JSON, or Python file:
 pw msg ./message.yaml
 ```
 
-The file must contain either top-level `To`, `Subject`, and optional `From`, `Schema`, `Body` fields, or a `Header` object with those same header values plus a top-level `Body` object. For Python files, define one of `MESSAGE`, `message`, `REQUEST`, `request`, or `build_message()` that returns that same object shape. The CLI sends the message with the configured wallet semantics to `https://pw.<To>/inbox` and prints the raw synchronous response.
+The file must contain either top-level `To`, `Subject`, and optional `From`, `Schema`, `Body` fields, or a `Header` object with those same header values plus a top-level `Body` object. For Python files, define one of `MESSAGE`, `message`, `REQUEST`, `request`, or `build_message()` that returns that same object shape. The CLI sends the message with the configured wallet semantics to `https://pw.<To>/inbox` and prints the synchronous response as YAML by default.
 
 Example file:
 
@@ -34,6 +34,8 @@ For `pw msg`, domains ending in `.dom` are treated as shorthand for `.pollyweb.o
 Because the command follows wallet semantics end-to-end, `From` must be omitted, `Anonymous`, or a UUID bind value. When `From` is omitted or `Anonymous`, the CLI first checks `~/.pollyweb/binds.yaml` for a bind stored against the target domain and uses that bind UUID as `msg.From`; if no bind is stored, it falls back to `From: Anonymous`. Arbitrary domain `From` values are rejected instead of being hand-signed locally.
 
 Use `--anonymous` to ignore any stored bind and force `From: Anonymous` for the outbound request. Use `--unsigned` to keep the selected sender but remove `Hash` and `Signature` before sending.
+
+Use `--json` when you want the raw synchronous response instead of the default YAML formatting.
 
 Print the outbound payload, the full inbox URL the POST is sent to, and the inbound response body as colorized, indented YAML:
 

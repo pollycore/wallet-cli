@@ -19,6 +19,7 @@
 - For `pw echo`, do not assume the synchronous reply `To` will always echo the target domain; if the target domain has a stored bind, treat that bind UUID as an equally valid echoed recipient.
 - For plain `pw echo` success output, keep the command quiet and print only `✅ Verified echo response`; reserve the echoed payload for `--debug` so the default path stays concise.
 - For `pw echo`, translate `urllib.error.URLError` resolver failures into a human-readable PollyWeb inbox-host message instead of exposing raw `socket.gaierror(...)` text.
+- For `pw msg`, render successful synchronous responses as YAML by default using the same formatter family as `--debug`, and reserve raw response output for an explicit `--json` flag.
 - For domain-signed PollyWeb messages, do not serialize `Header.Algorithm`; signing still uses the DKIM-declared key type for the selected selector, and verification should infer that algorithm from DNS unless an explicit header is present and mismatched.
 - When adding default fixture discovery to `pw test`, make the path optional in the parser and keep batch execution deterministic by reading `./pw-tests/*.yaml` in alphabetical order.
 - For `pw test` fixture placeholders, resolve wallet-derived values such as `"<PublicKey>"` through the same helper used by the real command path so tests and bind requests serialize the public key identically.

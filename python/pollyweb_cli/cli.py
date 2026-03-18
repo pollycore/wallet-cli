@@ -65,6 +65,7 @@ from pollyweb_cli.tools.debug import (
     parse_shell_response_body as _parse_shell_response_body_impl,
     print_debug_payload,
     print_echo_response,
+    print_yaml_payload,
     print_shell_response,
     render_debug_yaml as _render_debug_yaml_impl,
 )
@@ -476,6 +477,7 @@ def cmd_shell(
 def cmd_msg(
     message: list[str],
     debug: bool = False,
+    json_output: bool = False,
     unsigned: bool = False,
     anonymous: bool = False
 ) -> int:
@@ -485,6 +487,7 @@ def cmd_msg(
     return _cmd_msg(
         message,
         debug = debug,
+        json_output = json_output,
         config_dir = CONFIG_DIR,
         unsigned = unsigned,
         anonymous = anonymous,
@@ -596,6 +599,7 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_msg(
                 message = args.message,
                 debug = args.debug,
+                json_output = args.json,
                 unsigned = args.unsigned,
                 anonymous = args.anonymous)
         if args.command == "test":

@@ -160,6 +160,15 @@ def _format_debug_value(value: object, key: str | None = None) -> object:
 def print_debug_payload(title: str, payload: object) -> None:
     """Render a debug payload in a colorized YAML-like format."""
 
+    print()
+    print(f"{title}:")
+    print_yaml_payload(payload)
+    print()
+
+
+def print_yaml_payload(payload: object) -> None:
+    """Render one payload using the shared YAML-like debug formatting."""
+
     yaml_payload = yaml.dump(
         _format_debug_value(payload),
         sort_keys=False,
@@ -167,10 +176,7 @@ def print_debug_payload(title: str, payload: object) -> None:
         default_flow_style=False,
         Dumper=_DebugDumper,
     ).rstrip()
-    print()
-    print(f"{title}:")
     DEBUG_CONSOLE.print(render_debug_yaml(yaml_payload), overflow="fold")
-    print()
 
 
 def render_debug_yaml(yaml_payload: str) -> Text:
