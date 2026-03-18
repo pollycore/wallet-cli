@@ -1,5 +1,18 @@
 # Task Plan
 
+- [x] Inspect how the wallet writes `~/.pollyweb/binds.yaml` and choose the wallet-owned seam for logging
+- [x] Add a wallet-managed `~/.pollyweb/binds.log` entry whenever `pw bind` writes a bind
+- [x] Verify the log captures both new and replaced bind entries
+- [x] Document the new bind audit behavior and record the lesson
+
+# Review
+
+- Replaced the abandoned OS-level watcher approach with a wallet-owned audit path in `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py`, so `pw bind` now appends bind-change entries to `~/.pollyweb/binds.log` whenever it persists `~/.pollyweb/binds.yaml`.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_bind.py` coverage for both first-time bind creation and replacement of an existing bind entry, including the expected log contents and file permissions.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/bind.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the new bind-audit behavior is documented alongside the existing bind persistence rules.
+
+# Task Plan
+
 - [x] Review the written bind-response contract and confirm the parser mismatch against the reported JSON response
 - [x] Accept JSON bind replies that return either `Bind:<UUID>` or a bare UUID while preserving current storage behavior
 - [x] Add regression coverage for the bare-UUID JSON bind response and verify the bind test suite

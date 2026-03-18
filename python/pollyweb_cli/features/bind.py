@@ -6,6 +6,7 @@ import json
 import re
 import socket
 import sys
+from datetime import datetime
 import urllib.error
 from pathlib import Path
 
@@ -159,6 +160,47 @@ def load_binds(binds_path: Path) -> list[dict[str, str]]:
     return binds
 
 
+def get_binds_log_path(binds_path: Path) -> Path:
+    """Return the wallet-managed bind-change log path for one binds file."""
+
+    return binds_path.with_name("binds.log")
+
+
+def append_bind_change_log(
+    binds_path: Path,
+    domain: str,
+    previous_entry: dict[str, str] | None,
+    new_entry: dict[str, str]
+) -> None:
+    """Append one bind change entry to the local wallet log."""
+
+    log_path = get_binds_log_path(binds_path)
+    timestamp = datetime.now().astimezone().isoformat(timespec = "seconds")
+    action = "updated" if previous_entry is not None else "created"
+    lines = [
+        f"[{timestamp}] {action} bind for {domain}",
+        f"  binds_file: {binds_path}",
+    ]
+
+    if previous_entry is not None:
+        lines.append(
+            f"  previous_bind: {normalize_bind_value(previous_entry['Bind'])}")
+        previous_schema = previous_entry.get(BIND_SCHEMA_KEY)
+        if previous_schema is not None:
+            lines.append(f"  previous_schema: {previous_schema}")
+
+    lines.append(f"  new_bind: {normalize_bind_value(new_entry['Bind'])}")
+    new_schema = new_entry.get(BIND_SCHEMA_KEY)
+    if new_schema is not None:
+        lines.append(f"  new_schema: {new_schema}")
+
+    with log_path.open("a", encoding = "utf-8") as handle:
+        handle.write("\n".join(lines))
+        handle.write("\n")
+
+    log_path.chmod(0o600)
+
+
 def save_bind(
     bind_entry: dict[str, str],
     domain: str,
@@ -174,6 +216,14 @@ def save_bind(
         "Domain": normalized_domain,
     }
     schema = entry.get(BIND_SCHEMA_KEY)
+    previous_entry = next(
+        (
+            existing
+            for existing in binds
+            if existing["Domain"] == normalized_domain
+            and existing.get(BIND_SCHEMA_KEY) == schema
+        ),
+        None)
     binds = [
         existing
         for existing in binds
@@ -185,6 +235,11 @@ def save_bind(
     binds.append(entry)
     binds_path.write_text(yaml.safe_dump(binds, sort_keys=False), encoding="utf-8")
     binds_path.chmod(0o600)
+    append_bind_change_log(
+        binds_path,
+        normalized_domain,
+        previous_entry,
+        entry)
 
 
 def get_first_bind_for_domain(

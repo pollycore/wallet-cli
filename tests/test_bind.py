@@ -161,6 +161,63 @@ def test_bind_anonymous_flag_ignores_stored_bind(
     captured = capsys.readouterr()
     assert "Stored bind for vault.example.com" in captured.out
 
+
+def test_bind_logs_created_bind_entry(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    log_path = config_dir / "binds.log"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    bind_value = f"Bind:{uuid.uuid4()}"
+    stored_bind_value = bind_value.split(":", 1)[1]
+
+    def fake_urlopen(request):
+        return DummyResponse(bind_value.encode("utf-8"))
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["bind", "any-hoster.pollyweb.org"])
+
+    assert exit_code == 0
+    assert log_path.exists()
+    log_text = log_path.read_text(encoding = "utf-8")
+    assert "created bind for any-hoster.pollyweb.org" in log_text
+    assert f"new_bind: {stored_bind_value}" in log_text
+    assert stat.S_IMODE(log_path.stat().st_mode) == 0o600
+    capsys.readouterr()
+
+
+def test_bind_logs_previous_bind_when_replacing_domain_entry(tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    binds_path = config_dir / "binds.yaml"
+    log_path = config_dir / "binds.log"
+    config_dir.mkdir()
+    previous_bind = str(uuid.uuid4())
+    next_bind = str(uuid.uuid4())
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [{"Bind": previous_bind, "Domain": "any-hoster.pollyweb.org"}],
+            sort_keys = False),
+        encoding = "utf-8")
+
+    cli.save_bind(
+        {"Bind": next_bind},
+        "any-hoster.pollyweb.org",
+        binds_path)
+
+    log_text = log_path.read_text(encoding = "utf-8")
+    assert "updated bind for any-hoster.pollyweb.org" in log_text
+    assert f"previous_bind: {previous_bind}" in log_text
+    assert f"new_bind: {next_bind}" in log_text
+
 def test_serialize_public_key_value_strips_pem_wrappers():
     pem = (
         "-----BEGIN PUBLIC KEY-----\n"

@@ -14,6 +14,8 @@ Domains ending in `.dom` are normalized to `.pollyweb.org` before the message is
 
 When the domain replies with a payload like `123e4567-e89b-12d3-a456-426614174000`, the CLI stores that UUID in `~/.pollyweb/binds.yaml` as a YAML list item with `Bind` and `Domain` fields, replacing any existing bind for that domain unless the reply includes a different `Schema`. The legacy `Bind:<UUID>` response format is still accepted for compatibility.
 
+Each successful `pw bind` write also appends a wallet-managed audit entry to `~/.pollyweb/binds.log`, including the canonical domain and the previous and new bind UUIDs when an existing entry is replaced.
+
 Use `--anonymous` to ignore any stored bind and force `From: Anonymous`. Use `--unsigned` to remove `Hash` and `Signature` before sending.
 
 Print the outbound request payload, the full inbox URL the POST is sent to, and the inbound response body during bind as colorized, indented YAML:
