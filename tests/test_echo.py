@@ -375,6 +375,40 @@ def test_echo_rejects_unrelated_response_to_value(
         in captured.err
     )
 
+
+def test_echo_reports_human_readable_dns_failures(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    def fake_urlopen(_request):
+        raise urllib.error.URLError(
+            socket.gaierror(8, "nodename nor servname provided, or not known")
+        )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["echo", "any-non-existing.dom"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert (
+        "Echo request to any-non-existing.dom failed: "
+        "Could not resolve PollyWeb inbox host "
+        "pw.any-non-existing.pollyweb.org."
+        " Check that the domain name is correct and that its DNS record exists."
+    ) in captured.err
+    assert "gaierror(" not in captured.err
+
 def test_print_echo_response_formats_payload(capsys):
     cli.print_echo_response(
         '{"Header":{"Subject":"Echo@Domain"},"Body":{"Echo":"ok"}}'

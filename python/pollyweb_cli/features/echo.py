@@ -13,7 +13,11 @@ import pollyweb.msg as pollyweb_msg
 
 from pollyweb_cli.tools.debug import print_echo_response
 from pollyweb_cli.errors import UserFacingError
-from pollyweb_cli.features.bind import get_first_bind_for_domain, load_binds
+from pollyweb_cli.features.bind import (
+    describe_bind_network_error,
+    get_first_bind_for_domain,
+    load_binds,
+)
 from pollyweb_cli.models import EchoResponse
 from pollyweb_cli.tools.transport import send_wallet_message
 
@@ -199,7 +203,9 @@ def cmd_echo(
             f"Echo request to {domain} failed with HTTP {exc.code}."
         ) from None
     except urllib.error.URLError as exc:
-        reason = exc.reason if isinstance(exc.reason, str) else repr(exc.reason)
+        reason = describe_bind_network_error(
+            domain,
+            exc.reason)
         raise UserFacingError(
             f"Echo request to {domain} failed: {reason}"
         ) from None

@@ -40,3 +40,17 @@
 - Expanded `/Users/jorgemf/Git/wallet-cli/tests/test_cli_core.py` to lock in quiet subprocess execution, spinner configuration, and the final upgrade notice while keeping the existing re-exec and failure-path coverage intact.
 - Recorded the new upgrade-output expectation in `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md`.
 - Refreshed the editable install with `./.venv/bin/python -m pip install -e '.[dev]'`, then verified with `./.venv/bin/python -m pytest -q tests/test_cli_core.py` (`27 passed`) and `./.venv/bin/python -m pytest -q tests/test_echo.py` (`8 passed`).
+
+# Task Plan
+
+- [x] Review the written `pw echo` guidance and current DNS-failure handling
+- [x] Convert unresolved echo target domains into a human-readable inbox-host error
+- [x] Add regression coverage for the `any-non-existing.dom` resolver failure path
+- [x] Run targeted verification and capture the review
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so `pw echo` now translates resolver failures into the same human-readable PollyWeb inbox-host guidance already used by bind flows.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` coverage that simulates `pw echo any-non-existing.dom` failing with `socket.gaierror(...)` and locks in the user-facing message.
+- Recorded the new expectation in `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md`.
+- Verification is running with the repo test interpreter and a direct CLI repro for `pw echo any-non-existing.dom`.
