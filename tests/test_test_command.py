@@ -543,4 +543,5 @@ def test_test_reports_http_failures_with_fixture_path(
 
     assert exit_code == 1
     captured = capsys.readouterr()
-    assert f"Test request from test file {test_path} failed with HTTP 502." in captured.err
+    assert "HTTP 502." in captured.err
+    assert f"❌ Failed: {test_path.stem}" in captured.out

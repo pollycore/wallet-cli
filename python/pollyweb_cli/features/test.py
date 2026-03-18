@@ -303,8 +303,6 @@ def run_message_test_fixture(
 ) -> None:
     """Send one wrapped test fixture and verify its expected inbound response."""
 
-    source_name = f"test file {fixture_path}"
-
     try:
         require_configured_keys()
         key_pair = load_signing_key_pair()
@@ -337,21 +335,19 @@ def run_message_test_fixture(
         ) from None
     except urllib.error.HTTPError as exc:
         raise UserFacingError(
-            f"Test request from {source_name} failed with HTTP {exc.code}."
+            f"HTTP {exc.code}."
         ) from None
     except urllib.error.URLError as exc:
         reason = describe_message_network_error(
             str(request["To"]),
             exc.reason)
-        raise UserFacingError(
-            f"Test request from {source_name} failed: {reason}"
-        ) from None
+        raise UserFacingError(reason) from None
 
     expected_inbound = fixture.get("Inbound")
     if isinstance(expected_inbound, dict):
         actual_response = normalize_test_response(
             response_payload,
-            source_name)
+            fixture_path.stem)
 
         assert_expected_subset(
             actual_response,
