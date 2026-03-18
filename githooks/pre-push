@@ -5,14 +5,16 @@ set -eu
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
-if [ ! -d ".venv" ]; then
-  printf '%s\n' "pre-push: missing .venv. Create it and install dev dependencies first." >&2
-  printf '%s\n' "pre-push: python3 -m venv .venv && . .venv/bin/activate && python -m pip install -e '.[dev]'" >&2
+venv_dir=".venv-tests"
+
+if [ ! -d "$venv_dir" ]; then
+  printf '%s\n' "pre-push: missing $venv_dir. Create it and install dev dependencies first." >&2
+  printf '%s\n' "pre-push: python3 -m venv $venv_dir && . $venv_dir/bin/activate && python -m pip install -e '.[dev]'" >&2
   exit 1
 fi
 
-if [ ! -x ".venv/bin/python" ]; then
-  printf '%s\n' "pre-push: missing .venv/bin/python. Recreate the virtualenv before pushing." >&2
+if [ ! -x "$venv_dir/bin/python" ]; then
+  printf '%s\n' "pre-push: missing $venv_dir/bin/python. Recreate the virtualenv before pushing." >&2
   exit 1
 fi
 
@@ -20,7 +22,7 @@ printf '%s\n' "pre-push: running test suite..."
 test_home=".git/.pre-push-home"
 rm -rf "$test_home"
 mkdir -p "$test_home"
-HOME="$repo_root/$test_home" USERPROFILE="$repo_root/$test_home" .venv/bin/python -m pytest
+HOME="$repo_root/$test_home" USERPROFILE="$repo_root/$test_home" "$venv_dir/bin/python" -m pytest
 printf '%s\n' "pre-push: tests passed."
 
 smoke_venv=".git/.pre-push-smoke-venv"
