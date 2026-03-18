@@ -27,3 +27,4 @@
 - `pw echo` should stay quiet on success and print only `✅ Verified echo response` unless `--debug` is set, in which case it may include the outbound and inbound payload details.
 - The CLI reports its installed release via `pw version`; do not reintroduce a top-level `pw --version` flag without an explicit product change.
 - The CLI self-update preflight should upgrade automatically when PyPI has a newer release; do not ask for confirmation or persist declined versions unless the product requirement changes.
+- Automatic self-upgrades should suppress pip's normal install output, show a transient spinner line reading `Upgrading from v<old> to v<new>`, and then leave the concise notice `ℹ️ Upgrade from from v<old> to v<new>`.

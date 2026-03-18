@@ -26,3 +26,17 @@
 - Tightened `/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py` to lock in `✅ Passed: <filename-without-extension>` for explicit fixture runs and default `pw-tests` sweeps alike.
 - Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/test.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to document the concise success-output rule.
 - Verified with `./.venv/bin/python -m pytest -q tests/test_test_command.py` (`12 passed, 1 skipped`).
+
+# Task Plan
+
+- [x] Review the written upgrade instructions and inspect the automatic self-update implementation
+- [x] Suppress noisy pip output during automatic upgrades and replace it with a transient spinner plus concise completion notice
+- [x] Add regression coverage for quiet subprocess execution and the upgrade status messaging
+- [x] Run targeted verification and capture the review
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/cli.py` so automatic preflight upgrades run `pip` quietly, show a transient spinner with the requested version text, and leave a short completion notice before re-execing the original command.
+- Expanded `/Users/jorgemf/Git/wallet-cli/tests/test_cli_core.py` to lock in quiet subprocess execution, spinner configuration, and the final upgrade notice while keeping the existing re-exec and failure-path coverage intact.
+- Recorded the new upgrade-output expectation in `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md`.
+- Refreshed the editable install with `./.venv/bin/python -m pip install -e '.[dev]'`, then verified with `./.venv/bin/python -m pytest -q tests/test_cli_core.py` (`27 passed`) and `./.venv/bin/python -m pytest -q tests/test_echo.py` (`8 passed`).

@@ -7,6 +7,7 @@
 - Treat "check for a newer `pw` before `pw bind`" as workflow guidance, but keep the CLI's actual self-update behavior aligned with the current product decision instead of preserving older prompt semantics by accident.
 - When following the user's `pw bind` workflow, compare the invoked local `pw version` against the latest published release and treat dev builds like `0.1.dev43` as older than stable releases like `0.1.61`; if the published release is newer, ask before running the command.
 - For automatic `pw` upgrades, run the preflight before every `pw` invocation, including `pw version`, and read the latest release from the PyPI JSON metadata endpoint with cache-busting headers instead of trusting the rendered HTML page.
+- For automatic self-upgrades, suppress pip's normal install chatter; show a transient spinner with `Upgrading from v<old> to v<new>` while the install runs, then replace it with `ℹ️ Upgrade from from v<old> to v<new>`.
 - The CLI exposes its installed release as the explicit `pw version` subcommand rather than a top-level `--version` flag, while keeping the same upgrade preflight and output format.
 - When upgrading `pollyweb` in an older local virtualenv, follow the package upgrade with `python -m pip install -e '.[dev]'` in that env so stale editable-install metadata does not keep pinning an older exact `pollyweb` version.
 - If a self-upgrade install fails during preflight, print a notice and continue running the requested command on the current install instead of aborting the CLI with an upgrade error.

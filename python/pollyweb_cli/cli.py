@@ -15,6 +15,7 @@ from packaging.version import InvalidVersion, Version
 import yaml
 from pollyweb import KeyPair, Msg
 import pollyweb.msg as pollyweb_msg
+from rich.console import Console
 from rich.markdown import Markdown
 from rich.text import Text
 
@@ -119,6 +120,7 @@ ERROR_STYLE_RESET = "\033[0m"
 PACKAGE_NAME = "pollyweb-cli"
 PYPI_JSON_URL = f"https://pypi.org/pypi/{PACKAGE_NAME}/json"
 SKIP_UPGRADE_CHECK_ENV = "POLLYWEB_CLI_SKIP_UPGRADE_CHECK"
+UPGRADE_CONSOLE = Console(stderr = True)
 
 
 def build_parser():
@@ -189,13 +191,23 @@ def _parse_version(value: str) -> Version | None:
 def _install_upgrade(
     installed_version: str,
     latest_version: str,
+    *,
+    quiet: bool = False,
 ) -> bool:
     """Install the requested release and report whether the install succeeded."""
 
     install_target = f"{PACKAGE_NAME}=={latest_version}"
+
+    # Keep automatic upgrades quiet so the command flow stays focused.
+    command = [sys.executable, "-m", "pip", "install", "-U", install_target]
+    run_kwargs: dict[str, object] = {"check": False}
+    if quiet:
+        run_kwargs["stdout"] = subprocess.DEVNULL
+        run_kwargs["stderr"] = subprocess.DEVNULL
+
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-U", install_target],
-        check=False,
+        command,
+        **run_kwargs,
     )
     if result.returncode == 0:
         return True
@@ -214,8 +226,31 @@ def _upgrade_and_restart(
 ) -> int | None:
     """Install the requested release into the current environment and re-exec."""
 
-    if not _install_upgrade(installed_version, latest_version):
+    upgrade_message = f"Upgrading from v{installed_version} to v{latest_version}"
+    upgraded_message = f"ℹ️ Upgrade from from v{installed_version} to v{latest_version}"
+
+    if sys.stderr.isatty():
+        with UPGRADE_CONSOLE.status(
+            upgrade_message,
+            spinner = "dots",
+            transient = True,
+        ):
+            installed = _install_upgrade(
+                installed_version,
+                latest_version,
+                quiet = True,
+            )
+    else:
+        installed = _install_upgrade(
+            installed_version,
+            latest_version,
+            quiet = True,
+        )
+
+    if not installed:
         return None
+
+    print(upgraded_message, file = sys.stderr)
 
     restart_env = os.environ.copy()
     restart_env[SKIP_UPGRADE_CHECK_ENV] = "1"

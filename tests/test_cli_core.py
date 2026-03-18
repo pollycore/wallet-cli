@@ -124,9 +124,12 @@ def test_preflight_upgrades_and_reexecs_requested_command(monkeypatch):
 
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.61")
     monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
+    monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: False)
 
-    def fake_run(command, check):
+    def fake_run(command, check, stdout=None, stderr=None):
         recorded["run"] = command
+        recorded["stdout"] = stdout
+        recorded["stderr"] = stderr
 
         class Result:
             returncode = 0
@@ -152,10 +155,69 @@ def test_preflight_upgrades_and_reexecs_requested_command(monkeypatch):
         "-U",
         "pollyweb-cli==0.1.62",
     ]
+    assert recorded["stdout"] is cli.subprocess.DEVNULL
+    assert recorded["stderr"] is cli.subprocess.DEVNULL
     executable, args, env = recorded["execve"]
     assert executable == sys.executable
     assert args == [sys.executable, "-m", "pollyweb_cli.cli", "bind", "vault.example.com"]
     assert env[cli.SKIP_UPGRADE_CHECK_ENV] == "1"
+
+def test_preflight_shows_transient_upgrade_status_and_final_notice(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.61")
+    monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.62")
+    monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: True)
+
+    recorded: dict[str, object] = {}
+
+    class FakeStatus:
+        def __enter__(self):
+            recorded["entered"] = True
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            recorded["exited"] = True
+            return False
+
+    class FakeConsole:
+        def status(self, message, spinner, transient):
+            recorded["status"] = {
+                "message": message,
+                "spinner": spinner,
+                "transient": transient,
+            }
+            return FakeStatus()
+
+    def fake_run(command, check, stdout=None, stderr=None):
+        recorded["run"] = command
+        recorded["stdout"] = stdout
+        recorded["stderr"] = stderr
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    def fake_execve(executable, args, env):
+        raise SystemExit(0)
+
+    monkeypatch.setattr(cli, "UPGRADE_CONSOLE", FakeConsole())
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.os, "execve", fake_execve)
+
+    with pytest.raises(SystemExit):
+        cli._maybe_upgrade_before_command(["echo", "vault.example.com"])
+
+    captured = capsys.readouterr()
+    assert recorded["status"] == {
+        "message": "Upgrading from v0.1.61 to v0.1.62",
+        "spinner": "dots",
+        "transient": True,
+    }
+    assert recorded["entered"] is True
+    assert recorded["exited"] is True
+    assert recorded["stdout"] is cli.subprocess.DEVNULL
+    assert recorded["stderr"] is cli.subprocess.DEVNULL
+    assert captured.err.strip() == "ℹ️ Upgrade from from v0.1.61 to v0.1.62"
 
 def test_cmd_upgrade_installs_latest_release(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.72")
@@ -187,8 +249,9 @@ def test_cmd_upgrade_returns_error_when_install_fails(monkeypatch):
 def test_preflight_continues_when_upgrade_install_fails(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.72")
     monkeypatch.setattr(cli, "_get_latest_published_version", lambda: "0.1.73")
+    monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: False)
 
-    def fake_run(command, check):
+    def fake_run(command, check, stdout=None, stderr=None):
         class Result:
             returncode = 1
 
