@@ -36,6 +36,7 @@
 - `pw bind` expects a bare UUID bind value in successful responses and stores that UUID in `~/.pollyweb/binds.yaml`; keep the legacy `Bind:<UUID>` parser path compatible so older hosts still work.
 - Persist bind domains in canonical form and normalize lookup input the same way, so `.dom` and `.pollyweb.org` refer to the same stored bind.
 - `pw bind` should append wallet-managed bind-change audit entries to `~/.pollyweb/binds.log` whenever it writes `~/.pollyweb/binds.yaml`, including the canonical domain plus the previous and new bind UUIDs for replacements.
+- For discovery, if `pw bind` receives a different bind UUID for the same canonical domain and schema, raise an error instead of replacing the stored bind, append an `ALERT` entry to `~/.pollyweb/binds.log`, and attempt a local OS notification so concurrent churn is obvious.
 - Domain-signed PollyWeb messages should omit `Header.Algorithm`; receivers must infer the signature algorithm from DKIM using the declared `Selector`, and `wallet-cli` should not add or require that header for domain senders.
 - `pw echo` should stay quiet on success and print only `✅ Verified echo response` unless `--debug` is set, in which case it may include the outbound and inbound payload details.
 - The CLI reports its installed release via `pw version`; do not reintroduce a top-level `pw --version` flag without an explicit product change.

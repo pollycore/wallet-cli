@@ -4,6 +4,7 @@ import builtins
 import json
 import socket
 import stat
+import subprocess
 import sys
 import uuid
 import urllib.error
@@ -195,7 +196,7 @@ def test_bind_logs_created_bind_entry(monkeypatch, tmp_path, capsys):
     capsys.readouterr()
 
 
-def test_bind_logs_previous_bind_when_replacing_domain_entry(tmp_path):
+def test_bind_logs_alert_when_replacing_domain_entry(tmp_path):
     config_dir = tmp_path / ".pollyweb"
     binds_path = config_dir / "binds.yaml"
     log_path = config_dir / "binds.log"
@@ -208,15 +209,55 @@ def test_bind_logs_previous_bind_when_replacing_domain_entry(tmp_path):
             sort_keys = False),
         encoding = "utf-8")
 
-    cli.save_bind(
-        {"Bind": next_bind},
-        "any-hoster.pollyweb.org",
-        binds_path)
+    with pytest.raises(cli.UserFacingError):
+        cli.save_bind(
+            {"Bind": next_bind},
+            "any-hoster.pollyweb.org",
+            binds_path)
 
     log_text = log_path.read_text(encoding = "utf-8")
-    assert "updated bind for any-hoster.pollyweb.org" in log_text
+    assert "ALERT bind changed for any-hoster.pollyweb.org" in log_text
     assert f"previous_bind: {previous_bind}" in log_text
     assert f"new_bind: {next_bind}" in log_text
+
+
+def test_bind_raises_alert_when_same_domain_bind_changes(monkeypatch, tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    binds_path = config_dir / "binds.yaml"
+    log_path = config_dir / "binds.log"
+    config_dir.mkdir()
+    previous_bind = str(uuid.uuid4())
+    next_bind = str(uuid.uuid4())
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [{"Bind": previous_bind, "Domain": "any-hoster.pollyweb.org"}],
+            sort_keys = False),
+        encoding = "utf-8")
+    notifications = []
+
+    def fake_run(command, check, stdout, stderr):
+        notifications.append((command, check, stdout, stderr))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(cli.bind_feature.subprocess, "run", fake_run)
+
+    with pytest.raises(cli.UserFacingError) as excinfo:
+        cli.save_bind(
+            {"Bind": next_bind},
+            "any-hoster.pollyweb.org",
+            binds_path)
+
+    assert "Bind changed unexpectedly for any-hoster.pollyweb.org." in str(excinfo.value)
+    assert "The local bind was not updated" in str(excinfo.value)
+    assert cli.yaml.safe_load(binds_path.read_text(encoding = "utf-8")) == [
+        {"Bind": previous_bind, "Domain": "any-hoster.pollyweb.org"}
+    ]
+    log_text = log_path.read_text(encoding = "utf-8")
+    assert "ALERT bind changed for any-hoster.pollyweb.org" in log_text
+    assert f"previous_bind: {previous_bind}" in log_text
+    assert f"new_bind: {next_bind}" in log_text
+    assert notifications
+    assert notifications[0][0][0] == "osascript"
 
 def test_serialize_public_key_value_strips_pem_wrappers():
     pem = (
@@ -301,7 +342,7 @@ def test_bind_appends_without_overwriting_existing_binds(monkeypatch, tmp_path):
         {"Bind": stored_bind_value, "Domain": "vault.example.com"},
     ]
 
-def test_bind_replaces_existing_bind_for_same_domain(monkeypatch, tmp_path):
+def test_bind_rejects_existing_bind_for_same_domain(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
     public_key_path = config_dir / "public.pem"
@@ -311,7 +352,6 @@ def test_bind_replaces_existing_bind_for_same_domain(monkeypatch, tmp_path):
     private_key_path.write_bytes(key_pair.private_pem_bytes())
     public_key_path.write_bytes(key_pair.public_pem_bytes())
     bind_value = f"Bind:{uuid.uuid4()}"
-    stored_bind_value = bind_value.split(":", 1)[1]
     binds_path.write_text(
         cli.yaml.safe_dump([{"Bind": "existing", "Domain": "vault.example.com"}]),
     )
@@ -323,12 +363,19 @@ def test_bind_replaces_existing_bind_for_same_domain(monkeypatch, tmp_path):
     monkeypatch.setattr(
         cli.urllib.request, "urlopen", lambda request: DummyResponse(bind_value.encode())
     )
+    monkeypatch.setattr(
+        cli.bind_feature.subprocess,
+        "run",
+        lambda command, check, stdout, stderr: subprocess.CompletedProcess(command, 0),
+    )
 
     exit_code = cli.main(["bind", "vault.example.com"])
 
-    assert exit_code == 0
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Bind changed unexpectedly for vault.example.com." in captured.err
     assert cli.yaml.safe_load(binds_path.read_text()) == [
-        {"Bind": stored_bind_value, "Domain": "vault.example.com"}
+        {"Bind": "existing", "Domain": "vault.example.com"}
     ]
 
 def test_bind_keeps_distinct_schema_entries_for_same_domain(monkeypatch, tmp_path):
@@ -382,7 +429,7 @@ def test_bind_keeps_distinct_schema_entries_for_same_domain(monkeypatch, tmp_pat
         },
     ]
 
-def test_bind_replaces_existing_bind_with_matching_schema(monkeypatch, tmp_path):
+def test_bind_rejects_existing_bind_with_matching_schema(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
     public_key_path = config_dir / "public.pem"
@@ -392,7 +439,6 @@ def test_bind_replaces_existing_bind_with_matching_schema(monkeypatch, tmp_path)
     private_key_path.write_bytes(key_pair.private_pem_bytes())
     public_key_path.write_bytes(key_pair.public_pem_bytes())
     bind_value = f"Bind:{uuid.uuid4()}"
-    stored_bind_value = bind_value.split(":", 1)[1]
     binds_path.write_text(
         cli.yaml.safe_dump(
             [
@@ -419,10 +465,12 @@ def test_bind_replaces_existing_bind_with_matching_schema(monkeypatch, tmp_path)
 
     exit_code = cli.main(["bind", "vault.example.com"])
 
-    assert exit_code == 0
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Bind changed unexpectedly for vault.example.com." in captured.err
     assert cli.yaml.safe_load(binds_path.read_text()) == [
         {
-            "Bind": stored_bind_value,
+            "Bind": "existing",
             "Domain": "vault.example.com",
             "Schema": "schema:one",
         }

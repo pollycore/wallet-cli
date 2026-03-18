@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import socket
+import subprocess
 import sys
 from datetime import datetime
 import urllib.error
@@ -29,6 +30,7 @@ UUID_PATTERN = re.compile(
 BIND_PATTERN = re.compile(
     rf"Bind:{UUID_PATTERN.pattern}"
 )
+MACOS_NOTIFICATION_TITLE = "PollyWeb bind changed"
 
 
 def normalize_bind_value(bind_value: str) -> str:
@@ -201,6 +203,95 @@ def append_bind_change_log(
     log_path.chmod(0o600)
 
 
+def append_bind_alert_log(
+    binds_path: Path,
+    domain: str,
+    previous_entry: dict[str, str],
+    new_entry: dict[str, str]
+) -> None:
+    """Append a high-signal alert entry for an unexpected bind change."""
+
+    log_path = get_binds_log_path(binds_path)
+    timestamp = datetime.now().astimezone().isoformat(timespec = "seconds")
+    lines = [
+        f"[{timestamp}] ALERT bind changed for {domain}",
+        f"  binds_file: {binds_path}",
+        f"  previous_bind: {normalize_bind_value(previous_entry['Bind'])}",
+        f"  new_bind: {normalize_bind_value(new_entry['Bind'])}",
+    ]
+    previous_schema = previous_entry.get(BIND_SCHEMA_KEY)
+    if previous_schema is not None:
+        lines.append(f"  previous_schema: {previous_schema}")
+    new_schema = new_entry.get(BIND_SCHEMA_KEY)
+    if new_schema is not None:
+        lines.append(f"  new_schema: {new_schema}")
+
+    with log_path.open("a", encoding = "utf-8") as handle:
+        handle.write("\n".join(lines))
+        handle.write("\n")
+
+    log_path.chmod(0o600)
+
+
+def notify_bind_change(
+    domain: str,
+    previous_bind: str,
+    new_bind: str
+) -> None:
+    """Attempt to raise a local OS notification for an unexpected bind change."""
+
+    script = (
+        'display notification '
+        f'"Bind changed for {domain}\\n{previous_bind} -> {new_bind}" '
+        f'with title "{MACOS_NOTIFICATION_TITLE}"'
+    )
+    try:
+        subprocess.run(
+            ["osascript", "-e", script],
+            check = False,
+            stdout = subprocess.DEVNULL,
+            stderr = subprocess.DEVNULL,
+        )
+    except OSError:
+        return
+
+
+def raise_bind_change_error(
+    binds_path: Path,
+    domain: str,
+    previous_entry: dict[str, str],
+    new_entry: dict[str, str]
+) -> None:
+    """Raise a discovery-time error when a domain bind unexpectedly changes."""
+
+    previous_bind = normalize_bind_value(previous_entry["Bind"])
+    new_bind = normalize_bind_value(new_entry["Bind"])
+    append_bind_alert_log(
+        binds_path,
+        domain,
+        previous_entry,
+        new_entry)
+    notify_bind_change(
+        domain,
+        previous_bind,
+        new_bind)
+    raise UserFacingError(
+        "\n".join(
+            [
+                f"Bind changed unexpectedly for {domain}.",
+                "The local bind was not updated so the churn can be investigated.",
+                f"Previous bind: {previous_bind}",
+                f"New bind: {new_bind}",
+                f"See {get_binds_log_path(binds_path)} for the alert entry.",
+                (
+                    "This usually means another process or concurrent test is "
+                    "re-binding the same domain."
+                ),
+            ]
+        )
+    )
+
+
 def save_bind(
     bind_entry: dict[str, str],
     domain: str,
@@ -224,6 +315,15 @@ def save_bind(
             and existing.get(BIND_SCHEMA_KEY) == schema
         ),
         None)
+    if (
+        previous_entry is not None
+        and normalize_bind_value(previous_entry["Bind"]) != entry["Bind"]
+    ):
+        raise_bind_change_error(
+            binds_path,
+            normalized_domain,
+            previous_entry,
+            entry)
     binds = [
         existing
         for existing in binds

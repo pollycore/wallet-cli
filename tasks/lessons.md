@@ -2,6 +2,7 @@
 
 - When `pw bind` receives a successful response, treat a bare UUID as the primary bind shape, but keep the legacy `Bind:<UUID>` parser path compatible so older hosts still persist the same bare UUID locally.
 - When `pw bind` updates `~/.pollyweb/binds.yaml`, record the change in `~/.pollyweb/binds.log` from the wallet code itself rather than relying on an OS-level file watcher, so bind churn can be traced back to CLI-owned writes.
+- For bind-churn discovery, treat a changed UUID for the same canonical domain and schema as an error, not a silent replacement; leave `~/.pollyweb/binds.yaml` untouched, append an `ALERT` entry to `~/.pollyweb/binds.log`, and try a local notification so concurrent tests are easier to catch.
 - When a CLI command in this repo is acting as a wallet, prefer `pollyweb.Wallet.send()` over custom signing, `urllib` request code, or manual inbox POST helpers so `.dom` alias normalization, message shape, and wallet semantics stay aligned with the published library.
 - If a command is wallet-backed, treat `From` as wallet identity, not an arbitrary sender override: accept `Anonymous` or a UUID bind value, and reject domain `From` values early.
 - If the server scopes bind allocation by domain, `pw bind` must send the normalized target domain in `Body.Domain`, not just the public key, or multiple domains can still collapse into one bind pool.

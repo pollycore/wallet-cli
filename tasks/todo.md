@@ -1,5 +1,18 @@
 # Task Plan
 
+- [x] Review the written bind behavior and identify the exact same-domain replacement path
+- [x] Raise a loud discovery-time error for same-domain same-schema bind churn, with alert logging and local notification
+- [x] Add regression coverage and verify the bind flow with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py` so same-domain same-schema bind changes now stop with a `UserFacingError`, append an `ALERT` record to `~/.pollyweb/binds.log`, and attempt a best-effort macOS notification via `osascript` instead of silently replacing the stored UUID.
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/test_bind.py` to cover both the direct `save_bind()` alert path and the CLI-visible failure when `pw bind` would otherwise replace an existing bind for the same domain.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/bind.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the new discovery behavior is documented for future work and concurrent-agent debugging.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_bind.py` (`16 passed`).
+
+# Task Plan
+
 - [x] Inspect the documented `pw test` fixture rules and current inbound subset matcher
 - [x] Allow expected empty inbound scalar values to match either an empty response value or an omitted field
 - [x] Add regression coverage, update docs/guidance, and verify with the repo test interpreter
@@ -186,3 +199,26 @@
 - Added `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/models.py` data models plus `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` regression coverage for the richer debug output, including the failure path where signature verification fails after the response is received.
 - Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/README.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to document the expanded `pw echo --debug` contract.
 - Verification passed with `./.venv-tests/bin/python -m pytest tests/test_echo.py`.
+- [x] Review the existing `pw echo` debug external-link wording and current test coverage
+- [x] Rename the MXToolbox output to an explicit DKIM test link while preserving the verified branch/selector URL shape
+- [x] Run the focused `pw echo` test file with the repo test virtualenv and capture the result
+
+## Review
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so `pw echo --debug` prints the MXToolbox URL under the clearer label `MXToolbox DKIM test`.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to keep the docs, coverage, and maintenance notes aligned with that output.
+- `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` is currently blocked during collection because the test env has `pollyweb 1.0.65`, which does not export `DnsQueryDiagnostic`; syntax verification still passed with `./.venv-tests/bin/python -m py_compile python/pollyweb_cli/features/echo.py tests/test_echo.py`.
+- Followed up by relabeling the DNSSEC Debugger click-through URL to `DNSSEC Debugger test` so the direct branch-level DNSSEC check is just as explicit as the MXToolbox link.
+- Followed up again by relabeling the Google DNS click-through URL to `Google DNS test` so all three external debug links read as direct tests for the verified branch.
+- Added a fourth external debug link labeled `Google DNS A record test` so users can open the direct `https://dns.google/resolve?name=pw.<domain>&type=A` view for the verified branch.
+
+# Task Plan
+
+- [x] Review the written `pw test` fixture guidance and current inbound wildcard matcher
+- [x] Add `"<str>"` as a strict inbound wildcard for required non-empty string fields
+- [x] Update focused regression coverage and command docs, then verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py` so `pw test` now treats the exact expected inbound value `"<str>"` as a wildcard that requires the response field to exist and contain a non-empty string.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py` coverage for accepted string wildcard matches plus the three failure cases the user called out: missing field, empty string, and non-string values.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/test.md`, `/Users/jorgemf/Git/wallet-cli/README.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the new fixture sentinel is documented consistently for future work.
