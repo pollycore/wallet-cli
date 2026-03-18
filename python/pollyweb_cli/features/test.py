@@ -255,7 +255,7 @@ def cmd_test(
                 anonymous = anonymous,
                 require_configured_keys = require_configured_keys,
                 load_signing_key_pair = load_signing_key_pair)
-        except UserFacingError:
+        except Exception:
             print(f"❌ Failed: {fixture_path.stem}")
             raise
 
