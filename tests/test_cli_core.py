@@ -262,7 +262,7 @@ def test_preflight_continues_when_upgrade_install_fails(monkeypatch, capsys):
     assert cli._maybe_upgrade_before_command(["bind", "vault.example.com"]) is None
     captured = capsys.readouterr()
     assert (
-        "Notice: Failed to upgrade pollyweb-cli to 0.1.73; "
+        "⚠️ Notice: Failed to upgrade pollyweb-cli to 0.1.73; "
         "continuing with installed 0.1.72."
     ) in captured.err
 

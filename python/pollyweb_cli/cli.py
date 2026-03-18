@@ -213,7 +213,7 @@ def _install_upgrade(
         return True
 
     print_error(
-        f"Notice: Failed to upgrade {PACKAGE_NAME} to {latest_version}; "
+        f"⚠️ Notice: Failed to upgrade {PACKAGE_NAME} to {latest_version}; "
         f"continuing with installed {installed_version}."
     )
     return False
