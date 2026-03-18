@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import uuid
 
+import urllib.error
+
 from pollyweb import KeyPair, Msg, Wallet, normalize_domain_name
 import yaml
 
@@ -212,7 +214,18 @@ def send_wallet_message(
         wallet,
         request_message,
         unsigned = unsigned)
-    response = outbound_message.send()
+    try:
+        response = outbound_message.send()
+    except urllib.error.HTTPError as exc:
+        if debug:
+            try:
+                error_body = exc.read().decode("utf-8", errors="replace")
+                print_debug_payload(
+                    "Inbound payload",
+                    parse_debug_payload(error_body))
+            except Exception:
+                pass
+        raise
     response_payload = serialize_wallet_response(response)
 
     if debug:
