@@ -546,6 +546,7 @@ def cmd_msg(
 def cmd_test(
     path: str | None,
     debug: bool = False,
+    json_output: bool = False,
     unsigned: bool = False,
     anonymous: bool = False
 ) -> int:
@@ -555,6 +556,7 @@ def cmd_test(
     return _cmd_test(
         path,
         debug = debug,
+        json_output = json_output,
         config_dir = CONFIG_DIR,
         binds_path = BINDS_PATH,
         unsigned = unsigned,
@@ -653,6 +655,7 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_test(
                 path = args.path,
                 debug = args.debug,
+                json_output = args.json,
                 unsigned = args.unsigned,
                 anonymous = args.anonymous)
         if args.command == "shell":

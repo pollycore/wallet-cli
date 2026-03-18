@@ -24,6 +24,7 @@
 - For `pw echo`, translate `urllib.error.URLError` resolver failures into a human-readable PollyWeb inbox-host message instead of exposing raw `socket.gaierror(...)` text.
 - For `pw msg`, render successful synchronous responses as YAML by default using the same formatter family as `--debug`, and reserve raw response output for an explicit `--json` flag.
 - When `pw msg` combines `--debug` with `--json`, keep the final response raw for scripts but render the debug payloads as raw JSON instead of the default YAML-style formatter.
+- For `pw test`, accept `--json` for shared-flag parity, but keep successful runs concise; the flag matters for parser compatibility and for raw JSON debug payloads when combined with `--debug`.
 - For domain-signed PollyWeb messages, do not serialize `Header.Algorithm`; signing still uses the DKIM-declared key type for the selected selector, and verification should infer that algorithm from DNS unless an explicit header is present and mismatched.
 - When adding default fixture discovery to `pw test`, make the path optional in the parser and keep batch execution deterministic by reading `./pw-tests/*.yaml` in alphabetical order.
 - For `pw test` fixture placeholders, resolve wallet-derived values such as `"<PublicKey>"` through the same helper used by the real command path so tests and bind requests serialize the public key identically.

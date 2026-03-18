@@ -84,6 +84,75 @@ def test_test_loads_wrapped_fixture_and_verifies_inbound(
     captured = capsys.readouterr()
     assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
 
+def test_test_json_flag_keeps_success_output_concise(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            '{"Header":{"From":"any-hoster.pollyweb.org","To":"any-hoster.pollyweb.org","Subject":"Echo@Domain"},"Body":{"Extra":"ok"}}',
+            None,
+            "any-hoster.pollyweb.org",
+        ))
+
+    exit_code = cli.main(["test", "--json", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+
+def test_test_debug_json_passes_raw_debug_flag_to_transport(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    observed = {}
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    def fake_send_wallet_message(**kwargs):
+        observed["debug"] = kwargs["debug"]
+        observed["debug_json"] = kwargs["debug_json"]
+        return (
+            '{"Header":{"Subject":"Echo@Domain"}}',
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    exit_code = cli.main(["test", "--debug", "--json", str(test_path)])
+
+    assert exit_code == 0
+    assert observed == {
+        "debug": True,
+        "debug_json": True,
+    }
+    captured = capsys.readouterr()
+    assert captured.out.splitlines()[-1] == f"✅ Passed: {test_path.stem}"
+
 def test_test_resolves_bind_placeholder_from_stored_binds(
     monkeypatch, tmp_path, capsys
 ):

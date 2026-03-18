@@ -35,8 +35,16 @@ This makes wrapped fixtures useful for end-to-end checks where you want one file
 
 On success, `pw test` prints one short line per passing fixture: `✅ Passed: <filename-without-extension>`. The default `pw-tests` directory sweep uses the same format, so each passing fixture shows its short file name without printing the received message.
 
+Use `--json` to keep `pw test` compatible with the shared wallet send flags and to switch `--debug` payload rendering from the default YAML-style output to raw JSON. Successful runs still stay concise and print only `✅ Passed: <filename-without-extension>`.
+
 Print the outbound payload, the full inbox URL the POST is sent to, and the inbound response body as colorized, indented YAML:
 
 ```bash
 pw test --debug ./test.yaml
+```
+
+Print those debug payloads as raw JSON instead:
+
+```bash
+pw test --debug --json ./test.yaml
 ```

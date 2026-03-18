@@ -17,6 +17,7 @@
 - For inline `pw msg` arguments, header keys are case-insensitive for `to`, `subject`, `from`, `schema`, `body`, and `header`.
 - `pw test [path]` reads a wrapped YAML fixture, sends only its `Outbound` payload with the same signing rules as `pw msg`, and treats `Inbound` as an expected subset of the returned JSON payload.
 - `pw test` with no path looks for `./pw-tests`, then runs each `*.yaml` fixture there in alphabetical order using the same wrapped fixture rules.
+- `pw test --json` should be accepted for parity with the shared wallet send path; it keeps the normal concise pass/fail output, and when combined with `--debug` it switches debug payload rendering to raw JSON.
 - `pw test` also resolves any string exactly matching `{BindOf(<domain>)}` from `~/.pollyweb/binds.yaml` before sending, and the lookup should reuse canonical domain normalization so `.dom` and `.pollyweb.org` placeholders share the same stored bind.
 - `pw test` also resolves the exact string `"<PublicKey>"` from `~/.pollyweb/public.pem` before sending, using the same PEM-stripping serialization as `pw bind`.
 - Keep a pytest coverage hook that iterates every checked-in file under `test-msgs` and runs `cli.main(["test", <fixture>])`, so adding a new wrapped fixture automatically adds command coverage.

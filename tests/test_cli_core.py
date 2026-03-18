@@ -450,21 +450,23 @@ def test_parser_accepts_msg_command():
 def test_parser_accepts_test_command():
     parser = cli.build_parser()
 
-    args = parser.parse_args(["test", "./test.yaml", "--debug"])
+    args = parser.parse_args(["test", "./test.yaml", "--debug", "--json"])
 
     assert args.command == "test"
     assert args.path == "./test.yaml"
     assert args.debug is True
+    assert args.json is True
 
 
 def test_parser_accepts_test_command_without_path():
     parser = cli.build_parser()
 
-    args = parser.parse_args(["test", "--debug"])
+    args = parser.parse_args(["test", "--debug", "--json"])
 
     assert args.command == "test"
     assert args.path is None
     assert args.debug is True
+    assert args.json is True
 
 def test_print_debug_payload_wraps_long_unbroken_strings_as_literal_blocks(capsys):
     cli.print_debug_payload(

@@ -1,5 +1,17 @@
 # Task Plan
 
+- [x] Review the written `pw test` guidance plus current parser/transport behavior for `--json`
+- [x] Add `--json` support to `pw test` so its response and debug output rules match the shared wallet send path
+- [x] Update regression coverage, docs, and repo guidance for the new `pw test --json` behavior
+- [x] Verify the affected parser and `pw test` flows with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/parser.py`, `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/cli.py`, and `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py` so `pw test` now accepts `--json` and forwards it to the shared wallet-send transport as `debug_json`, which makes `pw test --debug --json` render raw JSON debug payloads while preserving the normal concise pass/fail output.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_cli_core.py` and `/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py` coverage for parser acceptance, `--debug --json` transport wiring, and the rule that plain successful `pw test --json` runs still only print `✅ Passed: ...`.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/test.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to document the new `pw test --json` support and its interaction with `--debug`.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_cli_core.py tests/test_test_command.py` (`44 passed, 1 skipped`).
+
 - [x] Review the written `pw msg` debug/output guidance and inspect the shared debug formatter path
 - [x] Accept `--json` alongside `--debug` so debug payloads render as raw JSON when both flags are present
 - [x] Update regression coverage and docs for the combined debug/json behavior
