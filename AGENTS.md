@@ -6,6 +6,7 @@
 - `pw msg <path>` accepts YAML or JSON files in either a top-level `To`/`Subject`/`Body` shape or a `Header` plus top-level `Body` shape, sends the message with wallet-backed sender selection, and prints the synchronous response as YAML by default.
 - `pw msg <message...>` also accepts Python files that expose a message object, raw JSON object strings, and inline `Key:Value` fields where non-header keys are collected into `Body`.
 - `pw msg --json ...` keeps the old raw synchronous response output for scripts; without that flag, reuse the shared YAML formatter that powers `--debug` payload rendering.
+- When `pw msg` runs with both `--debug` and `--json`, keep the final response raw and switch the debug payload prints to raw JSON too instead of the default YAML-style formatter.
 - For `pw msg`, a `To` value ending in `.dom` is normalized to `.pollyweb.org` before signing the message and building the inbox URL.
 - `pw msg` should use the shared `pollyweb.normalize_domain_name()` helper for `.dom` expansion; `wallet-cli` now requires a published `pollyweb` release that includes that helper.
 - Wallet-backed CLI sends should go through `pollyweb.Wallet.send(...)` instead of custom signing and `urllib` transport helpers, so alias normalization and wire behavior stay aligned with the published library.

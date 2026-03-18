@@ -35,7 +35,7 @@ Because the command follows wallet semantics end-to-end, `From` must be omitted,
 
 Use `--anonymous` to ignore any stored bind and force `From: Anonymous` for the outbound request. Use `--unsigned` to keep the selected sender but remove `Hash` and `Signature` before sending.
 
-Use `--json` when you want the raw synchronous response instead of the default YAML formatting.
+Use `--json` when you want the raw synchronous response instead of the default YAML formatting. When you combine `--debug --json`, the debug payloads also print as raw JSON instead of the default YAML-style rendering.
 
 Print the outbound payload, the full inbox URL the POST is sent to, and the inbound response body as colorized, indented YAML:
 

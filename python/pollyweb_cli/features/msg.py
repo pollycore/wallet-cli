@@ -249,6 +249,7 @@ def cmd_msg(
             body = dict(request["Body"]),
             key_pair = key_pair,
             debug = debug,
+            debug_json = json_output,
             from_value = request.get("From"),
             schema_value = request.get("Schema"),
             anonymous = anonymous,

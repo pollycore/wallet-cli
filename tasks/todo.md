@@ -1,9 +1,16 @@
 # Task Plan
 
-- [x] Inspect how the wallet writes `~/.pollyweb/binds.yaml` and choose the wallet-owned seam for logging
-- [x] Add a wallet-managed `~/.pollyweb/binds.log` entry whenever `pw bind` writes a bind
-- [x] Verify the log captures both new and replaced bind entries
-- [x] Document the new bind audit behavior and record the lesson
+- [x] Review the written `pw msg` debug/output guidance and inspect the shared debug formatter path
+- [x] Accept `--json` alongside `--debug` so debug payloads render as raw JSON when both flags are present
+- [x] Update regression coverage and docs for the combined debug/json behavior
+- [x] Verify the affected parser, formatter, and `pw msg` flows with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/debug.py`, `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/transport.py`, and `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/msg.py` so `pw msg --debug --json` now prints outbound and inbound debug payloads as raw JSON while keeping plain `--debug` YAML-style output and plain `--json` raw final-response output unchanged.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_msg_command.py` coverage for the combined `--debug --json` path and confirmed the existing parser coverage still accepts both flags together.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/msg.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to record the combined-flag behavior and the shared debug-formatting rule.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_msg_command.py tests/test_cli_core.py` (`45 passed`).
 
 # Review
 

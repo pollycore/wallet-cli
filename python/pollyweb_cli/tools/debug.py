@@ -166,6 +166,28 @@ def print_debug_payload(title: str, payload: object) -> None:
     print()
 
 
+def print_json_payload(payload: object) -> None:
+    """Render one payload as compact, deterministic JSON."""
+
+    print(
+        json.dumps(
+            payload,
+            sort_keys = False,
+            ensure_ascii = False,
+            separators = (",", ":"),
+        )
+    )
+
+
+def print_debug_json_payload(title: str, payload: object) -> None:
+    """Render a debug payload as raw JSON."""
+
+    print()
+    print(f"{title}:")
+    print_json_payload(payload)
+    print()
+
+
 def print_yaml_payload(payload: object) -> None:
     """Render one payload using the shared YAML-like debug formatting."""
 

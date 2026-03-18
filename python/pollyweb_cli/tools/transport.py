@@ -13,7 +13,11 @@ from pollyweb import KeyPair, Msg, Wallet, normalize_domain_name
 import yaml
 
 from pollyweb_cli.errors import UserFacingError
-from pollyweb_cli.tools.debug import parse_debug_payload, print_debug_payload
+from pollyweb_cli.tools.debug import (
+    parse_debug_payload,
+    print_debug_json_payload,
+    print_debug_payload,
+)
 
 
 DEFAULT_SCHEMA = "pollyweb.org/MSG:1.0"
@@ -185,7 +189,8 @@ def send_wallet_message(
     schema_value: str | None = DEFAULT_SCHEMA,
     binds_path: Path | None = None,
     anonymous: bool = False,
-    unsigned: bool = False
+    unsigned: bool = False,
+    debug_json: bool = False
 ) -> tuple[str, Msg, str]:
     """Send one wallet-backed PollyWeb message and return the raw response."""
 
@@ -202,7 +207,8 @@ def send_wallet_message(
 
     if debug:
         request_url = f"https://pw.{normalized_domain}/inbox"
-        print_debug_payload(
+        debug_printer = print_debug_json_payload if debug_json else print_debug_payload
+        debug_printer(
             f"Outbound payload to {request_url}",
             build_debug_outbound_payload(
                 wallet,
@@ -220,7 +226,8 @@ def send_wallet_message(
         if debug:
             try:
                 error_body = exc.read().decode("utf-8", errors="replace")
-                print_debug_payload(
+                debug_printer = print_debug_json_payload if debug_json else print_debug_payload
+                debug_printer(
                     "Inbound payload",
                     parse_debug_payload(error_body))
             except Exception:
@@ -229,6 +236,7 @@ def send_wallet_message(
     response_payload = serialize_wallet_response(response)
 
     if debug:
-        print_debug_payload("Inbound payload", parse_debug_payload(response_payload))
+        debug_printer = print_debug_json_payload if debug_json else print_debug_payload
+        debug_printer("Inbound payload", parse_debug_payload(response_payload))
 
     return response_payload, request_message, normalized_domain

@@ -519,6 +519,39 @@ def test_msg_json_flag_preserves_raw_json_response(
     captured = capsys.readouterr()
     assert captured.out.strip() == '{"ok":true}'
 
+def test_msg_debug_and_json_prints_debug_payloads_as_raw_json(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    message_path = tmp_path / "message.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    message_path.write_text(
+        "To: vault.example.com\nSubject: Echo@Domain\nBody:\n  Ping: pong\n",
+        encoding = "utf-8")
+
+    def fake_urlopen(request):
+        return DummyResponse(b'{"ok":true}')
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["msg", "--debug", "--json", str(message_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Outbound payload to https://pw.vault.example.com/inbox:" in captured.out
+    assert '{"Header":{"From":"Anonymous","To":"vault.example.com","Subject":"Echo@Domain"' in captured.out
+    assert "Inbound payload:" in captured.out
+    assert '{"ok":true}' in captured.out
+    assert "ok: true" not in captured.out
+
 def test_msg_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
