@@ -205,7 +205,7 @@ def cmd_echo(
         ) from None
 
     if not debug:
-        print("Verified echo response: ✅")
+        print("✅ Verified echo response")
         return 0
 
     print_echo_response(response_payload)
