@@ -49,6 +49,9 @@ def _materialize_inbound_wildcards(
     if value == "<uuid>":
         return str(uuid.uuid4())
 
+    if value == "<str>":
+        return "example-string"
+
     return value
 
 def test_test_loads_wrapped_fixture_and_verifies_inbound(
@@ -689,6 +692,87 @@ def test_test_reports_invalid_uuid_for_uuid_wildcard(
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "Expected response.Correlation to be a valid UUID" in captured.err
+
+def test_test_accepts_string_wildcard_in_inbound_expectation(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  Body:\n"
+            "    Status: '<str>'\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            '{"Body":{"Status":"delivered"}}',
+            None,
+            "vault.example.com",
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+
+@pytest.mark.parametrize(
+    ("response_payload", "expected_message"),
+    [
+        (
+            '{"Body":{"Status":""}}',
+            "Expected response.Body.Status to be a non-empty string",
+        ),
+        (
+            '{"Body":{"Status":123}}',
+            "Expected response.Body.Status to be a string",
+        ),
+        (
+            '{"Body":{}}',
+            "Expected response.Body.Status to exist in the response.",
+        ),
+    ],
+)
+def test_test_rejects_invalid_string_wildcard_values(
+    monkeypatch, tmp_path, capsys, response_payload, expected_message
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  Body:\n"
+            "    Status: '<str>'\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            response_payload,
+            None,
+            "vault.example.com",
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert expected_message in captured.err
 
 def test_test_reports_http_failures_with_fixture_path(
     monkeypatch, tmp_path, capsys

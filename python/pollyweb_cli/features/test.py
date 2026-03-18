@@ -50,6 +50,7 @@ def describe_http_test_error(exc: urllib.error.HTTPError) -> str:
 PLACEHOLDER_PATTERN = re.compile(r"^\{BindOf\(([^)]+)\)\}$")
 PUBLIC_KEY_PLACEHOLDER = "<PublicKey>"
 UUID_WILDCARD = "<uuid>"
+STRING_WILDCARD = "<str>"
 DEFAULT_TESTS_DIR = "pw-tests"
 
 
@@ -251,6 +252,21 @@ def assert_expected_subset(
         except (AttributeError, TypeError, ValueError):
             raise UserFacingError(
                 f"Expected {location} to be a valid UUID, but got {actual!r}."
+            ) from None
+
+        return
+
+    # Allow fixtures to require "some non-empty string here" without pinning
+    # the exact server-generated value.
+    if expected == STRING_WILDCARD:
+        if not isinstance(actual, str):
+            raise UserFacingError(
+                f"Expected {location} to be a string, but got {actual!r}."
+            ) from None
+
+        if not actual:
+            raise UserFacingError(
+                f"Expected {location} to be a non-empty string, but got {actual!r}."
             ) from None
 
         return
