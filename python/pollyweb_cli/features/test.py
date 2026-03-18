@@ -16,6 +16,7 @@ from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.features.bind import (
     get_first_bind_for_domain,
     load_binds,
+    serialize_public_key_value,
 )
 from pollyweb_cli.features.msg import (
     describe_message_network_error,
@@ -24,6 +25,7 @@ from pollyweb_cli.features.msg import (
 from pollyweb_cli.tools.transport import send_wallet_message
 
 PLACEHOLDER_PATTERN = re.compile(r"^\{BindOf\(([^)]+)\)\}$")
+PUBLIC_KEY_PLACEHOLDER = "<PublicKey>"
 UUID_WILDCARD = "<uuid>"
 DEFAULT_TESTS_DIR = "pw-tests"
 
@@ -56,37 +58,65 @@ def resolve_bind_placeholder(
     return bind_value
 
 
-def resolve_fixture_bind_placeholders(
+def resolve_public_key_placeholder(
+    value: str,
+    public_key_path: Path
+) -> str:
+    """Resolve the `"<PublicKey>"` token from the configured wallet key."""
+
+    if value != PUBLIC_KEY_PLACEHOLDER:
+        return value
+
+    try:
+        public_key_pem = public_key_path.read_text(encoding = "utf-8")
+    except FileNotFoundError:
+        raise UserFacingError(
+            f"Missing PollyWeb public key in {public_key_path}. "
+            "Run `pw config` first."
+        ) from None
+
+    return serialize_public_key_value(public_key_pem)
+
+
+def resolve_fixture_placeholders(
     value: Any,
-    binds_path: Path
+    *,
+    binds_path: Path,
+    public_key_path: Path
 ) -> Any:
-    """Recursively replace supported bind placeholders inside a fixture."""
+    """Recursively replace supported fixture placeholders before sending."""
 
     if isinstance(value, dict):
         return {
-            key: resolve_fixture_bind_placeholders(
+            key: resolve_fixture_placeholders(
                 nested_value,
-                binds_path)
+                binds_path = binds_path,
+                public_key_path = public_key_path)
             for key, nested_value in value.items()
         }
 
     if isinstance(value, list):
         return [
-            resolve_fixture_bind_placeholders(
+            resolve_fixture_placeholders(
                 item,
-                binds_path)
+                binds_path = binds_path,
+                public_key_path = public_key_path)
             for item in value
         ]
 
     if isinstance(value, str):
-        return resolve_bind_placeholder(value, binds_path)
+        resolved_value = resolve_bind_placeholder(value, binds_path)
+        return resolve_public_key_placeholder(
+            resolved_value,
+            public_key_path)
 
     return value
 
 
 def load_message_test_fixture(
     path: Path,
-    binds_path: Path
+    binds_path: Path,
+    public_key_path: Path
 ) -> dict[str, Any]:
     """Load and validate a wrapped message test fixture from disk."""
 
@@ -116,7 +146,10 @@ def load_message_test_fixture(
             f"Test file {path} must define `Inbound` as an object when present."
         ) from None
 
-    return resolve_fixture_bind_placeholders(loaded, binds_path)
+    return resolve_fixture_placeholders(
+        loaded,
+        binds_path = binds_path,
+        public_key_path = public_key_path)
 
 
 def normalize_test_response(
@@ -273,7 +306,8 @@ def run_message_test_fixture(
         key_pair = load_signing_key_pair()
         fixture = load_message_test_fixture(
             fixture_path,
-            binds_path)
+            binds_path,
+            config_dir / "public.pem")
 
         request, _ = parse_message_request(
             [json.dumps(fixture["Outbound"])])
