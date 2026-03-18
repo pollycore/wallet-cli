@@ -248,9 +248,14 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
     assert "DnssecRequested: true" in captured.out
     assert "AuthenticData: true" in captured.out
     assert "External DNS checks:" in captured.out
+    assert "MXToolbox DKIM test:" in captured.out
+    assert "DNSSEC Debugger test:" in captured.out
+    assert "Google DNS test:" in captured.out
+    assert "Google DNS A record test:" in captured.out
     assert "mxtoolbox.com/SuperTool.aspx?action=dkim%3Apw.vault.example.com%3Adefault&run=toolpage" in captured.out
     assert "dnssec-debugger.verisignlabs.com/pw.vault.example.com" in captured.out
     assert "dns.google/query?name=pw.vault.example.com" in captured.out
+    assert "dns.google/resolve?name=pw.vault.example.com&type=A" in captured.out
     assert "Verified echo response from vault.example.com:" in captured.out
     assert " - Schema validated: pollyweb.org/MSG:1.0" in captured.out
     assert " - Required signed headers were present" in captured.out
@@ -321,7 +326,13 @@ def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
     assert "Echo: ok" in captured.out
     assert "\nDNS verification diagnostics:\n" in captured.out
     assert "PollyWebBranch: pw.any-domain.pollyweb.org" in captured.out
+    assert "MXToolbox DKIM test:" in captured.out
+    assert "DNSSEC Debugger test:" in captured.out
+    assert "Google DNS test:" in captured.out
+    assert "Google DNS A record test:" in captured.out
+    assert "mxtoolbox.com/SuperTool.aspx?action=dkim%3Apw.any-domain.pollyweb.org%3Adefault&run=toolpage" in captured.out
     assert "dns.google/query?name=pw.any-domain.pollyweb.org" in captured.out
+    assert "dns.google/resolve?name=pw.any-domain.pollyweb.org&type=A" in captured.out
     assert "Verified echo response from any-domain.dom:" in captured.out
     assert (
         " - Signature verified via DKIM lookup for selector default "

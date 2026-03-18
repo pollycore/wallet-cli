@@ -54,12 +54,13 @@ def _echo_dns_reference_links(
     branch = f"pw.{domain}"
 
     return {
-        "MXToolbox": (
+        "MXToolbox DKIM test": (
             "https://mxtoolbox.com/SuperTool.aspx?action="
             f"{quote(f'dkim:{branch}:{selector}', safe='')}&run=toolpage"
         ),
-        "DNSSEC Debugger": f"https://dnssec-debugger.verisignlabs.com/{branch}",
-        "Google DNS": f"https://dns.google/query?name={branch}",
+        "DNSSEC Debugger test": f"https://dnssec-debugger.verisignlabs.com/{branch}",
+        "Google DNS test": f"https://dns.google/query?name={branch}",
+        "Google DNS A record test": f"https://dns.google/resolve?name={branch}&type=A",
     }
 
 
