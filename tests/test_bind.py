@@ -217,6 +217,7 @@ def test_bind_logs_alert_when_replacing_domain_entry(tmp_path):
 
     log_text = log_path.read_text(encoding = "utf-8")
     assert "ALERT bind changed for any-hoster.pollyweb.org" in log_text
+    assert "script_path:" in log_text
     assert f"previous_bind: {previous_bind}" in log_text
     assert f"new_bind: {next_bind}" in log_text
 
@@ -240,6 +241,8 @@ def test_bind_raises_alert_when_same_domain_bind_changes(monkeypatch, tmp_path):
         return subprocess.CompletedProcess(command, 0)
 
     monkeypatch.setattr(cli.bind_feature.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.bind_feature.sys, "argv", ["/tmp/fake-runner.py"])
+    expected_script_path = str(Path("/tmp/fake-runner.py").resolve())
 
     with pytest.raises(cli.UserFacingError) as excinfo:
         cli.save_bind(
@@ -249,11 +252,13 @@ def test_bind_raises_alert_when_same_domain_bind_changes(monkeypatch, tmp_path):
 
     assert "Bind changed unexpectedly for any-hoster.pollyweb.org." in str(excinfo.value)
     assert "The local bind was not updated" in str(excinfo.value)
+    assert f"Script path: {expected_script_path}" in str(excinfo.value)
     assert cli.yaml.safe_load(binds_path.read_text(encoding = "utf-8")) == [
         {"Bind": previous_bind, "Domain": "any-hoster.pollyweb.org"}
     ]
     log_text = log_path.read_text(encoding = "utf-8")
     assert "ALERT bind changed for any-hoster.pollyweb.org" in log_text
+    assert f"script_path: {expected_script_path}" in log_text
     assert f"previous_bind: {previous_bind}" in log_text
     assert f"new_bind: {next_bind}" in log_text
     assert notifications

@@ -168,6 +168,19 @@ def get_binds_log_path(binds_path: Path) -> Path:
     return binds_path.with_name("binds.log")
 
 
+def get_bind_change_script_path() -> str:
+    """Return the current top-level script path for bind-change diagnostics."""
+
+    script_path = sys.argv[0] if sys.argv else ""
+    if script_path == "":
+        return "<unknown>"
+
+    try:
+        return str(Path(script_path).expanduser().resolve())
+    except OSError:
+        return script_path
+
+
 def append_bind_change_log(
     binds_path: Path,
     domain: str,
@@ -207,7 +220,8 @@ def append_bind_alert_log(
     binds_path: Path,
     domain: str,
     previous_entry: dict[str, str],
-    new_entry: dict[str, str]
+    new_entry: dict[str, str],
+    script_path: str
 ) -> None:
     """Append a high-signal alert entry for an unexpected bind change."""
 
@@ -216,6 +230,7 @@ def append_bind_alert_log(
     lines = [
         f"[{timestamp}] ALERT bind changed for {domain}",
         f"  binds_file: {binds_path}",
+        f"  script_path: {script_path}",
         f"  previous_bind: {normalize_bind_value(previous_entry['Bind'])}",
         f"  new_bind: {normalize_bind_value(new_entry['Bind'])}",
     ]
@@ -266,11 +281,13 @@ def raise_bind_change_error(
 
     previous_bind = normalize_bind_value(previous_entry["Bind"])
     new_bind = normalize_bind_value(new_entry["Bind"])
+    script_path = get_bind_change_script_path()
     append_bind_alert_log(
         binds_path,
         domain,
         previous_entry,
-        new_entry)
+        new_entry,
+        script_path)
     notify_bind_change(
         domain,
         previous_bind,
@@ -282,6 +299,7 @@ def raise_bind_change_error(
                 "The local bind was not updated so the churn can be investigated.",
                 f"Previous bind: {previous_bind}",
                 f"New bind: {new_bind}",
+                f"Script path: {script_path}",
                 f"See {get_binds_log_path(binds_path)} for the alert entry.",
                 (
                     "This usually means another process or concurrent test is "
