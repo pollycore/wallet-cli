@@ -8,6 +8,7 @@ import re
 import socket
 import urllib.error
 from typing import Any
+import uuid
 
 import yaml
 
@@ -23,6 +24,7 @@ from pollyweb_cli.features.msg import (
 from pollyweb_cli.tools.transport import send_wallet_message
 
 PLACEHOLDER_PATTERN = re.compile(r"^\{BindOf\(([^)]+)\)\}$")
+UUID_WILDCARD = "<uuid>"
 
 
 def resolve_bind_placeholder(
@@ -168,6 +170,23 @@ def assert_expected_subset(
                 actual[key],
                 expected_value,
                 f"{location}.{key}")
+        return
+
+    # Allow fixtures to require "some valid UUID here" without pinning an
+    # exact bind or correlation value.
+    if expected == UUID_WILDCARD:
+        if not isinstance(actual, str):
+            raise UserFacingError(
+                f"Expected {location} to be a UUID string, but got {actual!r}."
+            ) from None
+
+        try:
+            uuid.UUID(actual)
+        except (AttributeError, TypeError, ValueError):
+            raise UserFacingError(
+                f"Expected {location} to be a valid UUID, but got {actual!r}."
+            ) from None
+
         return
 
     if actual != expected:

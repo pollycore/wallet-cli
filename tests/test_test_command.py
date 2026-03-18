@@ -29,6 +29,28 @@ from tests.cli_test_helpers import (
     make_echo_response_payload,
 )
 
+def _materialize_inbound_wildcards(
+    value
+):
+    """Replace test-only wildcard expectations with concrete response values."""
+
+    if isinstance(value, dict):
+        return {
+            key: _materialize_inbound_wildcards(nested_value)
+            for key, nested_value in value.items()
+        }
+
+    if isinstance(value, list):
+        return [
+            _materialize_inbound_wildcards(item)
+            for item in value
+        ]
+
+    if value == "<uuid>":
+        return str(uuid.uuid4())
+
+    return value
+
 def test_test_loads_wrapped_fixture_and_verifies_inbound(
     monkeypatch, tmp_path, capsys
 ):
@@ -213,7 +235,7 @@ def test_test_command_accepts_every_checked_in_test_message_fixture(
 
     # Build a JSON response that contains the expected inbound subset, because
     # `pw test` only requires the response to include those expected fields.
-    inbound = fixture.get("Inbound") or {}
+    inbound = _materialize_inbound_wildcards(fixture.get("Inbound") or {})
     response_payload = json.dumps(inbound)
 
     monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
@@ -260,6 +282,75 @@ def test_test_reports_missing_expected_inbound_key(
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "Expected response.Subject to exist in the response." in captured.err
+
+def test_test_accepts_uuid_wildcard_in_inbound_expectation(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    actual_uuid = str(uuid.uuid4())
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  Correlation: '<uuid>'\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            json.dumps(
+                {
+                    "Header": {
+                        "Correlation": actual_uuid,
+                    }
+                }
+            ),
+            None,
+            "vault.example.com",
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert actual_uuid in captured.out
+
+def test_test_reports_invalid_uuid_for_uuid_wildcard(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  Correlation: '<uuid>'\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            '{"Header":{"Correlation":"not-a-uuid"}}',
+            None,
+            "vault.example.com",
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Expected response.Correlation to be a valid UUID" in captured.err
 
 def test_test_reports_http_failures_with_fixture_path(
     monkeypatch, tmp_path, capsys
