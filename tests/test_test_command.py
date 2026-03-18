@@ -514,6 +514,66 @@ def test_test_reports_missing_expected_inbound_key(
     captured = capsys.readouterr()
     assert "Expected response.Subject to exist in the response." in captured.err
 
+def test_test_accepts_missing_expected_inbound_key_when_fixture_value_is_empty(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  Header:\n"
+            "    Algorithm: ''\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: ('{"Header":{"Subject":"Echo@Domain"}}', None, "vault.example.com"))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+
+def test_test_accepts_present_empty_expected_inbound_key(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  Header:\n"
+            "    Algorithm: ''\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            '{"Header":{"Subject":"Echo@Domain","Algorithm":""}}',
+            None,
+            "vault.example.com",
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+
 def test_test_accepts_uuid_wildcard_in_inbound_expectation(
     monkeypatch, tmp_path, capsys
 ):

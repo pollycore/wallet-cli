@@ -218,6 +218,13 @@ def assert_expected_subset(
             ) from None
 
         for key, expected_value in expected.items():
+            # Treat empty expected scalar values as optional-presence checks.
+            # A fixture can still assert an explicit empty value when the
+            # response includes it, but omission is also accepted so callers
+            # can express "blank or absent" fields such as Header.Algorithm.
+            if key not in actual and expected_value in ("", None):
+                continue
+
             if key not in actual:
                 raise UserFacingError(
                     f"Expected {location}.{key} to exist in the response."

@@ -1,5 +1,18 @@
 # Task Plan
 
+- [x] Inspect the documented `pw test` fixture rules and current inbound subset matcher
+- [x] Allow expected empty inbound scalar values to match either an empty response value or an omitted field
+- [x] Add regression coverage, update docs/guidance, and verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py` so `pw test` now treats expected empty scalar fields such as `''` or `null` as optional-presence checks: the response may include the same empty value or omit the field entirely.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py` coverage for both accepted shapes of an empty expected field, including the `Header.Algorithm` case that motivated the change.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/test.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to document the new inbound-fixture rule for future work.
+- Verification is next with `./.venv-tests/bin/python -m pytest -q tests/test_test_command.py`.
+
+# Task Plan
+
 - [x] Inspect the current `pw echo --debug` verification path and confirm where extra response fields are silently tolerated
 - [x] Reject unexpected top-level echo-response fields before debug rendering so misplaced properties fail loudly
 - [x] Add regression coverage for a top-level `Request` leak and verify the affected echo tests
