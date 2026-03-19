@@ -1,9 +1,21 @@
 # Task Plan
 
-- [ ] Review the bind persistence and alert path for no-op writes plus automated-test notifications
-- [ ] Make unchanged bind saves a true no-op with no `binds.yaml` write, no normal bind log entry, and no notification/log churn
-- [ ] Suppress local bind-change OS notifications during automated tests without weakening real unexpected-change alerts
-- [ ] Add focused regression coverage and verify with `PYTHONPATH=$PWD/python ./.venv-tests/bin/python -m pytest -q tests/test_bind.py`
+- [x] Trace the raw `pw-dev echo` resolver traceback to the shared wallet transport path
+- [x] Normalize low-level wallet transport connection failures into `URLError` so CLI commands can render graceful messages
+- [x] Add regression coverage for the custom HTTPS transport path and verify with the repo test interpreter plus a direct `./pw-dev` repro
+
+- [x] Review the bind persistence and alert path for no-op writes plus automated-test notifications
+- [x] Make unchanged bind saves a true no-op with no `binds.yaml` write, no normal bind log entry, and no notification/log churn
+- [x] Suppress local bind-change OS notifications during automated tests without weakening real unexpected-change alerts
+- [x] Add focused regression coverage and verify with `PYTHONPATH=$PWD/python ./.venv-tests/bin/python -m pytest -q tests/test_bind.py`
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py` so `save_bind()` now returns early when the canonical domain/schema already maps to the same bind UUID, which avoids rewriting `~/.pollyweb/binds.yaml` and avoids appending a normal bind audit entry for a no-op bind response.
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py` so unexpected bind-change OS notifications are suppressed during automated pytest runs by checking the active pytest environment marker, while still raising the user-facing error and appending the `ALERT` log entry.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_bind.py` coverage for the no-op save path and for the pytest-only notification suppression, while keeping the existing real-notification branch covered through an explicit non-pytest environment override.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/bind.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the no-op bind and quiet-pytest behavior are documented for future work.
+- Verified with `PYTHONPATH=$PWD/python ./.venv-tests/bin/python -m pytest -q tests/test_bind.py` (`18 passed`).
 
 - [x] Review the current `pw echo --debug` summary layout and identify where timing details are printed
 - [x] Split echo timing into its own debug section and add a separate edge/CDN hints section with best-effort provider and PoP clues
