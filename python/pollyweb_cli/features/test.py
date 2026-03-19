@@ -53,6 +53,7 @@ PLACEHOLDER_PATTERN = re.compile(r"^\{BindOf\(([^)]+)\)\}$")
 PUBLIC_KEY_PLACEHOLDER = "<PublicKey>"
 UUID_WILDCARD = "<uuid>"
 STRING_WILDCARD = "<str>"
+INTEGER_WILDCARD = "<int>"
 TIMESTAMP_WILDCARD = "<timestamp>"
 DEFAULT_TESTS_DIR = "pw-tests"
 
@@ -317,6 +318,17 @@ def assert_expected_subset(
         if not actual:
             raise UserFacingError(
                 f"Expected {location} to be a non-empty string, but got {actual!r}."
+            ) from None
+
+        return
+
+    # Allow fixtures to require "some integer here" without pinning the exact
+    # server-generated numeric value.  Exclude booleans because Python treats
+    # them as ints, but PollyWeb payloads should distinguish them clearly.
+    if expected == INTEGER_WILDCARD:
+        if isinstance(actual, bool) or not isinstance(actual, int):
+            raise UserFacingError(
+                f"Expected {location} to be an integer, but got {actual!r}."
             ) from None
 
         return
