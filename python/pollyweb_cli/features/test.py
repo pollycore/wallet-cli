@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 import re
 import socket
@@ -51,7 +52,13 @@ PLACEHOLDER_PATTERN = re.compile(r"^\{BindOf\(([^)]+)\)\}$")
 PUBLIC_KEY_PLACEHOLDER = "<PublicKey>"
 UUID_WILDCARD = "<uuid>"
 STRING_WILDCARD = "<str>"
+TIMESTAMP_WILDCARD = "<timestamp>"
 DEFAULT_TESTS_DIR = "pw-tests"
+
+# ISO-8601 UTC timestamp ending in Z, matching the pollyweb Zulu timestamp format.
+_Z_TIMESTAMP_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$"
+)
 
 
 def resolve_bind_placeholder(
@@ -276,6 +283,30 @@ def assert_expected_subset(
         if not actual:
             raise UserFacingError(
                 f"Expected {location} to be a non-empty string, but got {actual!r}."
+            ) from None
+
+        return
+
+    # Allow fixtures to require "some valid Zulu timestamp here" without
+    # pinning the exact server-generated value.  The accepted format mirrors
+    # the pollyweb Msg.header.timestamp Zulu format exactly.
+    if expected == TIMESTAMP_WILDCARD:
+        if not isinstance(actual, str):
+            raise UserFacingError(
+                f"Expected {location} to be a timestamp string, but got {actual!r}."
+            ) from None
+
+        if not _Z_TIMESTAMP_RE.fullmatch(actual):
+            raise UserFacingError(
+                f"Expected {location} to be a Zulu timestamp "
+                f"(e.g. 2024-01-02T03:04:05.678Z), but got {actual!r}."
+            ) from None
+
+        try:
+            datetime.fromisoformat(actual.replace("Z", "+00:00"))
+        except ValueError:
+            raise UserFacingError(
+                f"Expected {location} to be a valid Zulu timestamp, but got {actual!r}."
             ) from None
 
         return

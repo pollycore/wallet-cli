@@ -52,6 +52,10 @@ def _materialize_inbound_wildcards(
     if value == "<str>":
         return "example-string"
 
+    if value == "<timestamp>":
+        # Use a concrete Zulu timestamp matching the pollyweb header format
+        return "2024-01-02T03:04:05.678Z"
+
     return value
 
 def test_test_loads_wrapped_fixture_and_verifies_inbound(
@@ -812,6 +816,96 @@ def test_test_rejects_invalid_string_wildcard_values(
     assert exit_code == 1
     captured = capsys.readouterr()
     assert expected_message in captured.err
+
+def test_test_accepts_timestamp_wildcard_in_inbound_expectation(
+    monkeypatch, tmp_path, capsys
+):
+    # Verify that a fixture with <timestamp> in Inbound passes when the
+    # response contains a valid Zulu timestamp.
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  Header:\n"
+            "    Timestamp: '<timestamp>'\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            '{"Header":{"Timestamp":"2024-06-15T12:30:00.000Z"}}',
+            None,
+            "vault.example.com",
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+
+
+@pytest.mark.parametrize(
+    ("response_payload", "expected_message"),
+    [
+        (
+            '{"Header":{"Timestamp":"not-a-timestamp"}}',
+            "Expected response.Header.Timestamp to be a Zulu timestamp",
+        ),
+        (
+            '{"Header":{"Timestamp":""}}',
+            "Expected response.Header.Timestamp to be a Zulu timestamp",
+        ),
+        (
+            '{"Header":{"Timestamp":12345}}',
+            "Expected response.Header.Timestamp to be a timestamp string",
+        ),
+        (
+            '{"Header":{}}',
+            "Expected response.Header.Timestamp to exist in the response.",
+        ),
+    ],
+)
+def test_test_rejects_invalid_timestamp_wildcard_values(
+    monkeypatch, tmp_path, capsys, response_payload, expected_message
+):
+    # Verify that <timestamp> rejects non-timestamps, wrong types, and missing fields.
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  Header:\n"
+            "    Timestamp: '<timestamp>'\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            response_payload,
+            None,
+            "vault.example.com",
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert expected_message in captured.err
+
 
 def test_test_reports_http_failures_with_fixture_path(
     monkeypatch, tmp_path, capsys
