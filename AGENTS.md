@@ -29,6 +29,9 @@
 - When a `pw test` send fails with an HTTP response whose body includes an `error` field, append that inbound error detail to the existing `Error: HTTP ...` output so the red failure area explains the server-side cause without requiring `--debug`.
 - `pw bind` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
 - `pw echo` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
+- `pw echo --json` should print the raw synchronous response for scripts; without that flag, keep the normal concise verification line, and when combined with `--debug` switch the payload-style sections from YAML-style formatting to raw JSON.
+- Interactive `--json` output should keep the same compact raw JSON structure but add terminal syntax colors when stdout is a TTY; redirected/scripted output must stay plain JSON without ANSI noise.
+- For interactive `pw echo --debug --json`, apply JSON syntax coloring inside the final Textual section renderables too, not only in the pre-app console helper, or the mounted app will repaint those payloads back to plain white.
 - `pw echo --debug` should keep the underlying transport exception detail for network failures instead of collapsing it to the normal friendly resolver wording, so low-level troubleshooting remains available on demand.
 - `pw echo` verification should reject any extra top-level response fields beyond `Header`, `Body`, `Hash`, and `Signature`, so misplaced properties such as a top-level `Request` fail loudly instead of being hidden by debug formatting.
 - `pw echo --debug` should print DNS verification diagnostics for the PollyWeb branch `DS` lookup and DKIM `TXT` lookup, including the DNS names queried, the collected record values, and whether each response carried the DNSSEC AD flag; keep those diagnostics visible even when verification fails after the response arrives.
@@ -47,6 +50,7 @@
 - Domain-signed PollyWeb messages should omit `Header.Algorithm`; receivers must infer the signature algorithm from DKIM using the declared `Selector`, and `wallet-cli` should not add or require that header for domain senders.
 - Plain `pw echo` should stay concise on success and print only the verification line with total duration and network-latency percentage.
 - Only `pw echo --debug` should show the top header and bottom summary box, and only interactive `--debug` TTY runs should switch to the Textual viewer so those boxes react to terminal resize.
+- The interactive `pw echo --debug` Textual body should keep Rich/Textual renderables such as `Static(Group(...))`; replacing that body with a plain `TextArea` strips the debug colors from the payload and verification sections.
 - The CLI reports its installed release via `pw version`; do not reintroduce a top-level `pw --version` flag without an explicit product change.
 - The CLI self-update preflight should upgrade automatically when PyPI has a newer release; do not ask for confirmation or persist declined versions unless the product requirement changes.
 - The CLI runtime itself must always come from a published PyPI release; if `pollyweb-cli` is running from an editable checkout, local path, direct URL, or dev version, replace it with the latest published release before executing the requested command.

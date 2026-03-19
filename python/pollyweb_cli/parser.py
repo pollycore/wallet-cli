@@ -84,6 +84,11 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         action="store_true",
         help="Print outbound and inbound echo payloads.",
     )
+    echo_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the raw synchronous response instead of YAML formatting.",
+    )
     add_wallet_send_flags(echo_parser)
 
     msg_parser = subparsers.add_parser(

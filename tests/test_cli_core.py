@@ -556,6 +556,17 @@ def test_parser_accepts_test_command_without_path():
     assert args.debug is True
     assert args.json is True
 
+
+def test_parser_accepts_echo_command():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["echo", "vault.example.com", "--debug", "--json"])
+
+    assert args.command == "echo"
+    assert args.domain == "vault.example.com"
+    assert args.debug is True
+    assert args.json is True
+
 def test_print_debug_payload_wraps_long_unbroken_strings_as_literal_blocks(capsys):
     cli.print_debug_payload(
         "Outbound payload",
@@ -593,7 +604,7 @@ def test_main_renders_user_facing_errors_in_red(monkeypatch):
     monkeypatch.setattr(
         cli,
         "cmd_echo",
-        lambda domain, debug, unsigned = False, anonymous = False: (
+        lambda domain, debug, json_output = False, unsigned = False, anonymous = False: (
             _ for _ in ()
         ).throw(cli.UserFacingError("boom")),
     )

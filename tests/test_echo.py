@@ -13,6 +13,9 @@ from pathlib import Path
 import pollyweb._transport as pollyweb_transport
 import pollyweb.msg as pollyweb_msg
 import pytest
+from rich.console import Group
+from rich.syntax import Syntax
+from rich.text import Text
 
 from pollyweb import DnsQueryDiagnostic, DnsVerificationDiagnostics, Msg
 from pollyweb_cli import cli
@@ -282,10 +285,138 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
     assert " - Subject matched expected echo subject: Echo@Domain" in captured.out
     assert "\nNetwork timing:\n" in captured.out
     assert " - Total duration:" in captured.out
-    assert " - Latency share:" in captured.out
+    assert " - Latency share: " in captured.out
     assert "\nEdge / CDN hints:\n" in captured.out
     assert " - Transport headers: unavailable in this runtime" in captured.out
     assert captured.err == ""
+
+
+def test_echo_json_prints_raw_response_payload(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        return DummyResponse(
+            make_echo_response_payload(
+                from_value = "vault.example.com",
+                correlation = payload["Header"]["Correlation"],
+                private_key = remote_key_pair.PrivateKey,
+            )
+        )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
+    )
+
+    exit_code = cli.main(["echo", "--json", "vault.example.com"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    parsed = json.loads(captured.out)
+    assert parsed["Header"]["Subject"] == "Echo@Domain"
+    assert parsed["Header"]["From"] == "vault.example.com"
+    assert parsed["Body"]["Echo"] == "ok"
+    assert "Verified echo response" not in captured.out
+    assert captured.err == ""
+
+
+def test_echo_yaml_debug_renderable_keeps_literal_strings_yaml_safe():
+    renderable = echo_feature._yaml_debug_renderable(
+        {
+            "Hash": "a" * 80,
+            "Signature": "b" * 80,
+        }
+    )
+
+    rendered = renderable.plain
+
+    assert "!!python/object" not in rendered
+    assert "Hash: |" in rendered
+    assert "Signature: |" in rendered
+
+
+def test_echo_textual_app_keeps_rich_static_sections():
+    created_static_widgets: list[object] = []
+
+    class FakeStatic:
+        """Capture the renderables sent into Textual static widgets."""
+
+        def __init__(self, renderable, *, classes = None, id = None):
+            self.renderable = renderable
+            self.classes = classes
+            self.id = id
+            created_static_widgets.append(self)
+
+    class FakeVerticalScroll:
+        """Minimal context manager stand-in for the Textual body container."""
+
+        def __init__(self, *children, id = None):
+            self.children = list(children)
+            self.id = id
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    original_static = echo_feature.Static
+    original_vertical_scroll = echo_feature.VerticalScroll
+    echo_feature.Static = FakeStatic
+    echo_feature.VerticalScroll = FakeVerticalScroll
+
+    try:
+        app = echo_feature._EchoTextualApp(
+            header_panel = echo_feature._build_echo_header_panel(),
+            sections = [
+                Group(
+                    echo_feature._render_section_title("Verified response"),
+                    Text("copy me", style = echo_feature.DEBUG_VALUE_STYLE),
+                )
+            ],
+            footer_panel = echo_feature._build_echo_footer_panel(
+                total_seconds = 0.2,
+                network_seconds = 0.1,
+                dkim_and_dnssec_verified = True,
+                cdn_distribution_detected = True,
+            ),
+        )
+
+        composed = list(app.compose())
+    finally:
+        echo_feature.Static = original_static
+        echo_feature.VerticalScroll = original_vertical_scroll
+
+    assert len(composed) == 3
+    assert len(created_static_widgets) == 3
+    assert created_static_widgets[1].renderable.__class__.__name__ == "Group"
+    assert len(composed[1].children) == 1
+
+
+def test_echo_json_textual_renderable_uses_syntax_highlighting():
+    renderable = echo_feature._json_debug_renderable({"ok": True})
+
+    assert isinstance(renderable, Syntax)
+
 
 def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
     monkeypatch, tmp_path, capsys
@@ -373,6 +504,60 @@ def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
     assert captured.err == ""
 
 
+def test_echo_debug_json_switches_payload_sections_to_raw_json(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        return DummyResponse(
+            make_echo_response_payload(
+                from_value = "vault.example.com",
+                correlation = payload["Header"]["Correlation"],
+                private_key = remote_key_pair.PrivateKey,
+            )
+        )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
+    )
+
+    exit_code = cli.main(["echo", "--debug", "--json", "vault.example.com"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "pw echo v" in captured.out or "PollyWeb CLI v" in captured.out
+    assert "\nOutbound payload to https://pw.vault.example.com/inbox:\n" in captured.out
+    assert '"Subject":"Echo@Domain"' in captured.out
+    assert '"To":"vault.example.com"' in captured.out
+    assert "\n\nInbound payload:\n" in captured.out
+    assert '"Echo":"ok"' in captured.out
+    assert "\nDNS verification diagnostics:\n" in captured.out
+    assert '"PollyWebBranch":"pw.vault.example.com"' in captured.out
+    assert "Subject: Echo@Domain" not in captured.out
+    assert "PollyWebBranch: pw.vault.example.com" not in captured.out
+    assert "Echo summary" in captured.out
+    assert captured.err == ""
+
+
 def test_echo_debug_prints_cloudfront_edge_hints_when_transport_headers_are_available(
     monkeypatch, tmp_path, capsys
 ):
@@ -450,6 +635,67 @@ def test_echo_debug_prints_cloudfront_edge_hints_when_transport_headers_are_avai
     assert " - Via header: 1.1 123abc.cloudfront.net (CloudFront)" in captured.out
     assert " - X-Cache: Miss from cloudfront" in captured.out
     assert " - CloudFront request ID: cloudfront-request-id" in captured.out
+
+
+def test_echo_debug_prints_metadata_performance_metrics_in_network_timing(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    def fake_urlopen(request):
+        payload = cli.json.loads(request.data.decode("utf-8"))
+        return DummyResponse(
+            make_echo_response_payload(
+                from_value = "vault.example.com",
+                correlation = payload["Header"]["Correlation"],
+                private_key = remote_key_pair.PrivateKey,
+                body = {
+                    "Echo": "ok",
+                    "Metadata": {
+                        "TotalExecutionMs": 8,
+                        "DownstreamExecutionMs": 0,
+                    },
+                },
+            )
+        )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
+    )
+    perf_counter_values = iter([10.0, 10.04, 10.08, 10.12])
+    monkeypatch.setattr(
+        time,
+        "perf_counter",
+        lambda: next(perf_counter_values),
+    )
+
+    exit_code = cli.main(["echo", "--debug", "vault.example.com"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "\nNetwork timing:\n" in captured.out
+    assert " - Total duration: 120 ms" in captured.out
+    assert " - Latency share: 33% (40 ms)" in captured.out
+    assert " - Total execution: 8 ms" in captured.out
+    assert " - Downstream execution: 0 ms" in captured.out
+    assert captured.err == ""
 
 
 def test_echo_debug_rejects_unexpected_top_level_response_fields(

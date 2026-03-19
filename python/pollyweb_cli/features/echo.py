@@ -17,7 +17,6 @@ from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-import yaml
 
 try:
     from textual.app import App, ComposeResult
@@ -31,12 +30,15 @@ except ImportError:  # pragma: no cover - dependency is expected in runtime envs
 
 from pollyweb_cli.tools.debug import (
     DEBUG_CONSOLE,
+    build_json_syntax,
     parse_debug_payload,
+    print_debug_json_payload,
     print_debug_payload,
+    print_json_payload,
     print_labeled_value_lines,
     print_section_title,
     print_yaml_payload,
-    _format_debug_value,
+    build_yaml_payload,
     DEBUG_PUNCTUATION_STYLE,
     DEBUG_SECTION_TITLE_STYLE,
     DEBUG_KEY_STYLE,
@@ -60,6 +62,30 @@ ECHO_SUBJECT = "Echo@Domain"
 ALLOWED_ECHO_RESPONSE_FIELDS = frozenset({"Body", "Hash", "Header", "Signature"})
 CLI_PACKAGE_NAME = "pollyweb-cli"
 TEXTUAL_AVAILABLE = App is not None
+
+
+def _coerce_echo_response_metadata(
+    metadata: object
+) -> dict[str, object] | None:
+    """Return echo response metadata as a plain mapping when available."""
+
+    if isinstance(metadata, dict):
+        return metadata
+
+    if hasattr(metadata, "get"):
+        coerced: dict[str, object] = {}
+        found_value = False
+
+        for key in ("TotalExecutionMs", "DownstreamExecutionMs"):
+            value = metadata.get(key)
+            if value is not None:
+                coerced[key] = value
+                found_value = True
+
+        if found_value:
+            return coerced
+
+    return None
 
 
 def _get_echo_header_version() -> str:
@@ -254,13 +280,13 @@ def _print_echo_error_footer_summary(
 def _yaml_debug_renderable(payload: object) -> Text:
     """Render one payload to the shared YAML-like debug renderable."""
 
-    yaml_payload = yaml.dump(
-        _format_debug_value(payload),
-        sort_keys = False,
-        allow_unicode = False,
-        default_flow_style = False,
-    ).rstrip()
-    return render_debug_yaml(yaml_payload)
+    return render_debug_yaml(build_yaml_payload(payload))
+
+
+def _json_debug_renderable(payload: object):
+    """Render one payload to syntax-colored JSON for the Textual echo viewer."""
+
+    return build_json_syntax(payload)
 
 
 def _render_section_title(title: str) -> Text:
@@ -339,15 +365,31 @@ def _build_echo_edge_lines(
 def _build_echo_timing_lines(
     *,
     total_seconds: float,
-    network_seconds: float
+    network_seconds: float,
+    response_metadata: object | None = None
 ) -> dict[str, str]:
     """Collect timing details for display."""
 
     lines = {"Total duration": f"{max(0, round(total_seconds * 1000))} ms"}
+    network_milliseconds = max(0, round(network_seconds * 1000))
+
     if total_seconds > 0:
-        lines["Latency share"] = f"{(network_seconds / total_seconds) * 100:.0f}%"
+        lines["Latency share"] = (
+            f"{(network_seconds / total_seconds) * 100:.0f}% "
+            f"({network_milliseconds} ms)"
+        )
     else:
-        lines["Latency share"] = "0%"
+        lines["Latency share"] = f"0% ({network_milliseconds} ms)"
+
+    if response_metadata is not None and hasattr(response_metadata, "get"):
+        total_execution_ms = response_metadata.get("TotalExecutionMs")
+        if isinstance(total_execution_ms, int):
+            lines["Total execution"] = f"{total_execution_ms} ms"
+
+        downstream_execution_ms = response_metadata.get("DownstreamExecutionMs")
+        if isinstance(downstream_execution_ms, int):
+            lines["Downstream execution"] = f"{downstream_execution_ms} ms"
+
     return lines
 
 
@@ -355,6 +397,7 @@ def _build_echo_textual_sections(
     *,
     domain: str,
     debug: bool,
+    debug_json: bool,
     outbound_payload: object | None,
     response_payload: str,
     dns_diagnostics,
@@ -362,6 +405,7 @@ def _build_echo_textual_sections(
     verification_lines: dict[str, str],
     total_seconds: float,
     network_seconds: float,
+    response_metadata: object | None,
     transport_metadata: dict[str, object]
 ) -> list[tuple[str, str]]:
     """Build the section renderables shown in the Textual echo viewer."""
@@ -369,10 +413,11 @@ def _build_echo_textual_sections(
     sections: list[Group] = []
 
     if debug:
+        payload_renderer = _json_debug_renderable if debug_json else _yaml_debug_renderable
         sections.append(
             Group(
                 _render_section_title(f"Outbound payload to https://pw.{domain}/inbox"),
-                _yaml_debug_renderable(
+                payload_renderer(
                     {} if outbound_payload is None else outbound_payload
                 ),
             )
@@ -380,7 +425,7 @@ def _build_echo_textual_sections(
         sections.append(
             Group(
                 _render_section_title("Inbound payload"),
-                _yaml_debug_renderable(parse_debug_payload(response_payload)),
+                payload_renderer(parse_debug_payload(response_payload)),
             )
         )
         sections.append(
@@ -393,7 +438,7 @@ def _build_echo_textual_sections(
             sections.append(
                 Group(
                     _render_section_title("DNS verification diagnostics"),
-                    _yaml_debug_renderable(asdict(dns_diagnostics)),
+                    payload_renderer(asdict(dns_diagnostics)),
                 )
             )
         if dns_link_context is not None:
@@ -410,6 +455,7 @@ def _build_echo_textual_sections(
                     _build_echo_timing_lines(
                         total_seconds = total_seconds,
                         network_seconds = network_seconds,
+                        response_metadata = response_metadata,
                     )
                 ),
             )
@@ -440,20 +486,23 @@ def _build_echo_textual_sections(
 def _build_echo_error_textual_sections(
     *,
     domain: str,
+    debug_json: bool,
     outbound_payload: object | None,
     dns_diagnostics,
     dns_link_context: tuple[str, str] | None,
     error_lines: dict[str, str],
     total_seconds: float,
     network_seconds: float,
+    response_metadata: object | None,
     transport_metadata: dict[str, object]
 ) -> list[Group]:
     """Build the error sections shown in the Textual echo viewer."""
 
+    payload_renderer = _json_debug_renderable if debug_json else _yaml_debug_renderable
     sections: list[Group] = [
         Group(
             _render_section_title(f"Outbound payload to https://pw.{domain}/inbox"),
-            _yaml_debug_renderable(
+            payload_renderer(
                 {} if outbound_payload is None else outbound_payload
             ),
         ),
@@ -467,7 +516,7 @@ def _build_echo_error_textual_sections(
         sections.append(
             Group(
                 _render_section_title("DNS verification diagnostics"),
-                _yaml_debug_renderable(asdict(dns_diagnostics)),
+                payload_renderer(asdict(dns_diagnostics)),
             )
         )
 
@@ -486,6 +535,7 @@ def _build_echo_error_textual_sections(
                 _build_echo_timing_lines(
                     total_seconds = total_seconds,
                     network_seconds = network_seconds,
+                    response_metadata = response_metadata,
                 )
             ),
         )
@@ -529,9 +579,13 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         """Compose the reactive echo layout."""
 
         yield Static(self._header_panel, classes = "section")
-        with VerticalScroll(id = "body"):
-            for renderable in self._sections:
-                yield Static(renderable, classes = "section")
+        yield VerticalScroll(
+            *[
+                Static(renderable, classes = "section")
+                for renderable in self._sections
+            ],
+            id = "body",
+        )
         yield Static(self._footer_panel, classes = "section")
 
 
@@ -608,14 +662,17 @@ def _echo_dns_context(
 
 
 def _print_echo_dns_diagnostics(
-    diagnostics
+    diagnostics,
+    *,
+    json_output: bool
 ) -> None:
     """Render DNS verification diagnostics for the echo debug path."""
 
     if diagnostics is None:
         return
 
-    print_debug_payload(
+    printer = print_debug_json_payload if json_output else print_debug_payload
+    printer(
         "DNS verification diagnostics",
         asdict(diagnostics))
 
@@ -761,22 +818,19 @@ def _detect_edge_pop(
 def _print_echo_timing_details(
     *,
     total_seconds: float,
-    network_seconds: float
+    network_seconds: float,
+    response_metadata: object | None = None
 ) -> None:
     """Render the echo timing details as a dedicated debug section."""
 
     print()
     print_section_title("Network timing")
 
-    timing_lines = {
-        "Total duration": f"{max(0, round(total_seconds * 1000))} ms",
-    }
-    if total_seconds > 0:
-        timing_lines["Latency share"] = (
-            f"{(network_seconds / total_seconds) * 100:.0f}%"
-        )
-    else:
-        timing_lines["Latency share"] = "0%"
+    timing_lines = _build_echo_timing_lines(
+        total_seconds = total_seconds,
+        network_seconds = network_seconds,
+        response_metadata = response_metadata,
+    )
 
     print_labeled_value_lines(
         timing_lines,
@@ -876,12 +930,14 @@ def _describe_echo_network_error(
 def _render_debug_echo_failure(
     *,
     domain: str,
+    debug_json: bool,
     error_lines: dict[str, str],
     outbound_payload: object | None,
     dns_diagnostics,
     dns_link_context: tuple[str, str] | None,
     total_seconds: float,
     network_seconds: float,
+    response_metadata: object | None,
     transport_metadata: dict[str, object]
 ) -> int:
     """Render a debug-friendly echo failure summary without crashing out."""
@@ -896,12 +952,14 @@ def _render_debug_echo_failure(
             header_panel = _build_echo_header_panel(),
             sections = _build_echo_error_textual_sections(
                 domain = domain,
+                debug_json = debug_json,
                 outbound_payload = outbound_payload,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
                 error_lines = error_lines,
                 total_seconds = total_seconds,
                 network_seconds = network_seconds,
+                response_metadata = response_metadata,
                 transport_metadata = transport_metadata,
             ),
             footer_panel = footer_panel,
@@ -913,12 +971,15 @@ def _render_debug_echo_failure(
         error_lines,
         prefix = " - ",
     )
-    _print_echo_dns_diagnostics(dns_diagnostics)
+    _print_echo_dns_diagnostics(
+        dns_diagnostics,
+        json_output = debug_json)
     if dns_link_context is not None:
         _print_echo_dns_reference_links(*dns_link_context)
     _print_echo_timing_details(
         total_seconds = total_seconds,
-        network_seconds = network_seconds)
+        network_seconds = network_seconds,
+        response_metadata = response_metadata)
     _print_echo_edge_details(transport_metadata)
     print()
     DEBUG_CONSOLE.print(footer_panel)
@@ -930,6 +991,7 @@ def cmd_echo(
     domain: str,
     *,
     debug: bool,
+    json_output: bool,
     config_dir,
     binds_path: Path,
     unsigned: bool,
@@ -947,6 +1009,7 @@ def cmd_echo(
     normalized_domain = domain
     response_payload: str | None = None
     request_message = None
+    response_metadata: object | None = None
 
     if debug:
         _print_echo_header()
@@ -960,6 +1023,7 @@ def cmd_echo(
             body={},
             key_pair=key_pair,
             debug=debug,
+            debug_json=json_output,
             binds_path=binds_path,
             anonymous=anonymous,
             unsigned=unsigned,
@@ -1003,6 +1067,11 @@ def cmd_echo(
                 exc,
                 domain = normalized_domain) from None
 
+        if hasattr(response.Body, "get"):
+            response_metadata = _coerce_echo_response_metadata(
+                response.Body.get("Metadata")
+            )
+
         dns_diagnostics = verification.dns_diagnostics
     except UserFacingError as exc:
         dns_diagnostics = getattr(exc, "diagnostics", dns_diagnostics)
@@ -1023,6 +1092,7 @@ def cmd_echo(
 
             return _render_debug_echo_failure(
                 domain = normalized_domain,
+                debug_json = json_output,
                 error_lines = {
                     "Status": "failed",
                     "Error": str(exc),
@@ -1033,6 +1103,7 @@ def cmd_echo(
                 dns_link_context = dns_link_context,
                 total_seconds = time.perf_counter() - started_at,
                 network_seconds = timing.get("network_seconds", 0.0),
+                response_metadata = response_metadata,
                 transport_metadata = transport_metadata,
             )
         raise
@@ -1062,6 +1133,7 @@ def cmd_echo(
 
         return _render_debug_echo_failure(
             domain = normalized_domain,
+            debug_json = json_output,
             error_lines = {
                 "Status": "failed",
                 "Error": request_error,
@@ -1073,6 +1145,7 @@ def cmd_echo(
             dns_link_context = dns_link_context,
             total_seconds = time.perf_counter() - started_at,
             network_seconds = timing.get("network_seconds", 0.0),
+            response_metadata = response_metadata,
             transport_metadata = transport_metadata,
         )
     except Exception as exc:
@@ -1081,6 +1154,7 @@ def cmd_echo(
 
         return _render_debug_echo_failure(
             domain = normalized_domain,
+            debug_json = json_output,
             error_lines = {
                 "Status": "failed",
                 "Error": str(exc) if str(exc) else repr(exc),
@@ -1092,6 +1166,7 @@ def cmd_echo(
             dns_link_context = dns_link_context,
             total_seconds = time.perf_counter() - started_at,
             network_seconds = timing.get("network_seconds", 0.0),
+            response_metadata = response_metadata,
             transport_metadata = transport_metadata,
         )
 
@@ -1157,6 +1232,7 @@ def cmd_echo(
             sections = _build_echo_textual_sections(
                 domain = normalized_domain,
                 debug = debug,
+                debug_json = json_output,
                 outbound_payload = outbound_payload,
                 response_payload = response_payload,
                 dns_diagnostics = dns_diagnostics,
@@ -1164,6 +1240,7 @@ def cmd_echo(
                 verification_lines = verification_lines,
                 total_seconds = total_seconds,
                 network_seconds = network_seconds,
+                response_metadata = response_metadata,
                 transport_metadata = transport_metadata,
             ),
             footer_panel = footer_panel,
@@ -1171,6 +1248,10 @@ def cmd_echo(
         return 0
 
     if not debug:
+        if json_output:
+            print_json_payload(parse_debug_payload(response_payload))
+            return 0
+
         print(
             _format_echo_success_metrics(
                 total_seconds = total_seconds,
@@ -1183,12 +1264,15 @@ def cmd_echo(
         verification_lines,
         prefix = " - ",
     )
-    _print_echo_dns_diagnostics(dns_diagnostics)
+    _print_echo_dns_diagnostics(
+        dns_diagnostics,
+        json_output = json_output)
     if dns_link_context is not None:
         _print_echo_dns_reference_links(*dns_link_context)
     _print_echo_timing_details(
         total_seconds = total_seconds,
-        network_seconds = network_seconds)
+        network_seconds = network_seconds,
+        response_metadata = response_metadata)
     _print_echo_edge_details(transport_metadata)
     print()
     DEBUG_CONSOLE.print(footer_panel)

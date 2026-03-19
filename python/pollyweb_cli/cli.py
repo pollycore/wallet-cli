@@ -554,6 +554,7 @@ def cmd_bind(
 def cmd_echo(
     domain: str,
     debug: bool = False,
+    json_output: bool = False,
     unsigned: bool = False,
     anonymous: bool = False
 ) -> int:
@@ -563,6 +564,7 @@ def cmd_echo(
     return _cmd_echo(
         domain,
         debug=debug,
+        json_output=json_output,
         config_dir=CONFIG_DIR,
         binds_path=BINDS_PATH,
         unsigned=unsigned,
@@ -719,11 +721,16 @@ def _run_main(
                 unsigned = args.unsigned,
                 anonymous = args.anonymous)
         if args.command == "echo":
+            echo_kwargs = {
+                "domain": args.domain,
+                "debug": args.debug,
+                "unsigned": args.unsigned,
+                "anonymous": args.anonymous,
+            }
+            if args.json:
+                echo_kwargs["json_output"] = args.json
             return cmd_echo(
-                domain = args.domain,
-                debug = args.debug,
-                unsigned = args.unsigned,
-                anonymous = args.anonymous)
+                **echo_kwargs)
         if args.command == "msg":
             return cmd_msg(
                 message = args.message,

@@ -10,6 +10,8 @@ This sends an `Echo@Domain` message to the target domain, parses the synchronous
 
 Plain `pw echo` stays concise and prints only the final verification line with total duration and latency percentage.
 
+Use `--json` to print the raw synchronous response instead of the default concise verification line. On an interactive terminal, those JSON payloads now keep the same raw structure but add JSON syntax colors; redirected or scripted output stays plain compact JSON. When you combine `--debug --json`, the debug payload sections switch from the default YAML-style formatting to raw JSON while keeping the same verification, DNS, timing, and summary sections.
+
 `pw echo --debug` adds a top header and a bottom summary box. The summary includes:
 
 - `✅ DKIM and DNSSEC`: the reply signature was verified through DKIM lookup and the returned DNS diagnostics showed authenticated DNSSEC data.
@@ -23,8 +25,12 @@ When `pw echo --debug` runs in an interactive TTY, it now opens a small Textual 
 
 Use `--anonymous` to force `From: Anonymous` and ignore any stored bind lookup. Use `--unsigned` to remove `Hash` and `Signature` before sending.
 
-Print the outbound echo payload, the full inbox URL the POST is sent to, the inbound signed response, and the DNS verification diagnostics returned by the `pollyweb` package while keeping the same verification checks. A target ending in `.dom` is accepted here as shorthand for the matching `.pollyweb.org` domain. The debug view now separates timing into its own `Network timing` section and also prints an `Edge / CDN hints` section with best-effort transport clues such as the request URL, HTTP status, detected edge provider, and PoP when headers like CloudFront's `X-Amz-Cf-Pop` are available. It still includes the DNS names queried, the returned `DS` and `TXT` values, whether each response was authenticated with the DNSSEC AD flag, and direct links to an MXToolbox DKIM test, a DNSSEC Debugger test, a Google DNS test, and a Google DNS A-record test for the same PollyWeb branch and selector. If verification fails after the response is received, `--debug` still prints those package-owned diagnostics and the external links before returning the error:
+Print the outbound echo payload, the full inbox URL the POST is sent to, the inbound signed response, and the DNS verification diagnostics returned by the `pollyweb` package while keeping the same verification checks. A target ending in `.dom` is accepted here as shorthand for the matching `.pollyweb.org` domain. The debug view now separates timing into its own `Network timing` section and also prints an `Edge / CDN hints` section with best-effort transport clues such as the request URL, HTTP status, detected edge provider, and PoP when headers like CloudFront's `X-Amz-Cf-Pop` are available. When the echo reply includes `Body.Metadata.TotalExecutionMs` and `Body.Metadata.DownstreamExecutionMs`, the `Network timing` section prints those values too, and `Latency share` includes both the percentage and the measured network milliseconds. It still includes the DNS names queried, the returned `DS` and `TXT` values, whether each response was authenticated with the DNSSEC AD flag, and direct links to an MXToolbox DKIM test, a DNSSEC Debugger test, a Google DNS test, and a Google DNS A-record test for the same PollyWeb branch and selector. If verification fails after the response is received, `--debug` still prints those package-owned diagnostics and the external links before returning the error:
 
 ```bash
 pw echo --debug vault.example.com
+```
+
+```bash
+pw echo --debug --json vault.example.com
 ```

@@ -8,6 +8,7 @@ import textwrap
 
 import yaml
 from rich.console import Console
+from rich.syntax import Syntax
 from rich.markdown import Markdown
 from rich.text import Text
 
@@ -167,17 +168,47 @@ def print_debug_payload(title: str, payload: object) -> None:
     print()
 
 
+def build_compact_json_payload(payload: object) -> str:
+    """Serialize one payload as compact, deterministic JSON."""
+
+    return json.dumps(
+        payload,
+        sort_keys = False,
+        ensure_ascii = False,
+        separators = (",", ":"),
+    )
+
+
+def build_json_syntax(payload: object) -> Syntax:
+    """Build a Rich JSON syntax renderable for one payload."""
+
+    return Syntax(
+        build_compact_json_payload(payload),
+        "json",
+        line_numbers = False,
+        word_wrap = True,
+    )
+
+
+def _should_colorize_json_output() -> bool:
+    """Return whether JSON output should use terminal syntax coloring."""
+
+    return DEBUG_CONSOLE.is_terminal and not DEBUG_CONSOLE.no_color
+
+
 def print_json_payload(payload: object) -> None:
     """Render one payload as compact, deterministic JSON."""
 
-    print(
-        json.dumps(
-            payload,
-            sort_keys = False,
-            ensure_ascii = False,
-            separators = (",", ":"),
+    rendered_payload = build_compact_json_payload(payload)
+
+    if _should_colorize_json_output():
+        DEBUG_CONSOLE.print(
+            build_json_syntax(payload),
+            overflow = "fold",
         )
-    )
+        return
+
+    print(rendered_payload)
 
 
 def print_debug_json_payload(title: str, payload: object) -> None:
@@ -189,16 +220,22 @@ def print_debug_json_payload(title: str, payload: object) -> None:
     print()
 
 
+def build_yaml_payload(payload: object) -> str:
+    """Serialize one payload with the shared YAML debug dumper."""
+
+    return yaml.dump(
+        _format_debug_value(payload),
+        sort_keys = False,
+        allow_unicode = False,
+        default_flow_style = False,
+        Dumper = _DebugDumper,
+    ).rstrip()
+
+
 def print_yaml_payload(payload: object) -> None:
     """Render one payload using the shared YAML-like debug formatting."""
 
-    yaml_payload = yaml.dump(
-        _format_debug_value(payload),
-        sort_keys=False,
-        allow_unicode=False,
-        default_flow_style=False,
-        Dumper=_DebugDumper,
-    ).rstrip()
+    yaml_payload = build_yaml_payload(payload)
     DEBUG_CONSOLE.print(render_debug_yaml(yaml_payload), overflow="fold")
 
 

@@ -1,5 +1,6 @@
 # Lessons
 
+- When a debug payload formatter uses helper string subclasses such as `_LiteralDebugString`, keep every render path on the same shared YAML dumper; a plain `yaml.dump(...)` in a side path like the Textual echo viewer can leak `!!python/object...` tags into user-facing output.
 - For wallet-backed CLI sends, do not keep a separate CLI message-wrapper helper around `Msg(...)`; build the wallet sender in shared transport and construct outbound requests through `pollyweb.Msg.from_outbound(...)` so request defaults stay owned by the published library.
 - Keep the top-level CLI boundary responsible for collapsing leaked exceptions into short user-facing errors; on normal runs, validation mistakes should read like user-fixable input problems, and only `--debug` should show full tracebacks.
 - When `pw bind` receives a successful response, treat a bare UUID as the primary bind shape, but keep the legacy `Bind:<UUID>` parser path compatible so older hosts still persist the same bare UUID locally.
@@ -37,7 +38,11 @@
 - Keep the plain `pw echo` success path to the single verification line with duration and latency, and reserve the echoed payload plus visual summary for `--debug`.
 - For plain `pw echo` success output after the header, keep the verification result to one line and include the total duration in milliseconds plus the network-latency percentage so users get timing without dumping payload details.
 - For `pw echo --debug`, keep the latency metrics in their own `Network timing` section and print a separate `Edge / CDN hints` section with best-effort provider and PoP clues from transport headers, while falling back gracefully when the runtime cannot expose those headers.
+- For `pw echo --debug`, when the verified reply body carries `Metadata.TotalExecutionMs` or `Metadata.DownstreamExecutionMs`, surface them in `Network timing`, and format `Latency share` as both percentage and total network milliseconds.
 - For `pw echo`, translate `urllib.error.URLError` resolver failures into a human-readable PollyWeb inbox-host message instead of exposing raw `socket.gaierror(...)` text.
+- For `pw echo`, mirror the `pw msg` and `pw test` format switch: `--json` should print the raw synchronous response, while `--debug --json` should keep the echo verification UI but switch payload-style sections from YAML-style formatting to raw JSON.
+- For shared `--json` output, add Rich syntax coloring only for interactive terminals; keep the compact JSON bytes unchanged for redirected/scripted output so `--json` stays automation-safe.
+- For interactive `pw echo --debug --json`, remember that the final Textual body uses its own payload renderables; if only the pre-app console helper gets JSON coloring, the app repaint will replace it with plain white JSON a moment later.
 - For `pw echo` transport failures, keep the default path user-friendly, but let `--debug` surface the raw underlying network exception so missing-domain troubleshooting still has the low-level clue when needed.
 - For `pw echo`, validate the raw synchronous response shape before pretty-printing it: reject any top-level fields outside `Header`, `Body`, `Hash`, and `Signature` so misplaced server properties are caught immediately.
 - For `pw echo --debug`, collect and print the PollyWeb branch `DS` lookup and DKIM `TXT` lookup details, including the queried DNS names, returned record text, and DNSSEC AD-flag state, and print those diagnostics even when signature verification fails after the response is received.
@@ -47,6 +52,7 @@
 - For `pw echo --debug`, label the DNSSEC Debugger click-through URL as a test link for the verified `pw.<domain>` branch so the terminal output makes that direct check obvious too.
 - For `pw echo --debug`, label the Google DNS click-through URL as a test link for the verified `pw.<domain>` branch so the terminal output makes that resolver check obvious too.
 - For `pw echo --debug`, include a labeled Google DNS A-record test URL for the verified `pw.<domain>` branch so users can jump straight to the `type=A` resolver view.
+- For the interactive `pw echo --debug` Textual viewer, keep the scroll body on Rich/Textual renderables such as `Static(Group(...))`; converting the sections into a plain `TextArea` strips the color styling that the debug UI depends on.
 - When `pw echo` reply validation migrates into `pollyweb`, move both the strict top-level wire-field check and the expected header checks into the published library API, then keep `wallet-cli` focused on calling `Msg.parse()` / `Msg.verify_details()` and translating failures into concise CLI wording.
 - For `pw msg`, render successful synchronous responses as YAML by default using the same formatter family as `--debug`, and reserve raw response output for an explicit `--json` flag.
 - When `pw msg` combines `--debug` with `--json`, keep the final response raw for scripts but render the debug payloads as raw JSON instead of the default YAML-style formatter.

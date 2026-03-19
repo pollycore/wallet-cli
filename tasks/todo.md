@@ -1,5 +1,64 @@
 # Task Plan
 
+- [x] Trace the interactive `pw echo --debug --json` render path and confirm why JSON colors disappear after Textual mounts
+- [x] Reuse syntax-colored JSON renderables inside the Textual echo viewer so the final app render keeps colors
+- [x] Add focused regression coverage and verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/debug.py` to expose shared compact-JSON and Rich JSON-syntax builders, then updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so the interactive Textual echo viewer reuses that syntax-colored JSON renderable instead of repainting payload sections as plain white text.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` coverage to lock the Textual JSON payload renderable to `rich.syntax.Syntax`, while keeping `/Users/jorgemf/Git/wallet-cli/tests/test_debug_tools.py` coverage on the shared terminal/non-terminal JSON helper behavior.
+- Recorded the Textual repaint gotcha in `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md`.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_debug_tools.py tests/test_echo.py` (`24 passed`).
+
+- [x] Review the shared `--json` output contract and current debug formatter path
+- [x] Add terminal-aware colorized JSON rendering without breaking script-friendly raw JSON output
+- [x] Add focused regression coverage and verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/debug.py` so shared `--json` output now uses Rich JSON syntax coloring on interactive terminals while preserving the same compact raw JSON text on non-interactive/scripted output.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_debug_tools.py` coverage for both the interactive colorized path and the non-interactive plain-JSON path.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/docs/commands/msg.md`, `/Users/jorgemf/Git/wallet-cli/docs/commands/test.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the terminal-aware JSON-coloring contract is documented for future work.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_debug_tools.py tests/test_echo.py tests/test_msg_command.py tests/test_test_command.py` (`70 passed, 1 skipped`).
+
+- [x] Inspect the interactive `pw echo --debug` Textual body path and confirm why styles are stripped
+- [x] Restore Rich/Textual body rendering so the interactive echo viewer keeps colors
+- [x] Add focused regression coverage and verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so the interactive `pw echo --debug` Textual viewer renders its body sections through Rich `Static(Group(...))` widgets again instead of flattening them into a plain `TextArea`, which restores the intended debug colors.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` coverage for the Textual compose path so future viewer refactors keep Rich section renderables in the interactive body.
+- Kept `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` compatible with PollyWeb `Struct` response metadata so `Network timing` still shows `TotalExecutionMs` and `DownstreamExecutionMs`.
+- Recorded the viewer-color lesson in `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md`.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`21 passed`).
+
+- [x] Review the current `pw echo --debug` timing section and confirm where reply `Body.Metadata` can be read safely
+- [x] Add echo metadata performance metrics plus latency milliseconds to the shared `Network timing` render path
+- [x] Update docs/guidance, add regression coverage, and verify with the repo test interpreter
+
+- [x] Reproduce the `pw-dev echo --debug` `!!python/object` leak and trace the shared debug formatting path
+- [x] Fix the echo Textual/YAML rendering so wrapped debug strings use the same literal-block serializer as the shared formatter
+- [x] Add regression coverage and verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so the shared `Network timing` section now prints `Body.Metadata.TotalExecutionMs` and `Body.Metadata.DownstreamExecutionMs` when present on a verified echo reply, and `Latency share` now includes both the percentage and the network total in milliseconds.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` coverage for the new metadata-backed timing lines so both the render shape and the latency-millisecond format stay locked in.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the new echo timing contract is documented for future work.
+
+- [x] Review the current `pw echo` output contract and align a format switch with the existing `msg`/`test` behavior
+- [x] Add `pw echo` YAML/JSON output switching without changing the default concise verification flow
+- [x] Update echo docs/guidance, add regression coverage, and verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/parser.py`, `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/cli.py`, and `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so `pw echo` now accepts `--json`, prints the raw synchronous response on non-debug success, and switches debug payload-style sections to raw JSON when combined with `--debug`.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` and `/Users/jorgemf/Git/wallet-cli/tests/test_cli_core.py` coverage for the new parser flag and both `pw echo --json` output modes while preserving the existing concise default behavior.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the new echo formatting contract is documented for future work.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py tests/test_cli_core.py` (`58 passed`).
+
 - [x] Install `textual` and wire `pw echo` to use a reactive TTY-only viewer without breaking script output
 - [x] Keep non-interactive `pw echo` behavior stable, update docs/guidance, and verify with the repo test interpreter
 
