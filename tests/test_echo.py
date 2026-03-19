@@ -115,12 +115,7 @@ def test_echo_sends_signed_message_and_verifies_response(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert "pw echo v" in captured.out or "PollyWeb CLI v" in captured.out
-    assert "Echo summary" in captured.out
-    assert "✅ DKIM and DNSSEC" in captured.out
-    assert "✅ Signed message" in captured.out
-    assert "⏳ Duration 420 ms  Latency 29%" in captured.out
-    assert "✅ Verified echo response (420 ms, 29% latency)\n" in captured.out
+    assert captured.out == "✅ Verified echo response (420 ms, 29% latency)\n"
     assert captured.err == ""
 
 def test_echo_fails_when_signature_does_not_verify(monkeypatch, tmp_path, capsys):

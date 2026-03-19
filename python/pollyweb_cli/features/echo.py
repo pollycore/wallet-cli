@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 from pollyweb import Msg, MsgValidationError
 from rich.box import ROUNDED
+from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -36,6 +37,11 @@ from pollyweb_cli.tools.debug import (
     print_section_title,
     print_yaml_payload,
     _format_debug_value,
+    DEBUG_PUNCTUATION_STYLE,
+    DEBUG_SECTION_TITLE_STYLE,
+    DEBUG_KEY_STYLE,
+    DEBUG_VALUE_STYLE,
+    render_debug_yaml,
 )
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.features.bind import (
@@ -44,6 +50,10 @@ from pollyweb_cli.features.bind import (
     load_binds,
 )
 from pollyweb_cli.tools.transport import send_wallet_message
+from pollyweb_cli.tools.transport import (
+    build_debug_outbound_payload,
+    build_wallet_sender,
+)
 
 
 ECHO_SUBJECT = "Echo@Domain"
@@ -119,26 +129,28 @@ def _build_echo_footer_panel(
     if total_seconds > 0:
         latency_share = (network_seconds / total_seconds) * 100
 
-    summary = Table.grid(padding = (0, 0))
-    summary.add_column()
+    summary = Table.grid(expand = True)
+    summary.add_column(ratio = 1)
+    summary.add_column(width = 1)
+    summary.add_column(ratio = 1)
     summary.add_row(
         Text(
             "✅ DKIM and DNSSEC" if dkim_and_dnssec_verified else "⏳ DKIM and DNSSEC",
             style = body_style,
-        )
-    )
-    summary.add_row(Text("✅ Signed message", style = body_style))
-    summary.add_row(
+        ),
+        Text("│", style = accent_style),
         Text(
-            "✅ CDN distribution" if cdn_distribution_detected else "⏳ CDN distribution",
+            f" {'✅ CDN distribution' if cdn_distribution_detected else '⏳ CDN distribution'}",
             style = body_style,
-        )
+        ),
     )
     summary.add_row(
+        Text("✅ Signed message", style = body_style),
+        Text("│", style = accent_style),
         Text(
-            f"⏳ Duration {total_milliseconds} ms  Latency {latency_share:.0f}%",
+            f" ⏳ Duration {total_milliseconds} ms  Latency {latency_share:.0f}%",
             style = body_style,
-        )
+        ),
     )
 
     return Panel(
@@ -179,21 +191,43 @@ def _print_echo_footer_summary(
     )
 
 
-def _yaml_debug_string(payload: object) -> str:
-    """Render one payload to the shared YAML-like debug string."""
+def _yaml_debug_renderable(payload: object) -> Text:
+    """Render one payload to the shared YAML-like debug renderable."""
 
-    return yaml.dump(
+    yaml_payload = yaml.dump(
         _format_debug_value(payload),
         sort_keys = False,
         allow_unicode = False,
         default_flow_style = False,
     ).rstrip()
+    return render_debug_yaml(yaml_payload)
 
 
-def _format_labeled_lines(values: dict[str, object]) -> str:
-    """Render plain `key: value` lines for the Textual echo viewer."""
+def _render_section_title(title: str) -> Text:
+    """Build one section title renderable."""
 
-    return "\n".join(f" - {key}: {value}" for key, value in values.items())
+    rendered = Text()
+    rendered.append(title, style = DEBUG_SECTION_TITLE_STYLE)
+    rendered.append(":", style = DEBUG_PUNCTUATION_STYLE)
+    return rendered
+
+
+def _render_labeled_lines(values: dict[str, object]) -> Text:
+    """Render colored `key: value` lines for the Textual echo viewer."""
+
+    rendered = Text()
+    first_line = True
+
+    for key, value in values.items():
+        if not first_line:
+            rendered.append("\n")
+        first_line = False
+        rendered.append(" - ", style = DEBUG_PUNCTUATION_STYLE)
+        rendered.append(str(key), style = DEBUG_KEY_STYLE)
+        rendered.append(":", style = DEBUG_PUNCTUATION_STYLE)
+        rendered.append(f" {value}", style = DEBUG_VALUE_STYLE)
+
+    return rendered
 
 
 def _build_echo_edge_lines(
@@ -261,6 +295,7 @@ def _build_echo_textual_sections(
     *,
     domain: str,
     debug: bool,
+    outbound_payload: object | None,
     response_payload: str,
     dns_diagnostics,
     dns_link_context: tuple[str, str] | None,
@@ -269,40 +304,72 @@ def _build_echo_textual_sections(
     network_seconds: float,
     transport_metadata: dict[str, object]
 ) -> list[tuple[str, str]]:
-    """Build the section text shown in the Textual echo viewer."""
+    """Build the section renderables shown in the Textual echo viewer."""
 
-    sections: list[tuple[str, str]] = []
+    sections: list[Group] = []
 
     if debug:
         sections.append(
-            (
-                f"Outbound payload to https://pw.{domain}/inbox",
-                "See terminal output for live outbound request details.",
+            Group(
+                _render_section_title(f"Outbound payload to https://pw.{domain}/inbox"),
+                _yaml_debug_renderable(
+                    {} if outbound_payload is None else outbound_payload
+                ),
             )
         )
-        sections.append(("Inbound payload", _yaml_debug_string(parse_debug_payload(response_payload))))
-        sections.append((f"Verified echo response from {domain}", _format_labeled_lines(verification_lines)))
+        sections.append(
+            Group(
+                _render_section_title("Inbound payload"),
+                _yaml_debug_renderable(parse_debug_payload(response_payload)),
+            )
+        )
+        sections.append(
+            Group(
+                _render_section_title(f"Verified echo response from {domain}"),
+                _render_labeled_lines(verification_lines),
+            )
+        )
         if dns_diagnostics is not None:
-            sections.append(("DNS verification diagnostics", _yaml_debug_string(asdict(dns_diagnostics))))
-        if dns_link_context is not None:
             sections.append(
-                (
-                    "External DNS checks",
-                    _format_labeled_lines(_echo_dns_reference_links(*dns_link_context)),
+                Group(
+                    _render_section_title("DNS verification diagnostics"),
+                    _yaml_debug_renderable(asdict(dns_diagnostics)),
                 )
             )
-        sections.append(("Network timing", _format_labeled_lines(_build_echo_timing_lines(
-            total_seconds = total_seconds,
-            network_seconds = network_seconds,
-        ))))
-        sections.append(("Edge / CDN hints", _format_labeled_lines(_build_echo_edge_lines(transport_metadata))))
+        if dns_link_context is not None:
+            sections.append(
+                Group(
+                    _render_section_title("External DNS checks"),
+                    _render_labeled_lines(_echo_dns_reference_links(*dns_link_context)),
+                )
+            )
+        sections.append(
+            Group(
+                _render_section_title("Network timing"),
+                _render_labeled_lines(
+                    _build_echo_timing_lines(
+                        total_seconds = total_seconds,
+                        network_seconds = network_seconds,
+                    )
+                ),
+            )
+        )
+        sections.append(
+            Group(
+                _render_section_title("Edge / CDN hints"),
+                _render_labeled_lines(_build_echo_edge_lines(transport_metadata)),
+            )
+        )
     else:
         sections.append(
-            (
-                "Verified response",
-                _format_echo_success_metrics(
-                    total_seconds = total_seconds,
-                    network_seconds = network_seconds,
+            Group(
+                _render_section_title("Verified response"),
+                Text(
+                    _format_echo_success_metrics(
+                        total_seconds = total_seconds,
+                        network_seconds = network_seconds,
+                    ),
+                    style = DEBUG_VALUE_STYLE,
                 ),
             )
         )
@@ -328,7 +395,7 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
     """
     BINDINGS = [("q", "quit", "Quit"), ("escape", "quit", "Quit")]
 
-    def __init__(self, *, header_panel: Panel, sections: list[tuple[str, str]], footer_panel: Panel) -> None:
+    def __init__(self, *, header_panel: Panel, sections: list[Group], footer_panel: Panel) -> None:
         """Store the renderables needed by the echo viewer."""
 
         super().__init__()
@@ -341,15 +408,20 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
 
         yield Static(self._header_panel, classes = "section")
         with VerticalScroll(id = "body"):
-            for title, body in self._sections:
-                yield Static(f"{title}:\n{body}", classes = "section")
+            for renderable in self._sections:
+                yield Static(renderable, classes = "section")
         yield Static(self._footer_panel, classes = "section")
 
 
-def _should_use_textual_echo_view() -> bool:
+def _should_use_textual_echo_view(
+    *,
+    debug: bool
+) -> bool:
     """Return whether `pw echo` should use the interactive Textual viewer."""
 
     return (
+        debug
+        and
         TEXTUAL_AVAILABLE
         and sys.stdout.isatty()
         and sys.stdin.isatty()
@@ -685,7 +757,8 @@ def cmd_echo(
     transport_metadata: dict[str, object] = {}
     started_at = time.perf_counter()
 
-    _print_echo_header()
+    if debug:
+        _print_echo_header()
 
     try:
         require_configured_keys()
@@ -799,18 +872,34 @@ def cmd_echo(
     verification_lines["Correlation matched the request"] = response.Correlation
 
     dkim_and_dnssec_verified = verification.dns_lookup_used and dnssec_verified
-    footer_panel = _build_echo_footer_panel(
-        total_seconds = total_seconds,
-        network_seconds = network_seconds,
-        dkim_and_dnssec_verified = dkim_and_dnssec_verified,
-        cdn_distribution_detected = cdn_detected)
+    outbound_payload = None
+    if debug:
+        wallet, _ = build_wallet_sender(
+            normalized_domain,
+            key_pair,
+            binds_path = binds_path,
+            anonymous = anonymous,
+        )
+        outbound_payload = build_debug_outbound_payload(
+            wallet,
+            request_message,
+            unsigned = unsigned,
+        )
+    footer_panel = None
+    if debug:
+        footer_panel = _build_echo_footer_panel(
+            total_seconds = total_seconds,
+            network_seconds = network_seconds,
+            dkim_and_dnssec_verified = dkim_and_dnssec_verified,
+            cdn_distribution_detected = cdn_detected)
 
-    if _should_use_textual_echo_view():
+    if _should_use_textual_echo_view(debug = debug):
         _EchoTextualApp(
             header_panel = _build_echo_header_panel(),
             sections = _build_echo_textual_sections(
                 domain = normalized_domain,
                 debug = debug,
+                outbound_payload = outbound_payload,
                 response_payload = response_payload,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
@@ -824,8 +913,6 @@ def cmd_echo(
         return 0
 
     if not debug:
-        print()
-        DEBUG_CONSOLE.print(footer_panel)
         print(
             _format_echo_success_metrics(
                 total_seconds = total_seconds,
