@@ -83,6 +83,44 @@ def format_test_success_message(
     )
 
 
+def extract_test_total_seconds(
+    response_payload: str,
+    *,
+    measured_total_seconds: float
+) -> float:
+    """Choose the best total duration hint for `pw test` success output."""
+
+    total_seconds = measured_total_seconds
+
+    try:
+        loaded_payload = json.loads(response_payload)
+    except json.JSONDecodeError:
+        return total_seconds
+
+    if not isinstance(loaded_payload, dict):
+        return total_seconds
+
+    wrapped_response = loaded_payload.get("Response")
+    if not isinstance(wrapped_response, dict):
+        return total_seconds
+
+    response_metadata = wrapped_response.get("Meta")
+    if not isinstance(response_metadata, dict):
+        return total_seconds
+
+    total_milliseconds = response_metadata.get("TotalMs")
+    if isinstance(total_milliseconds, bool) or not isinstance(total_milliseconds, int):
+        return total_seconds
+
+    if total_milliseconds < 0:
+        return total_seconds
+
+    # Treat the wrapped sync metadata as a timing hint so the concise success
+    # line can reflect server-reported end-to-end duration when it is available
+    # without undercutting a larger locally measured wall-clock duration.
+    return max(total_seconds, total_milliseconds / 1000)
+
+
 def resolve_bind_placeholder(
     value: str,
     binds_path: Path
@@ -503,6 +541,9 @@ def run_message_test_fixture(
             "response")
 
     total_seconds = time.perf_counter() - started_at
+    total_seconds = extract_test_total_seconds(
+        response_payload,
+        measured_total_seconds = total_seconds)
     network_seconds = timing.get("network_seconds", 0.0)
     print(
         format_test_success_message(

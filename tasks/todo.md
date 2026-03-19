@@ -1,5 +1,18 @@
 # Task Plan
 
+- [x] Inspect the current `pw test` timing calculation and the wrapped sync response metadata shape
+- [x] Update `pw test` to consider `Response.Meta.TotalMs` when formatting total duration and latency share
+- [x] Add focused regression coverage for metadata-backed `pw test` timing and verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py` so `pw test` now inspects wrapped synchronous responses for `Response.Meta.TotalMs` and uses that value as a timing hint for the displayed total duration and latency share, while preserving a larger local wall-clock measurement when present.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py` coverage for the helper that reads wrapped timing metadata and for the command-level success line that now reflects `Response.Meta.TotalMs`.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/test.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the metadata-backed `pw test` timing rule is documented for future work.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_test_command.py` (`37 passed, 1 skipped`).
+
+# Task Plan
+
 - [x] Inspect the interactive `pw echo --debug` Textual viewer and confirm where keyboard bindings reach the scrollable body
 - [x] Add arrow-key and page-scroll actions that forward into the existing `VerticalScroll` body without changing the Rich render path
 - [x] Verify with focused echo tests and document the new viewer navigation shortcut

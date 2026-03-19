@@ -136,6 +136,91 @@ def test_test_json_flag_keeps_success_output_concise(
     captured = capsys.readouterr()
     assert_passed_output(captured.out.strip(), test_path.stem)
 
+
+def test_extract_test_total_seconds_prefers_wrapped_response_meta_total_ms():
+    payload = json.dumps(
+        {
+            "Meta": {
+                "TotalMs": 80,
+            },
+            "Response": {
+                "Meta": {
+                    "TotalMs": 420,
+                },
+            },
+        }
+    )
+
+    assert test_feature.extract_test_total_seconds(
+        payload,
+        measured_total_seconds = 0.2,
+    ) == pytest.approx(0.42)
+
+
+def test_extract_test_total_seconds_keeps_larger_local_duration():
+    payload = json.dumps(
+        {
+            "Response": {
+                "Meta": {
+                    "TotalMs": 120,
+                },
+            },
+        }
+    )
+
+    assert test_feature.extract_test_total_seconds(
+        payload,
+        measured_total_seconds = 0.35,
+    ) == pytest.approx(0.35)
+
+
+def test_test_success_output_uses_wrapped_response_total_ms_for_latency_share(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    def fake_send_wallet_message(**kwargs):
+        kwargs["timing"]["network_seconds"] = 0.1
+        return (
+            json.dumps(
+                {
+                    "Request": {},
+                    "Response": {
+                        "Meta": {
+                            "TotalMs": 400,
+                        },
+                        "Header": {
+                            "Subject": "Echo@Domain",
+                        },
+                    },
+                },
+                separators = (",", ":"),
+            ),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "✅ Passed: test (400 ms, 25% latency)"
+
 def test_test_debug_json_passes_raw_debug_flag_to_transport(
     monkeypatch, tmp_path, capsys
 ):
