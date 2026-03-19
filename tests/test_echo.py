@@ -10,6 +10,7 @@ import uuid
 import urllib.error
 from pathlib import Path
 
+import pollyweb._transport as pollyweb_transport
 import pollyweb.msg as pollyweb_msg
 import pytest
 
@@ -744,6 +745,59 @@ def test_echo_debug_keeps_raw_dns_failure_details(
         "gaierror(8, 'nodename nor servname provided, or not known')"
     ) in captured.err
     assert "Could not resolve PollyWeb inbox host" not in captured.err
+
+
+def test_echo_reports_human_readable_dns_failures_from_custom_transport(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    class FailingConnection:
+        """Simulate a resolver failure inside the custom HTTPS transport."""
+
+        def request(
+            self,
+            _method,
+            _path,
+            *,
+            body = None,
+            headers = None
+        ):
+            raise socket.gaierror(
+                8,
+                "nodename nor servname provided, or not known",
+            )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        pollyweb_transport._HTTPS_CONNECTION_POOL,
+        "_get_connection",
+        lambda host, port, timeout = 10.0: FailingConnection(),
+    )
+    monkeypatch.setattr(
+        pollyweb_transport._HTTPS_CONNECTION_POOL,
+        "_drop_connection",
+        lambda host, port: None,
+    )
+
+    exit_code = cli.main(["echo", "non-existing-domain.com"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert (
+        "Echo request to non-existing-domain.com failed: "
+        "Could not resolve PollyWeb inbox host pw.non-existing-domain.com."
+        " Check that the domain name is correct and that its DNS record exists."
+    ) in captured.err
+    assert "Traceback" not in captured.err
 
 def test_print_echo_response_formats_payload(capsys):
     cli.print_echo_response(

@@ -298,10 +298,10 @@ def send_wallet_message(
             except (
                 OSError,
                 http.client.HTTPException,
-            ):
+            ) as exc:
                 pool_self._drop_connection(host, port)
                 if attempt == 1:
-                    raise
+                    raise urllib.error.URLError(exc) from exc
 
         raise RuntimeError("Unreachable HTTPS transport retry state")
 
