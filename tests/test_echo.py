@@ -418,6 +418,12 @@ def test_echo_json_textual_renderable_uses_syntax_highlighting():
     assert isinstance(renderable, Syntax)
 
 
+def test_echo_json_textual_renderable_uses_pretty_indentation():
+    renderable = echo_feature._json_debug_renderable({"outer": {"inner": True}})
+
+    assert renderable.code == '{\n  "outer": {\n    "inner": true\n  }\n}'
+
+
 def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
     monkeypatch, tmp_path, capsys
 ):

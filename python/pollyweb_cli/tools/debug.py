@@ -179,11 +179,22 @@ def build_compact_json_payload(payload: object) -> str:
     )
 
 
+def build_pretty_json_payload(payload: object) -> str:
+    """Serialize one payload as indented JSON for human-facing displays."""
+
+    return json.dumps(
+        payload,
+        sort_keys = False,
+        ensure_ascii = False,
+        indent = 2,
+    )
+
+
 def build_json_syntax(payload: object) -> Syntax:
     """Build a Rich JSON syntax renderable for one payload."""
 
     return Syntax(
-        build_compact_json_payload(payload),
+        build_pretty_json_payload(payload),
         "json",
         line_numbers = False,
         word_wrap = True,

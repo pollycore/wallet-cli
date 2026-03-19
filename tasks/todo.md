@@ -3,6 +3,18 @@
 - [x] Trace the interactive `pw echo --debug --json` render path and confirm why JSON colors disappear after Textual mounts
 - [x] Reuse syntax-colored JSON renderables inside the Textual echo viewer so the final app render keeps colors
 - [x] Add focused regression coverage and verify with the repo test interpreter
+- [x] Add hierarchical indentation to the interactive JSON renderables without changing script-safe compact JSON output
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/debug.py` so the shared Rich JSON syntax renderable now uses indented multi-line JSON for human-facing displays, while the non-interactive `print_json_payload()` path still emits compact JSON for scripts.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_debug_tools.py` and `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` coverage that locks the interactive JSON renderables to syntax-highlighted, pretty-indented output without changing the captured non-TTY `--json` behavior.
+- Recorded the interactive JSON indentation rule in `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md`.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_debug_tools.py tests/test_echo.py` (`26 passed`).
+
+- [x] Trace the interactive `pw echo --debug --json` render path and confirm why JSON colors disappear after Textual mounts
+- [x] Reuse syntax-colored JSON renderables inside the Textual echo viewer so the final app render keeps colors
+- [x] Add focused regression coverage and verify with the repo test interpreter
 
 # Review
 

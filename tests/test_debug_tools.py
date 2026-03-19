@@ -5,6 +5,12 @@ from rich.syntax import Syntax
 from pollyweb_cli.tools import debug as debug_tools
 
 
+def test_build_json_syntax_uses_pretty_indented_json():
+    renderable = debug_tools.build_json_syntax({"outer": {"inner": True}})
+
+    assert renderable.code == '{\n  "outer": {\n    "inner": true\n  }\n}'
+
+
 def test_print_json_payload_uses_rich_syntax_for_interactive_terminals(
     monkeypatch
 ):
