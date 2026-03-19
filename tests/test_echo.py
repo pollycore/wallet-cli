@@ -360,7 +360,7 @@ def test_echo_textual_app_keeps_rich_static_sections():
     class FakeStatic:
         """Capture the renderables sent into Textual static widgets."""
 
-        def __init__(self, renderable, *, classes = None, id = None):
+        def __init__(self, renderable, *, classes = None, id = None, **_kwargs):
             self.renderable = renderable
             self.classes = classes
             self.id = id
@@ -369,9 +369,10 @@ def test_echo_textual_app_keeps_rich_static_sections():
     class FakeVerticalScroll:
         """Minimal context manager stand-in for the Textual body container."""
 
-        def __init__(self, *children, id = None):
+        def __init__(self, *children, id = None, classes = None, **_kwargs):
             self.children = list(children)
             self.id = id
+            self.classes = classes
 
         def __enter__(self):
             return self
@@ -380,23 +381,29 @@ def test_echo_textual_app_keeps_rich_static_sections():
             return False
 
     original_static = echo_feature.Static
+    original_horizontal = echo_feature.Horizontal
+    original_button = echo_feature.Button
     original_vertical_scroll = echo_feature.VerticalScroll
     echo_feature.Static = FakeStatic
+    echo_feature.Horizontal = FakeVerticalScroll
+    echo_feature.Button = FakeStatic
     echo_feature.VerticalScroll = FakeVerticalScroll
 
     try:
         app = echo_feature._EchoTextualApp(
             header_panel = echo_feature._build_echo_header_panel(),
             yaml_sections = [
-                Group(
-                    echo_feature._render_section_title("Verified response"),
-                    Text("copy me", style = echo_feature.DEBUG_VALUE_STYLE),
+                echo_feature._EchoTextualSection(
+                    title = "Verified response",
+                    body = Text("copy me", style = echo_feature.DEBUG_VALUE_STYLE),
+                    copy_text = "copy me",
                 )
             ],
             json_sections = [
-                Group(
-                    echo_feature._render_section_title("Verified response"),
-                    Text("copy json", style = echo_feature.DEBUG_VALUE_STYLE),
+                echo_feature._EchoTextualSection(
+                    title = "Verified response",
+                    body = Text("copy json", style = echo_feature.DEBUG_VALUE_STYLE),
+                    copy_text = "copy json",
                 )
             ],
             footer_panel = echo_feature._build_echo_footer_panel(
@@ -411,11 +418,16 @@ def test_echo_textual_app_keeps_rich_static_sections():
         composed = list(app.compose())
     finally:
         echo_feature.Static = original_static
+        echo_feature.Horizontal = original_horizontal
+        echo_feature.Button = original_button
         echo_feature.VerticalScroll = original_vertical_scroll
 
     assert len(composed) == 4
-    assert len(created_static_widgets) == 3
-    assert created_static_widgets[1].renderable.__class__.__name__ == "Group"
+    assert len(created_static_widgets) >= 4
+    assert any(
+        getattr(widget.renderable, "plain", None) == "Verified response:"
+        for widget in created_static_widgets
+    )
     assert len(composed[2].children) == 1
 
 
@@ -423,15 +435,15 @@ def test_echo_textual_app_toggle_switches_payload_sections():
     app = echo_feature._EchoTextualApp(
         header_panel = echo_feature._build_echo_header_panel(),
         yaml_sections = [
-            Group(
-                echo_feature._render_section_title("YAML section"),
-                Text("yaml body", style = echo_feature.DEBUG_VALUE_STYLE),
+            echo_feature._EchoTextualSection(
+                title = "YAML section",
+                body = Text("yaml body", style = echo_feature.DEBUG_VALUE_STYLE),
             )
         ],
         json_sections = [
-            Group(
-                echo_feature._render_section_title("JSON section"),
-                Text("json body", style = echo_feature.DEBUG_VALUE_STYLE),
+            echo_feature._EchoTextualSection(
+                title = "JSON section",
+                body = Text("json body", style = echo_feature.DEBUG_VALUE_STYLE),
             )
         ],
         footer_panel = echo_feature._build_echo_footer_panel(
@@ -443,15 +455,36 @@ def test_echo_textual_app_toggle_switches_payload_sections():
         initial_payload_format = "yaml",
     )
 
-    assert app._current_sections()[0].renderables[0].plain == "YAML section:"
+    assert app._current_sections()[0].title == "YAML section"
 
     app.action_show_json()
 
-    assert app._current_sections()[0].renderables[0].plain == "JSON section:"
+    assert app._current_sections()[0].title == "JSON section"
 
     app.action_show_yaml()
 
-    assert app._current_sections()[0].renderables[0].plain == "YAML section:"
+    assert app._current_sections()[0].title == "YAML section"
+
+
+def test_echo_textual_sections_mark_payload_blocks_as_copyable():
+    sections = echo_feature._build_echo_textual_sections(
+        domain = "vault.example.com",
+        debug = True,
+        debug_json = True,
+        outbound_payload = {"Header": {"Subject": "Echo@Domain"}},
+        response_payload = '{"Header":{"Subject":"Echo@Domain"},"Body":{"Echo":"ok"}}',
+        dns_diagnostics = None,
+        dns_link_context = None,
+        verification_lines = {"Schema validated": "pollyweb.org/MSG:1.0"},
+        total_seconds = 0.1,
+        network_seconds = 0.05,
+        response_metadata = None,
+        transport_metadata = {},
+    )
+
+    assert sections[0].copy_text is not None
+    assert sections[1].copy_text is not None
+    assert sections[2].copy_text is None
 
 
 def test_echo_json_textual_renderable_uses_syntax_highlighting():

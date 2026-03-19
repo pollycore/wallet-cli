@@ -1,5 +1,9 @@
 # Task Plan
 
+- [ ] Add copy metadata to interactive echo payload sections so each block can expose its own clipboard action
+- [ ] Render per-section copy buttons next to payload block titles in the Textual echo viewer
+- [ ] Add focused regression coverage and verify with the repo test interpreter
+
 - [x] Trace the interactive `pw echo --debug --json` render path and confirm why JSON colors disappear after Textual mounts
 - [x] Reuse syntax-colored JSON renderables inside the Textual echo viewer so the final app render keeps colors
 - [x] Add focused regression coverage and verify with the repo test interpreter

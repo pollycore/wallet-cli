@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from importlib.metadata import PackageNotFoundError, version as get_installed_version
 import json
 import sys
@@ -64,6 +64,15 @@ ECHO_SUBJECT = "Echo@Domain"
 ALLOWED_ECHO_RESPONSE_FIELDS = frozenset({"Body", "Hash", "Header", "Signature"})
 CLI_PACKAGE_NAME = "pollyweb-cli"
 TEXTUAL_AVAILABLE = App is not None
+
+
+@dataclass(frozen = True)
+class _EchoTextualSection:
+    """One section shown in the interactive Textual echo viewer."""
+
+    title: str
+    body: object
+    copy_text: str | None = None
 
 
 def _coerce_echo_response_metadata(
@@ -291,6 +300,17 @@ def _json_debug_renderable(payload: object):
     return build_json_syntax(payload)
 
 
+def _json_debug_copy_text(payload: object) -> str:
+    """Render one payload to indented JSON text for clipboard copying."""
+
+    return json.dumps(
+        payload,
+        sort_keys = False,
+        ensure_ascii = False,
+        indent = 2,
+    )
+
+
 def _render_section_title(title: str) -> Text:
     """Build one section title renderable."""
 
@@ -409,51 +429,56 @@ def _build_echo_textual_sections(
     network_seconds: float,
     response_metadata: object | None,
     transport_metadata: dict[str, object]
-) -> list[tuple[str, str]]:
+) -> list[_EchoTextualSection]:
     """Build the section renderables shown in the Textual echo viewer."""
 
-    sections: list[Group] = []
+    sections: list[_EchoTextualSection] = []
 
     if debug:
         payload_renderer = _json_debug_renderable if debug_json else _yaml_debug_renderable
+        payload_copy_renderer = _json_debug_copy_text if debug_json else build_yaml_payload
+        outbound_payload_value = {} if outbound_payload is None else outbound_payload
+        inbound_payload_value = parse_debug_payload(response_payload)
         sections.append(
-            Group(
-                _render_section_title(f"Outbound payload to https://pw.{domain}/inbox"),
-                payload_renderer(
-                    {} if outbound_payload is None else outbound_payload
-                ),
+            _EchoTextualSection(
+                title = f"Outbound payload to https://pw.{domain}/inbox",
+                body = payload_renderer(outbound_payload_value),
+                copy_text = payload_copy_renderer(outbound_payload_value),
             )
         )
         sections.append(
-            Group(
-                _render_section_title("Inbound payload"),
-                payload_renderer(parse_debug_payload(response_payload)),
+            _EchoTextualSection(
+                title = "Inbound payload",
+                body = payload_renderer(inbound_payload_value),
+                copy_text = payload_copy_renderer(inbound_payload_value),
             )
         )
         sections.append(
-            Group(
-                _render_section_title(f"Verified echo response from {domain}"),
-                _render_labeled_lines(verification_lines),
+            _EchoTextualSection(
+                title = f"Verified echo response from {domain}",
+                body = _render_labeled_lines(verification_lines),
             )
         )
         if dns_diagnostics is not None:
+            diagnostics_payload = asdict(dns_diagnostics)
             sections.append(
-                Group(
-                    _render_section_title("DNS verification diagnostics"),
-                    payload_renderer(asdict(dns_diagnostics)),
+                _EchoTextualSection(
+                    title = "DNS verification diagnostics",
+                    body = payload_renderer(diagnostics_payload),
+                    copy_text = payload_copy_renderer(diagnostics_payload),
                 )
             )
         if dns_link_context is not None:
             sections.append(
-                Group(
-                    _render_section_title("External DNS checks"),
-                    _render_labeled_lines(_echo_dns_reference_links(*dns_link_context)),
+                _EchoTextualSection(
+                    title = "External DNS checks",
+                    body = _render_labeled_lines(_echo_dns_reference_links(*dns_link_context)),
                 )
             )
         sections.append(
-            Group(
-                _render_section_title("Network timing"),
-                _render_labeled_lines(
+            _EchoTextualSection(
+                title = "Network timing",
+                body = _render_labeled_lines(
                     _build_echo_timing_lines(
                         total_seconds = total_seconds,
                         network_seconds = network_seconds,
@@ -463,16 +488,16 @@ def _build_echo_textual_sections(
             )
         )
         sections.append(
-            Group(
-                _render_section_title("Edge / CDN hints"),
-                _render_labeled_lines(_build_echo_edge_lines(transport_metadata)),
+            _EchoTextualSection(
+                title = "Edge / CDN hints",
+                body = _render_labeled_lines(_build_echo_edge_lines(transport_metadata)),
             )
         )
     else:
         sections.append(
-            Group(
-                _render_section_title("Verified response"),
-                Text(
+            _EchoTextualSection(
+                title = "Verified response",
+                body = Text(
                     _format_echo_success_metrics(
                         total_seconds = total_seconds,
                         network_seconds = network_seconds,
@@ -497,43 +522,46 @@ def _build_echo_error_textual_sections(
     network_seconds: float,
     response_metadata: object | None,
     transport_metadata: dict[str, object]
-) -> list[Group]:
+) -> list[_EchoTextualSection]:
     """Build the error sections shown in the Textual echo viewer."""
 
     payload_renderer = _json_debug_renderable if debug_json else _yaml_debug_renderable
-    sections: list[Group] = [
-        Group(
-            _render_section_title(f"Outbound payload to https://pw.{domain}/inbox"),
-            payload_renderer(
-                {} if outbound_payload is None else outbound_payload
-            ),
+    payload_copy_renderer = _json_debug_copy_text if debug_json else build_yaml_payload
+    outbound_payload_value = {} if outbound_payload is None else outbound_payload
+    sections: list[_EchoTextualSection] = [
+        _EchoTextualSection(
+            title = f"Outbound payload to https://pw.{domain}/inbox",
+            body = payload_renderer(outbound_payload_value),
+            copy_text = payload_copy_renderer(outbound_payload_value),
         ),
-        Group(
-            _render_section_title("Error summary"),
-            _render_labeled_lines(error_lines),
+        _EchoTextualSection(
+            title = "Error summary",
+            body = _render_labeled_lines(error_lines),
         ),
     ]
 
     if dns_diagnostics is not None:
+        diagnostics_payload = asdict(dns_diagnostics)
         sections.append(
-            Group(
-                _render_section_title("DNS verification diagnostics"),
-                payload_renderer(asdict(dns_diagnostics)),
+            _EchoTextualSection(
+                title = "DNS verification diagnostics",
+                body = payload_renderer(diagnostics_payload),
+                copy_text = payload_copy_renderer(diagnostics_payload),
             )
         )
 
     if dns_link_context is not None:
         sections.append(
-            Group(
-                _render_section_title("External DNS checks"),
-                _render_labeled_lines(_echo_dns_reference_links(*dns_link_context)),
+            _EchoTextualSection(
+                title = "External DNS checks",
+                body = _render_labeled_lines(_echo_dns_reference_links(*dns_link_context)),
             )
         )
 
     sections.append(
-        Group(
-            _render_section_title("Network timing"),
-            _render_labeled_lines(
+        _EchoTextualSection(
+            title = "Network timing",
+            body = _render_labeled_lines(
                 _build_echo_timing_lines(
                     total_seconds = total_seconds,
                     network_seconds = network_seconds,
@@ -543,9 +571,9 @@ def _build_echo_error_textual_sections(
         )
     )
     sections.append(
-        Group(
-            _render_section_title("Edge / CDN hints"),
-            _render_labeled_lines(_build_echo_edge_lines(transport_metadata)),
+        _EchoTextualSection(
+            title = "Edge / CDN hints",
+            body = _render_labeled_lines(_build_echo_edge_lines(transport_metadata)),
         )
     )
     return sections
@@ -568,8 +596,17 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         margin: 0 0 1 0;
     }
 
+    .section-bar {
+        height: auto;
+        margin: 0 0 0 0;
+    }
+
     .format-button {
         margin: 0 1 0 0;
+    }
+
+    .copy-button {
+        margin: 0 0 0 1;
     }
 
     .section {
@@ -587,8 +624,8 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         self,
         *,
         header_panel: Panel,
-        yaml_sections: list[Group],
-        json_sections: list[Group],
+        yaml_sections: list[_EchoTextualSection],
+        json_sections: list[_EchoTextualSection],
         footer_panel: Panel,
         initial_payload_format: str
     ) -> None:
@@ -601,7 +638,7 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         self._footer_panel = footer_panel
         self._payload_format = initial_payload_format
 
-    def _current_sections(self) -> list[Group]:
+    def _current_sections(self) -> list[_EchoTextualSection]:
         """Return the current section list for the selected payload format."""
 
         if self._payload_format == "json":
@@ -630,6 +667,15 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
 
         if event.button.id == "toggle-json":
             self.action_show_json()
+            return
+
+        if event.button.id is not None and event.button.id.startswith("copy-"):
+            copy_index = int(event.button.id.removeprefix("copy-"))
+            section = self._current_sections()[copy_index]
+            if section.copy_text is not None:
+                self.copy_to_clipboard(section.copy_text)
+                event.button.label = "Copied"
+                self.refresh(recompose = True)
 
     def compose(self) -> ComposeResult:
         """Compose the reactive echo layout."""
@@ -652,8 +698,27 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         )
         yield VerticalScroll(
             *[
-                Static(renderable, classes = "section")
-                for renderable in self._current_sections()
+                Group(
+                    Horizontal(
+                        Static(
+                            _render_section_title(section.title),
+                        ),
+                        *(
+                            [
+                                Button(
+                                    "Copy",
+                                    id = f"copy-{index}",
+                                    classes = "copy-button",
+                                )
+                            ]
+                            if section.copy_text is not None
+                            else []
+                        ),
+                        classes = "section-bar",
+                    ),
+                    Static(section.body, classes = "section"),
+                )
+                for index, section in enumerate(self._current_sections())
             ],
             id = "body",
         )
