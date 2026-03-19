@@ -601,7 +601,7 @@ def test_main_renders_bind_errors_in_red(monkeypatch):
     monkeypatch.setattr(
         cli,
         "cmd_bind",
-        lambda domain, debug, unsigned = False, anonymous = False: (_ for _ in ()).throw(
+        lambda domain, debug, json_output = False, unsigned = False, anonymous = False: (_ for _ in ()).throw(
             cli.UserFacingError(
                 f"Could not bind {domain}. The server returned HTTP 500."
             )
