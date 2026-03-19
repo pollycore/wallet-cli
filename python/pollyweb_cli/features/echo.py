@@ -605,6 +605,8 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         width: auto;
         height: auto;
         align: right middle;
+        border: round #d7875f;
+        padding: 0 0;
     }
 
     .section-bar {
@@ -631,11 +633,20 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         height: auto;
     }
 
+    .controls-title {
+        width: auto;
+        height: auto;
+        content-align: center middle;
+        text-style: bold;
+        color: #d7875f;
+        margin: 0 0 0 0;
+    }
+
     .format-button {
         width: auto;
         min-width: 6;
         height: auto;
-        margin: 0 0 0 1;
+        margin: 0 0 0 0;
     }
 
     .copy-button {
@@ -711,7 +722,8 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
 
         yield Horizontal(
             Static(self._header_panel, id = "header-panel"),
-            Horizontal(
+            Vertical(
+                Static("View", classes = "controls-title"),
                 Button(
                     "Yaml",
                     id = "toggle-yaml",
