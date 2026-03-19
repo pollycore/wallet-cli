@@ -30,6 +30,7 @@
 - For plain `pw echo` success output, keep the command quiet and print only `✅ Verified echo response`; reserve the echoed payload for `--debug` so the default path stays concise.
 - For plain `pw echo` success output, keep the command quiet and to one line, but include the total duration in milliseconds plus the network-latency percentage so users get timing without dumping payload details.
 - For `pw echo`, translate `urllib.error.URLError` resolver failures into a human-readable PollyWeb inbox-host message instead of exposing raw `socket.gaierror(...)` text.
+- For `pw echo` transport failures, keep the default path user-friendly, but let `--debug` surface the raw underlying network exception so missing-domain troubleshooting still has the low-level clue when needed.
 - For `pw echo`, validate the raw synchronous response shape before pretty-printing it: reject any top-level fields outside `Header`, `Body`, `Hash`, and `Signature` so misplaced server properties are caught immediately.
 - For `pw echo --debug`, collect and print the PollyWeb branch `DS` lookup and DKIM `TXT` lookup details, including the queried DNS names, returned record text, and DNSSEC AD-flag state, and print those diagnostics even when signature verification fails after the response is received.
 - For `pw echo --debug`, the CLI must not perform its own parallel DNS trust check; render only the `pollyweb` package's DNS diagnostics, and pair them with click-through external links so users can compare the package verdict against MXToolbox, DNSSEC Debugger, and Google DNS.
@@ -51,3 +52,5 @@
 - When a bug shows up in the installed `pw` command, fix it in `/Users/jorgemf/Git/wallet-cli`, not `/Users/jorgemf/Git/pollyweb-pypi`; the CLI package source lives in `wallet-cli` even though it depends on the published `pollyweb` library.
 - In `parse_message_request()`, check a single-argument inline JSON payload before calling `Path.exists()`, because `pw test` passes wrapped `Outbound` fixtures as JSON strings and long payloads can trigger macOS `OSError: [Errno 63] File name too long` during the filesystem probe.
 - When verifying local CLI edits through a repo virtualenv, avoid invoking the installed `pw` entry point directly if self-upgrade preflight is enabled, because it can replace the editable build with the latest published release mid-check.
+- For local repo development, prefer the editable-install `pw-dev` entry point over environment-variable workarounds; it should run the same CLI code as `pw` but without the upgrade preflight.
+- For convenience from the repo root, keep a checked-in `./pw-dev` launcher that sets `PYTHONPATH` to `./python`, skips upgrade preflight, and prefers the repo `.venv-tests` interpreter when available.

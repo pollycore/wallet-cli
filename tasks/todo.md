@@ -1,11 +1,38 @@
 # Task Plan
 
+- [x] Add a root-level `pw-dev` launcher that runs the repo checkout directly
+- [x] Document the root shortcut alongside the editable-install entry point
+- [x] Verify the launcher from the repo root with the local test environment
+
+- [x] Review the current published-vs-dev runtime contract and choose the smallest safe `pw-dev` entry-point shape
+- [x] Add a repo-local `pw-dev` shortcut that skips the self-upgrade preflight without changing normal `pw`
+- [x] Update docs and CLI-core regression coverage, then verify with the repo test interpreter
+
+- [x] Review the written `pw echo` error-handling instructions and current debug/non-debug URLError behavior
+- [x] Keep non-debug `pw echo` resolver failures graceful while surfacing the underlying transport detail in `--debug`
+- [x] Add focused regression coverage and verify with the repo test interpreter
+
 - [x] Inspect the written `pw echo` success-output contract and locate the current success print path
 - [x] Add total-duration and network-latency timing to the verified `pw echo` success output
 - [x] Update echo docs/tests/repo guidance for the new one-line timing output
 - [x] Verify with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py`
 
 # Review
+
+- Added a checked-in root launcher at `/Users/jorgemf/Git/wallet-cli/pw-dev` that prefers `./.venv-tests/bin/python`, falls back to `python3` or `python`, sets `PYTHONPATH` to the repo `python` directory, and invokes `main_dev()` so local runs skip the published-runtime upgrade preflight.
+- Updated `/Users/jorgemf/Git/wallet-cli/README.md`, `/Users/jorgemf/Git/wallet-cli/docs/install.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to document the new root-level `./pw-dev` workflow.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_cli_core.py` coverage that exercises the checked-in root launcher via subprocess and confirms it does not trigger an upgrade notice.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_cli_core.py` (`35 passed`) and a direct repo-root run of `./pw-dev version` (`pw 0.1.dev143`).
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/cli.py` to split command dispatch from upgrade preflight and added a dedicated `main_dev()` path so repo-local runs can bypass the PyPI self-upgrade check without weakening normal `pw`.
+- Added `pw-dev = "pollyweb_cli.cli:main_dev"` in `/Users/jorgemf/Git/wallet-cli/pyproject.toml`, which makes editable installs expose a clean `pw-dev` shortcut for development.
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/test_cli_core.py`, `/Users/jorgemf/Git/wallet-cli/docs/install.md`, `/Users/jorgemf/Git/wallet-cli/README.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to document and lock in the new dev-entry-point workflow.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_cli_core.py` (`35 passed`).
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so `pw echo` now keeps the friendly resolver guidance on the normal path while `pw echo --debug` preserves the underlying `URLError.reason` detail for low-level troubleshooting.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` coverage for the new `--debug` network-failure contract, alongside the existing non-debug graceful-error assertion.
+- Updated `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so future echo changes preserve the split between concise default messaging and verbose debug diagnostics.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`12 passed`).
 
 - Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so successful `pw echo` runs now print a single verification line that includes total request-and-verification duration in milliseconds plus the percentage of that time spent in the network send, while the debug path also reports the same timing details in the verbose summary.
 - Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/transport.py` to expose measured wallet-send wall time back to callers through an optional timing dict, keeping the shared send path reusable without changing existing call sites.

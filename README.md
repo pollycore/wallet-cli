@@ -33,6 +33,21 @@ pw --help
 
 Before running any `pw` command, the CLI checks PyPI for a newer published `pollyweb-cli` release. If it finds one, it automatically installs the newer release into the current Python environment and reruns the original `pw ...` command on the upgraded code. If the current runtime is a development, editable, or other non-PyPI install, the CLI replaces it with the latest published PyPI release before continuing.
 
+For local development inside this repo, install the editable test environment and use `pw-dev` instead of `pw`. The `pw-dev` entry point skips that upgrade preflight so it runs your local checkout directly:
+
+```bash
+python3 -m venv .venv-tests
+. .venv-tests/bin/activate
+python -m pip install -e '.[dev]'
+./.venv-tests/bin/pw-dev echo vault.example.com
+```
+
+There is also a root-level launcher in this repo, so from the checkout root you can simply run:
+
+```bash
+./pw-dev echo vault.example.com
+```
+
 To force an upgrade directly, run:
 
 ```bash

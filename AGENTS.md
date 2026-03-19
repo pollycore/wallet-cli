@@ -29,6 +29,7 @@
 - When a `pw test` send fails with an HTTP response whose body includes an `error` field, append that inbound error detail to the existing `Error: HTTP ...` output so the red failure area explains the server-side cause without requiring `--debug`.
 - `pw bind` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
 - `pw echo` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
+- `pw echo --debug` should keep the underlying transport exception detail for network failures instead of collapsing it to the normal friendly resolver wording, so low-level troubleshooting remains available on demand.
 - `pw echo` verification should reject any extra top-level response fields beyond `Header`, `Body`, `Hash`, and `Signature`, so misplaced properties such as a top-level `Request` fail loudly instead of being hidden by debug formatting.
 - `pw echo --debug` should print DNS verification diagnostics for the PollyWeb branch `DS` lookup and DKIM `TXT` lookup, including the DNS names queried, the collected record values, and whether each response carried the DNSSEC AD flag; keep those diagnostics visible even when verification fails after the response arrives.
 - `pw echo --debug` should label the click-through MXToolbox URL as an explicit DKIM test link for the verified `pw.<domain>` branch and selector so users can open it directly.
@@ -45,6 +46,8 @@
 - The CLI reports its installed release via `pw version`; do not reintroduce a top-level `pw --version` flag without an explicit product change.
 - The CLI self-update preflight should upgrade automatically when PyPI has a newer release; do not ask for confirmation or persist declined versions unless the product requirement changes.
 - The CLI runtime itself must always come from a published PyPI release; if `pollyweb-cli` is running from an editable checkout, local path, direct URL, or dev version, replace it with the latest published release before executing the requested command.
+- For local development in this repo, prefer the editable-install `pw-dev` entry point instead of `pw`; `pw-dev` is the intentional shortcut for running checkout code without the published-runtime upgrade preflight.
+- From the repo root, keep a checked-in `./pw-dev` launcher available so local development does not depend on remembering the venv entry-point path.
 - When the installed `pw` runtime is at fault, patch and publish `/Users/jorgemf/Git/wallet-cli`; `/Users/jorgemf/Git/pollyweb-pypi` is the library package repo, not the CLI source tree.
 - Automatic self-upgrades should suppress pip's normal install output, show a transient spinner line reading `Upgrading from v<old> to v<new>`, and then leave the concise notice `ℹ️ Upgraded from v<old> to v<new>`.
 - Automatic self-upgrades should retry a failed pip install once before surfacing a notice, and when the CLI is not running inside a virtualenv, fall back to `python -m pip install --user ...` to avoid common permission failures.

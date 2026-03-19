@@ -5,6 +5,7 @@ import json
 import os
 import socket
 import stat
+import subprocess
 import sys
 import uuid
 import urllib.error
@@ -84,6 +85,27 @@ def test_version_command_checks_for_upgrade_before_printing_version(monkeypatch,
     assert prompted == [["version"]]
     captured = capsys.readouterr()
     assert captured.out.strip() == "pw 1.2.3"
+
+
+def test_repo_root_pw_dev_launcher_runs_local_cli(tmp_path):
+    fake_home = tmp_path / "home"
+    fake_home.mkdir(exist_ok = True)
+
+    result = subprocess.run(
+        [str(Path(__file__).resolve().parents[1] / "pw-dev"), "version"],
+        check = False,
+        capture_output = True,
+        text = True,
+        env = {
+            **os.environ,
+            "HOME": str(fake_home),
+            "USERPROFILE": str(fake_home),
+        },
+    )
+
+    assert result.returncode == 0
+    assert result.stdout.strip().startswith("pw ")
+    assert "Upgraded from" not in result.stderr
 
 def test_preflight_skips_when_no_newer_release(monkeypatch):
     monkeypatch.setattr(cli, "_get_cli_version", lambda: "0.1.62")

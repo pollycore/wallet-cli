@@ -116,7 +116,7 @@ def test_echo_sends_signed_message_and_verifies_response(
     captured = capsys.readouterr()
     assert (
         captured.out
-        == "✅ Verified echo response (420 ms, 29% network latency)\n"
+        == "✅ Verified echo response (420 ms, 29% latency)\n"
     )
     assert captured.err == ""
 
@@ -530,7 +530,7 @@ def test_echo_accepts_response_to_stored_bind(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert "✅ Verified echo response (200 ms, 25% network latency)" in captured.out
+    assert "✅ Verified echo response (200 ms, 25% latency)" in captured.out
     assert captured.err == ""
 
 
@@ -626,6 +626,38 @@ def test_echo_reports_human_readable_dns_failures(
         " Check that the domain name is correct and that its DNS record exists."
     ) in captured.err
     assert "gaierror(" not in captured.err
+
+
+def test_echo_debug_keeps_raw_dns_failure_details(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    def fake_urlopen(_request):
+        raise urllib.error.URLError(
+            socket.gaierror(8, "nodename nor servname provided, or not known")
+        )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    exit_code = cli.main(["echo", "--debug", "non-existing-domain.com"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert (
+        "Echo request to non-existing-domain.com failed: "
+        "gaierror(8, 'nodename nor servname provided, or not known')"
+    ) in captured.err
+    assert "Could not resolve PollyWeb inbox host" not in captured.err
 
 def test_print_echo_response_formats_payload(capsys):
     cli.print_echo_response(

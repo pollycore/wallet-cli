@@ -29,6 +29,7 @@ dev = [
 
 [project.scripts]
 pw = "pollyweb_cli.cli:main"
+pw-dev = "pollyweb_cli.cli:main_dev"
 
 [tool.setuptools]
 package-dir = {"" = "python"}

@@ -683,11 +683,15 @@ def cmd_sync(
     )
 
 
-def main(argv: list[str] | None = None) -> int:
+def _run_main(
+    argv: list[str] | None = None,
+    *,
+    skip_upgrade_preflight: bool = False
+) -> int:
     """Dispatch CLI arguments to the appropriate feature command."""
 
     argv = list(sys.argv[1:] if argv is None else argv)
-    if not argv or argv[0] != "upgrade":
+    if not skip_upgrade_preflight and (not argv or argv[0] != "upgrade"):
         preflight_result = _maybe_upgrade_before_command(argv)
         if preflight_result is not None:
             return preflight_result
@@ -757,6 +761,20 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.print_help()
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Dispatch the published `pw` command with upgrade preflight enabled."""
+
+    return _run_main(argv)
+
+
+def main_dev(argv: list[str] | None = None) -> int:
+    """Dispatch the repo-local `pw-dev` command without upgrade preflight."""
+
+    return _run_main(
+        argv,
+        skip_upgrade_preflight = True)
 
 
 if __name__ == "__main__":

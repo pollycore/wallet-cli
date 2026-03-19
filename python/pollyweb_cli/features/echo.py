@@ -152,8 +152,27 @@ def _format_echo_success_metrics(
 
     return (
         f"✅ Verified echo response ({total_milliseconds} ms, "
-        f"{network_share:.0f}% network latency)"
+        f"{network_share:.0f}% latency)"
     )
+
+
+def _describe_echo_network_error(
+    domain: str,
+    reason: object,
+    *,
+    debug: bool
+) -> str:
+    """Format echo transport failures for either normal or debug output."""
+
+    if debug:
+        if isinstance(reason, str):
+            return reason
+
+        return repr(reason)
+
+    return describe_bind_network_error(
+        domain,
+        reason)
 
 
 def cmd_echo(
@@ -242,9 +261,10 @@ def cmd_echo(
             f"Echo request to {domain} failed with HTTP {exc.code}."
         ) from None
     except urllib.error.URLError as exc:
-        reason = describe_bind_network_error(
+        reason = _describe_echo_network_error(
             domain,
-            exc.reason)
+            exc.reason,
+            debug = debug)
         raise UserFacingError(
             f"Echo request to {domain} failed: {reason}"
         ) from None
