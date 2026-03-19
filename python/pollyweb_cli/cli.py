@@ -529,6 +529,7 @@ def cmd_config(
 def cmd_bind(
     domain: str,
     debug: bool = False,
+    json_output: bool = False,
     unsigned: bool = False,
     anonymous: bool = False
 ) -> int:
@@ -538,6 +539,7 @@ def cmd_bind(
     return _cmd_bind(
         domain,
         debug=debug,
+        json_output=json_output,
         config_dir=CONFIG_DIR,
         public_key_path=PUBLIC_KEY_PATH,
         binds_path=BINDS_PATH,
@@ -707,6 +709,7 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_bind(
                 domain = args.domain,
                 debug = args.debug,
+                json_output = args.json,
                 unsigned = args.unsigned,
                 anonymous = args.anonymous)
         if args.command == "echo":

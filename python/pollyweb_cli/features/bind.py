@@ -16,6 +16,7 @@ import yaml
 from pollyweb import KeyPair, normalize_domain_name
 
 from pollyweb_cli.errors import UserFacingError
+from pollyweb_cli.tools.debug import parse_debug_payload, print_yaml_payload
 from pollyweb_cli.tools.transport import send_wallet_message
 
 
@@ -395,9 +396,10 @@ def send_bind_message(
     public_key_path: Path,
     binds_path: Path,
     debug: bool = False,
+    debug_json: bool = False,
     anonymous: bool = False,
     unsigned: bool = False
-) -> dict[str, str]:
+) -> tuple[dict[str, str], str]:
     """Send the bind request for a domain and parse the server response."""
 
     normalized_domain = normalize_bind_domain(domain)
@@ -413,13 +415,14 @@ def send_bind_message(
         },
         key_pair=key_pair,
         debug=debug,
+        debug_json=debug_json,
         binds_path=binds_path,
         anonymous=anonymous,
         unsigned=unsigned,
     )
 
     try:
-        return parse_bind_response(payload)
+        return parse_bind_response(payload), payload
     except UserFacingError as exc:
         raise UserFacingError(
             str(exc).replace("{domain}", normalized_domain)
@@ -450,6 +453,7 @@ def cmd_bind(
     domain: str,
     *,
     debug: bool,
+    json_output: bool,
     config_dir: Path,
     public_key_path: Path,
     binds_path: Path,
@@ -463,12 +467,13 @@ def cmd_bind(
     try:
         require_configured_keys()
         key_pair = load_signing_key_pair()
-        bind_entry = send_bind_message(
+        bind_entry, raw_payload = send_bind_message(
             domain,
             key_pair,
             public_key_path,
             binds_path,
             debug=debug,
+            debug_json=json_output,
             anonymous=anonymous,
             unsigned=unsigned,
         )
@@ -488,6 +493,10 @@ def cmd_bind(
         raise UserFacingError(
             f"Could not bind {domain}. Network request failed: {reason}"
         ) from None
+
+    if json_output:
+        print(raw_payload)
+        return 0
 
     print(f"Stored bind for {domain}: {normalize_bind_value(bind_entry['Bind'])}")
     print(f"Updated {binds_path}")
