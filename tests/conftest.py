@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import urllib.request
 
 # Add the repository's package source directory so plain `pytest` can import
 # `pollyweb_cli` without requiring an editable install first.
@@ -18,6 +19,16 @@ if str(PYTHON_SOURCE) not in sys.path:
 
 from pollyweb_cli import cli
 from pollyweb_cli.tools import transport as transport_tools
+
+try:
+    import pollyweb.msg as pollyweb_msg
+except Exception:  # pragma: no cover - older dependency floors may differ
+    pollyweb_msg = None
+
+try:
+    import pollyweb._transport as pollyweb_transport
+except Exception:  # pragma: no cover - older dependency floors do not expose this
+    pollyweb_transport = None
 
 
 @pytest.fixture(autouse = True)
@@ -82,3 +93,42 @@ def isolate_profile_paths(
     monkeypatch.setattr(cli, "HISTORY_DIR", history_dir)
     monkeypatch.setattr(cli, "SYNC_DIR", sync_dir)
     monkeypatch.setattr(transport_tools, "DEFAULT_BINDS_PATH", binds_path)
+
+
+@pytest.fixture(autouse = True)
+def bridge_pollyweb_transport_to_cli_urlopen(
+    monkeypatch
+):
+    """Keep existing CLI network stubs working with newer PollyWeb transport."""
+
+    if pollyweb_transport is None:
+        return
+
+    def compat_post_json_bytes(
+        url: str,
+        body: bytes,
+        *,
+        timeout: float = 10.0
+    ) -> bytes:
+        """Delegate PollyWeb transport sends through the CLI urlopen stub."""
+
+        request = urllib.request.Request(
+            url,
+            data = body,
+            headers = {"Content-Type": "application/json"},
+            method = "POST",
+        )
+
+        with cli.urllib.request.urlopen(request) as response:
+            return response.read()
+
+    monkeypatch.setattr(
+        pollyweb_transport,
+        "post_json_bytes",
+        compat_post_json_bytes)
+
+    if pollyweb_msg is not None and hasattr(pollyweb_msg, "post_json_bytes"):
+        monkeypatch.setattr(
+            pollyweb_msg,
+            "post_json_bytes",
+            compat_post_json_bytes)

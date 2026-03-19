@@ -9,6 +9,7 @@ import sys
 import uuid
 import urllib.error
 from pathlib import Path
+from unittest.mock import patch
 
 import pollyweb.msg as pollyweb_msg
 import pytest
@@ -34,9 +35,9 @@ def test_dependency_contract_requires_pollyweb_release_with_unsigned_uuid_send_s
     key_pair = cli.KeyPair()
     payloads = []
 
-    def fake_urlopen(request):
-        payloads.append(cli.json.loads(request.data.decode("utf-8")))
-        return DummyResponse(b'{"ok":true}')
+    def fake_post(url, body, *, timeout = 10.0):
+        payloads.append(cli.json.loads(body.decode("utf-8")))
+        return b'{"ok":true}'
 
     message = Msg(
         From = VALID_WALLET_ID,
@@ -44,12 +45,8 @@ def test_dependency_contract_requires_pollyweb_release_with_unsigned_uuid_send_s
         Subject = "Echo@Domain",
     )
 
-    original_urlopen = cli.urllib.request.urlopen
-    cli.urllib.request.urlopen = fake_urlopen
-    try:
+    with patch("pollyweb.msg.post_json_bytes", side_effect = fake_post):
         assert message.send() == {"ok": True}
-    finally:
-        cli.urllib.request.urlopen = original_urlopen
 
     assert payloads[0]["Header"]["From"] == VALID_WALLET_ID
     assert "Hash" not in payloads[0]

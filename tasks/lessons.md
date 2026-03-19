@@ -24,7 +24,7 @@
 - For wallet-backed sends, the CLI should only override `msg.From` when it has something concrete to provide, such as a stored bind UUID for the target domain; otherwise let `pollyweb.Wallet` apply its own default `Anonymous` sender.
 - Treat `--anonymous` and `--unsigned` as transport-level controls in the shared send helper: `--anonymous` must override stored binds and explicit wallet UUID senders, while `--unsigned` must remove `Hash` and `Signature` without changing the chosen `From`.
 - When `wallet-cli` starts depending on new `pollyweb` behavior, bump the minimum published `pollyweb` version immediately and keep a clean-install smoke check in the push path so local editable installs cannot hide unreleased dependency requirements.
-- The current test and runtime surface needs `pollyweb>=1.0.70`; if repo code or tests import newer PollyWeb diagnostics/types, bump the version floor right away instead of relying on a locally upgraded venv.
+- The current test and runtime surface needs `pollyweb>=1.0.78`; if repo code or tests import newer PollyWeb diagnostics/types, bump the version floor right away instead of relying on a locally upgraded venv.
 - When a user asks to update the CLI, check the `wallet-cli` source repo first instead of only refreshing the pipx-installed `pw` environment.
 - For `pw echo`, do not assume the synchronous reply `To` will always echo the target domain; if the target domain has a stored bind, treat that bind UUID as an equally valid echoed recipient.
 - For plain `pw echo` success output, keep the command quiet and print only `✅ Verified echo response`; reserve the echoed payload for `--debug` so the default path stays concise.
