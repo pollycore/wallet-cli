@@ -550,6 +550,34 @@ def test_echo_textual_app_includes_common_quit_bindings():
     assert {"q", "x", "escape", "ctrl+c", "ctrl+w"} <= quit_bindings
 
 
+def test_echo_textual_app_includes_scroll_bindings():
+    app = echo_feature._EchoTextualApp(
+        header_panel = echo_feature._build_echo_header_panel(),
+        yaml_sections = [],
+        json_sections = [],
+        raw_sections = [],
+        footer_panel = echo_feature._build_echo_footer_panel(
+            total_seconds = 0.2,
+            network_seconds = 0.1,
+            dkim_and_dnssec_verified = True,
+            cdn_distribution_detected = True,
+        ),
+        initial_payload_format = "yaml",
+    )
+    scroll_bindings = {
+        binding[0]
+        for binding in app.BINDINGS
+        if binding[1] in {
+            "scroll_up",
+            "scroll_down",
+            "scroll_page_up",
+            "scroll_page_down",
+        }
+    }
+
+    assert {"up", "down", "pageup", "pagedown"} <= scroll_bindings
+
+
 def test_echo_textual_app_quit_action_exits_the_app():
     app = echo_feature._EchoTextualApp(
         header_panel = echo_feature._build_echo_header_panel(),
@@ -568,6 +596,52 @@ def test_echo_textual_app_quit_action_exits_the_app():
     asyncio.run(app.action_quit())
 
     assert app._exit is True
+
+
+def test_echo_textual_app_scroll_actions_target_the_body():
+    app = echo_feature._EchoTextualApp(
+        header_panel = echo_feature._build_echo_header_panel(),
+        yaml_sections = [],
+        json_sections = [],
+        raw_sections = [],
+        footer_panel = echo_feature._build_echo_footer_panel(
+            total_seconds = 0.2,
+            network_seconds = 0.1,
+            dkim_and_dnssec_verified = True,
+            cdn_distribution_detected = True,
+        ),
+        initial_payload_format = "yaml",
+    )
+    calls: list[tuple[str, bool]] = []
+
+    class FakeBody:
+        """Capture forwarded scroll calls without a live Textual DOM."""
+
+        def scroll_up(self, *, animate = True):
+            calls.append(("up", animate))
+
+        def scroll_down(self, *, animate = True):
+            calls.append(("down", animate))
+
+        def scroll_page_up(self, *, animate = True):
+            calls.append(("page_up", animate))
+
+        def scroll_page_down(self, *, animate = True):
+            calls.append(("page_down", animate))
+
+    app.query_one = lambda _selector: FakeBody()
+
+    app.action_scroll_up()
+    app.action_scroll_down()
+    app.action_scroll_page_up()
+    app.action_scroll_page_down()
+
+    assert calls == [
+        ("up", False),
+        ("down", False),
+        ("page_up", False),
+        ("page_down", False),
+    ]
 
 
 def test_echo_textual_app_routes_link_actions_to_toggles_and_copy():

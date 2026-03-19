@@ -718,6 +718,10 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         ("escape", "quit", "Quit"),
         ("ctrl+c", "quit", "Quit"),
         ("ctrl+w", "quit", "Quit"),
+        ("up", "scroll_up", "Up"),
+        ("down", "scroll_down", "Down"),
+        ("pageup", "scroll_page_up", "Page up"),
+        ("pagedown", "scroll_page_down", "Page down"),
         ("y", "show_yaml", "YAML"),
         ("j", "show_json", "JSON"),
         ("r", "show_raw", "Raw"),
@@ -777,6 +781,12 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
 
         return self._resolve_sections(self._payload_format)
 
+    def _body_scroll(self, method_name: str) -> None:
+        """Forward a keyboard scroll action to the main scrollable body."""
+
+        scroll_view = self.query_one("#body")
+        getattr(scroll_view, method_name)(animate = False)
+
     def action_show_yaml(self) -> None:
         """Switch the interactive payload view to YAML."""
 
@@ -797,6 +807,26 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         self._payload_format = "raw"
         self._clear_copied_feedback()
         self.refresh(recompose = True)
+
+    def action_scroll_up(self) -> None:
+        """Scroll the interactive body upward by one line."""
+
+        self._body_scroll("scroll_up")
+
+    def action_scroll_down(self) -> None:
+        """Scroll the interactive body downward by one line."""
+
+        self._body_scroll("scroll_down")
+
+    def action_scroll_page_up(self) -> None:
+        """Scroll the interactive body upward by one page."""
+
+        self._body_scroll("scroll_page_up")
+
+    def action_scroll_page_down(self) -> None:
+        """Scroll the interactive body downward by one page."""
+
+        self._body_scroll("scroll_page_down")
 
     def _clear_copied_feedback(self) -> None:
         """Clear any active copy feedback and stop its pending reset timer."""

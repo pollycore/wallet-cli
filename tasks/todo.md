@@ -1,5 +1,16 @@
 # Task Plan
 
+- [x] Inspect the interactive `pw echo --debug` Textual viewer and confirm where keyboard bindings reach the scrollable body
+- [x] Add arrow-key and page-scroll actions that forward into the existing `VerticalScroll` body without changing the Rich render path
+- [x] Verify with focused echo tests and document the new viewer navigation shortcut
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo_presentation.py` so the interactive `pw echo --debug` Textual viewer now binds `Up`, `Down`, `Page Up`, and `Page Down` to explicit app actions that forward scrolling into the existing `#body` `VerticalScroll` widget with animation disabled.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` coverage that locks in both the new scroll bindings and the forwarding behavior to the scrollable body without needing a live Textual DOM.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the interactive viewer navigation contract is documented for future work.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`37 passed`).
+
 - [x] Review the written `pw echo` timing contract and the current sync-wrapper metadata paths
 - [x] Extend `pw echo` network timing to learn from wrapped sync `Meta` / `Response.Meta` and show explicit client overhead in milliseconds
 - [x] Verify with focused echo coverage in the repo test interpreter and capture any reusable lesson

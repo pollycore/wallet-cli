@@ -8,6 +8,7 @@ Outbound:
     Subject: Echo@Domain
 
 Inbound:
-  Header:
-    From: any-hoster.pollyweb.org
-    Subject: Echo@Domain
+  Response:
+    Header:
+      From: any-hoster.pollyweb.org
+      Subject: Echo@Domain
