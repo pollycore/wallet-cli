@@ -1,5 +1,30 @@
 # Task Plan
 
+- [x] Review the written `pw echo` timing contract and the current sync-wrapper metadata paths
+- [x] Extend `pw echo` network timing to learn from wrapped sync `Meta` / `Response.Meta` and show explicit client overhead in milliseconds
+- [x] Verify with focused echo coverage in the repo test interpreter and capture any reusable lesson
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so `pw echo` now merges timing hints from direct reply body metadata plus wrapped sync `Meta` and `Response.Meta` before rendering the debug timing section.
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo_presentation.py` so `Network timing` now always prints an explicit `Client overhead` line and also renders wrapped-response timing fields such as `Remote latency`, `Total execution`, and `Downstream execution` when present.
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` and `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md` to lock in the richer timing output and document the expanded metadata sources.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`34 passed`).
+
+# Task Plan
+
+- [x] Profile `pw echo --debug` startup and identify the main UI/rendering bottlenecks
+- [x] Make the interactive echo viewer build heavy payload sections lazily and reuse parsed payload data
+- [x] Add focused regression coverage for the lazy section path and verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` and `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo_presentation.py` so the interactive `pw echo --debug` viewer now opens on the pretty JSON payload view by default, builds each payload-format section list lazily on first use instead of precomputing YAML/JSON/raw before launch, and reuses parsed inbound payload data across those views.
+- Tightened `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo_presentation.py` so payload-style sections serialize their payload only once and reuse that same text for both the renderable body and the section clipboard copy action.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` coverage for the lazy per-view section caching and for the command-level default interactive payload format.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so future echo work preserves the faster interactive startup path.
+- Verified with `./.venv-tests/bin/python -m pip install -e '.[dev]'` and `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`35 passed`), then spot-measured the render cost on a large sample payload: YAML about `541 ms`, pretty JSON about `3 ms`, raw JSON about `3 ms`.
+
 - [x] Trace the current wrapped echo-response failure and confirm whether the parser rejects the outer sync envelope before unwrapping `Response`
 - [x] Move wrapped synchronous response validation into `pollyweb` so the library owns the `Request`/`Response`/`Meta` rule and unwraps the nested reply
 - [x] Update `wallet-cli` echo parsing to use the shared library sync-response path, add regression coverage, and verify both repos with the repo test interpreter

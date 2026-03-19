@@ -1,5 +1,6 @@
 # Lessons
 
+- For `pw echo` timing, treat wrapped sync metadata as transport timing hints rather than as part of the signed reply envelope: merge top-level `Meta`, nested `Response.Meta`, and legacy `Body.Metadata`, strip `Response.Meta` before `Msg.parse(...)`, and keep an explicit client-overhead line in milliseconds beside the network share.
 - For the interactive Textual echo viewer, bind common close keys directly to `quit` (`Ctrl+C`, `Ctrl+W`, `q`, `x`, `Esc`) instead of relying on Textual's inherited quit-help toast, so macOS and Linux users can leave the app with the shortcuts they already expect.
 - For narrow Rich footer panels, avoid decorative emoji in fixed summary labels; terminal width and grapheme handling can treat icons like `ℹ️` as wider than expected and push the right border out of alignment.
 - When a debug payload formatter uses helper string subclasses such as `_LiteralDebugString`, keep every render path on the same shared YAML dumper; a plain `yaml.dump(...)` in a side path like the Textual echo viewer can leak `!!python/object...` tags into user-facing output.
@@ -47,6 +48,7 @@
 - For interactive `pw echo --debug --json`, remember that the final Textual body uses its own payload renderables; if only the pre-app console helper gets JSON coloring, the app repaint will replace it with plain white JSON a moment later.
 - For human-facing interactive JSON renderables, syntax coloring alone is not enough; pretty-print nested JSON with indentation so the structure survives terminal wrapping.
 - For interactive `pw echo --debug`, treat YAML-vs-JSON as a view concern inside the Textual app: build both section variants up front and toggle between them locally instead of forcing the user to close the viewer and rerun the command.
+- For interactive `pw echo --debug`, keep the YAML view available but do not make it the initial screen; on large payloads the YAML renderer is far slower than the pretty JSON view, so defaulting the app to JSON keeps startup responsive.
 - For interactive `pw echo --debug`, copy actions work best at the section level: keep copyable text alongside each payload-style block so the UI can offer one-button clipboard export next to that block’s title.
 - For `pw echo` transport failures, keep the default path user-friendly, but let `--debug` surface the raw underlying network exception so missing-domain troubleshooting still has the low-level clue when needed.
 - For `pw echo`, prefer `pollyweb.Msg.parse(..., sync_response = True)` once the published library exposes it, but keep a compatibility path for the current PyPI parser by validating wrapped `Meta`/`Request`/`Response` envelopes locally and then parsing the nested signed `Response` message.

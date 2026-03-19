@@ -163,7 +163,7 @@ def _coerce_echo_response_metadata(
         coerced: dict[str, object] = {}
         found_value = False
 
-        for key in ("TotalExecutionMs", "DownstreamExecutionMs"):
+        for key in ("LatencyMs", "TotalExecutionMs", "DownstreamExecutionMs"):
             value = metadata.get(key)
             if value is not None:
                 coerced[key] = value
@@ -173,6 +173,59 @@ def _coerce_echo_response_metadata(
             return coerced
 
     return None
+
+
+def _merge_echo_response_metadata(
+    *metadata_values: object
+) -> dict[str, object] | None:
+    """Merge timing metadata from the supported echo response locations."""
+
+    merged_metadata: dict[str, object] = {}
+
+    for metadata in metadata_values:
+        coerced_metadata = _coerce_echo_response_metadata(metadata)
+        if coerced_metadata is None:
+            continue
+
+        for key, value in coerced_metadata.items():
+            merged_metadata[key] = value
+
+    if not merged_metadata:
+        return None
+
+    return merged_metadata
+
+
+def _extract_echo_response_metadata(
+    response_payload: str,
+    response: Msg
+) -> dict[str, object] | None:
+    """Collect timing metadata from wrapped sync replies and reply bodies."""
+
+    payload_metadata: object | None = None
+    response_wrapper_metadata: object | None = None
+
+    try:
+        loaded_payload = json.loads(response_payload)
+    except json.JSONDecodeError:
+        loaded_payload = None
+
+    if isinstance(loaded_payload, dict):
+        payload_metadata = loaded_payload.get("Meta")
+
+        wrapped_response = loaded_payload.get("Response")
+        if isinstance(wrapped_response, dict):
+            response_wrapper_metadata = wrapped_response.get("Meta")
+
+    response_body_metadata = None
+    if hasattr(response.Body, "get"):
+        response_body_metadata = response.Body.get("Metadata")
+
+    return _merge_echo_response_metadata(
+        payload_metadata,
+        response_wrapper_metadata,
+        response_body_metadata,
+    )
 
 
 def _to_echo_user_facing_error(
@@ -315,6 +368,13 @@ def _parse_echo_response(
         )
 
     response_message = loaded_payload.get("Response")
+    if isinstance(response_message, dict) and "Meta" in response_message:
+        response_message = {
+            key: value
+            for key, value in response_message.items()
+            if key != "Meta"
+        }
+
     return Msg.parse(
         response_message,
         allowed_top_level_fields = ALLOWED_ECHO_RESPONSE_FIELDS)
@@ -418,10 +478,10 @@ def cmd_echo(
                 exc,
                 domain = normalized_domain) from None
 
-        if hasattr(response.Body, "get"):
-            response_metadata = _coerce_echo_response_metadata(
-                response.Body.get("Metadata")
-            )
+        response_metadata = _extract_echo_response_metadata(
+            response_payload,
+            response,
+        )
 
         dns_diagnostics = verification.dns_diagnostics
     except UserFacingError as exc:
@@ -583,16 +643,18 @@ def cmd_echo(
             network_seconds = network_seconds,
             dkim_and_dnssec_verified = dkim_and_dnssec_verified,
             cdn_distribution_detected = cdn_detected)
+    parsed_response_payload = parse_debug_payload(response_payload)
 
     if _should_use_textual_echo_view(debug = debug):
         _EchoTextualApp(
             header_panel = _build_echo_header_panel(),
-            yaml_sections = _build_echo_textual_sections(
+            yaml_sections = lambda: _build_echo_textual_sections(
                 domain = normalized_domain,
                 debug = debug,
                 payload_format = "yaml",
                 outbound_payload = outbound_payload,
                 response_payload = response_payload,
+                parsed_response_payload = parsed_response_payload,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
                 verification_lines = verification_lines,
@@ -601,12 +663,13 @@ def cmd_echo(
                 response_metadata = response_metadata,
                 transport_metadata = transport_metadata,
             ),
-            json_sections = _build_echo_textual_sections(
+            json_sections = lambda: _build_echo_textual_sections(
                 domain = normalized_domain,
                 debug = debug,
                 payload_format = "json",
                 outbound_payload = outbound_payload,
                 response_payload = response_payload,
+                parsed_response_payload = parsed_response_payload,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
                 verification_lines = verification_lines,
@@ -615,12 +678,13 @@ def cmd_echo(
                 response_metadata = response_metadata,
                 transport_metadata = transport_metadata,
             ),
-            raw_sections = _build_echo_textual_sections(
+            raw_sections = lambda: _build_echo_textual_sections(
                 domain = normalized_domain,
                 debug = debug,
                 payload_format = "raw",
                 outbound_payload = outbound_payload,
                 response_payload = response_payload,
+                parsed_response_payload = parsed_response_payload,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
                 verification_lines = verification_lines,
@@ -630,7 +694,7 @@ def cmd_echo(
                 transport_metadata = transport_metadata,
             ),
             footer_panel = footer_panel,
-            initial_payload_format = "json" if json_output else "yaml",
+            initial_payload_format = "json",
         ).run()
         return 0
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from importlib.metadata import PackageNotFoundError, version as get_installed_version
 import json
@@ -10,6 +11,7 @@ from urllib.parse import quote
 
 from rich.box import ROUNDED
 from rich.panel import Panel
+from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
@@ -56,6 +58,9 @@ class _EchoTextualSection:
     copy_text: str | None = None
 
 
+SectionBuilder = Callable[[], list[_EchoTextualSection]]
+
+
 def _get_echo_header_version() -> str:
     """Return the installed CLI version for the echo header."""
 
@@ -89,8 +94,8 @@ def _build_echo_header_panel() -> Panel:
         Text(
             (
                 "Sends an Echo@Domain request, then shows the outbound payload, "
-                "the inbound signed reply, the verification checks, DNS details, "
-                "timing, and the final summary below so you can confirm delivery, "
+                "inbound reply, verification checks, DNS details "
+                "and timing so you can confirm delivery, "
                 "signature validity, DNS trust, and edge routing."
             ),
             style = "#a9a9b3",
@@ -309,6 +314,39 @@ def _render_labeled_lines(values: dict[str, object]) -> Text:
     return rendered
 
 
+def _build_payload_section(
+    *,
+    title: str,
+    payload: object,
+    payload_format: str
+) -> _EchoTextualSection:
+    """Build one payload-style section while serializing the payload only once."""
+
+    if payload_format == "json":
+        copy_text = _json_debug_copy_text(payload)
+        body = Syntax(
+            copy_text,
+            "json",
+            line_numbers = False,
+            word_wrap = True,
+        )
+    elif payload_format == "raw":
+        copy_text = _raw_json_debug_text(payload)
+        body = Text(
+            copy_text,
+            style = DEBUG_VALUE_STYLE,
+        )
+    else:
+        copy_text = build_yaml_payload(payload)
+        body = render_debug_yaml(copy_text)
+
+    return _EchoTextualSection(
+        title = title,
+        body = body,
+        copy_text = copy_text,
+    )
+
+
 def _build_echo_edge_lines(
     transport_metadata: dict[str, object]
 ) -> dict[str, str]:
@@ -363,8 +401,10 @@ def _build_echo_timing_lines(
 ) -> dict[str, str]:
     """Collect timing details for display."""
 
-    lines = {"Total duration": f"{max(0, round(total_seconds * 1000))} ms"}
+    total_milliseconds = max(0, round(total_seconds * 1000))
     network_milliseconds = max(0, round(network_seconds * 1000))
+    client_overhead_milliseconds = max(0, total_milliseconds - network_milliseconds)
+    lines = {"Total duration": f"{total_milliseconds} ms"}
 
     if total_seconds > 0:
         lines["Latency share"] = (
@@ -374,7 +414,13 @@ def _build_echo_timing_lines(
     else:
         lines["Latency share"] = f"0% ({network_milliseconds} ms)"
 
+    lines["Client overhead"] = f"{client_overhead_milliseconds} ms"
+
     if response_metadata is not None and hasattr(response_metadata, "get"):
+        latency_ms = response_metadata.get("LatencyMs")
+        if isinstance(latency_ms, int):
+            lines["Remote latency"] = f"{latency_ms} ms"
+
         total_execution_ms = response_metadata.get("TotalExecutionMs")
         if isinstance(total_execution_ms, int):
             lines["Total execution"] = f"{total_execution_ms} ms"
@@ -393,6 +439,7 @@ def _build_echo_textual_sections(
     payload_format: str,
     outbound_payload: object | None,
     response_payload: str,
+    parsed_response_payload: object | None = None,
     dns_diagnostics,
     dns_link_context: tuple[str, str] | None,
     verification_lines: dict[str, str],
@@ -406,29 +453,24 @@ def _build_echo_textual_sections(
     sections: list[_EchoTextualSection] = []
 
     if debug:
-        if payload_format == "json":
-            payload_renderer = _json_debug_renderable
-            payload_copy_renderer = _json_debug_copy_text
-        elif payload_format == "raw":
-            payload_renderer = _raw_json_debug_renderable
-            payload_copy_renderer = _raw_json_debug_text
-        else:
-            payload_renderer = _yaml_debug_renderable
-            payload_copy_renderer = build_yaml_payload
         outbound_payload_value = {} if outbound_payload is None else outbound_payload
-        inbound_payload_value = parse_debug_payload(response_payload)
+        inbound_payload_value = (
+            parsed_response_payload
+            if parsed_response_payload is not None
+            else parse_debug_payload(response_payload)
+        )
         sections.append(
-            _EchoTextualSection(
+            _build_payload_section(
                 title = f"Outbound payload to https://pw.{domain}/inbox",
-                body = payload_renderer(outbound_payload_value),
-                copy_text = payload_copy_renderer(outbound_payload_value),
+                payload = outbound_payload_value,
+                payload_format = payload_format,
             )
         )
         sections.append(
-            _EchoTextualSection(
+            _build_payload_section(
                 title = "Inbound payload",
-                body = payload_renderer(inbound_payload_value),
-                copy_text = payload_copy_renderer(inbound_payload_value),
+                payload = inbound_payload_value,
+                payload_format = payload_format,
             )
         )
         sections.append(
@@ -440,10 +482,10 @@ def _build_echo_textual_sections(
         if dns_diagnostics is not None:
             diagnostics_payload = asdict(dns_diagnostics)
             sections.append(
-                _EchoTextualSection(
+                _build_payload_section(
                     title = "DNS verification diagnostics",
-                    body = payload_renderer(diagnostics_payload),
-                    copy_text = payload_copy_renderer(diagnostics_payload),
+                    payload = diagnostics_payload,
+                    payload_format = payload_format,
                 )
             )
         if dns_link_context is not None:
@@ -494,6 +536,7 @@ def _build_echo_error_textual_sections(
     payload_format: str,
     outbound_payload: object | None,
     response_payload: str | None,
+    parsed_response_payload: object | None = None,
     verification_lines: dict[str, str] | None,
     dns_diagnostics,
     dns_link_context: tuple[str, str] | None,
@@ -505,31 +548,26 @@ def _build_echo_error_textual_sections(
 ) -> list[_EchoTextualSection]:
     """Build the error sections shown in the Textual echo viewer."""
 
-    if payload_format == "json":
-        payload_renderer = _json_debug_renderable
-        payload_copy_renderer = _json_debug_copy_text
-    elif payload_format == "raw":
-        payload_renderer = _raw_json_debug_renderable
-        payload_copy_renderer = _raw_json_debug_text
-    else:
-        payload_renderer = _yaml_debug_renderable
-        payload_copy_renderer = build_yaml_payload
     outbound_payload_value = {} if outbound_payload is None else outbound_payload
     sections: list[_EchoTextualSection] = [
-        _EchoTextualSection(
+        _build_payload_section(
             title = f"Outbound payload to https://pw.{domain}/inbox",
-            body = payload_renderer(outbound_payload_value),
-            copy_text = payload_copy_renderer(outbound_payload_value),
+            payload = outbound_payload_value,
+            payload_format = payload_format,
         ),
     ]
 
     if response_payload is not None:
-        inbound_payload_value = parse_debug_payload(response_payload)
+        inbound_payload_value = (
+            parsed_response_payload
+            if parsed_response_payload is not None
+            else parse_debug_payload(response_payload)
+        )
         sections.append(
-            _EchoTextualSection(
+            _build_payload_section(
                 title = "Inbound payload",
-                body = payload_renderer(inbound_payload_value),
-                copy_text = payload_copy_renderer(inbound_payload_value),
+                payload = inbound_payload_value,
+                payload_format = payload_format,
             )
         )
 
@@ -554,10 +592,10 @@ def _build_echo_error_textual_sections(
         else asdict(dns_diagnostics)
     )
     sections.append(
-        _EchoTextualSection(
+        _build_payload_section(
             title = "DNS verification diagnostics",
-            body = payload_renderer(diagnostics_payload),
-            copy_text = payload_copy_renderer(diagnostics_payload),
+            payload = diagnostics_payload,
+            payload_format = payload_format,
         )
     )
 
@@ -689,9 +727,9 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         self,
         *,
         header_panel: Panel,
-        yaml_sections: list[_EchoTextualSection],
-        json_sections: list[_EchoTextualSection],
-        raw_sections: list[_EchoTextualSection],
+        yaml_sections: list[_EchoTextualSection] | SectionBuilder,
+        json_sections: list[_EchoTextualSection] | SectionBuilder,
+        raw_sections: list[_EchoTextualSection] | SectionBuilder,
         footer_panel: Panel,
         initial_payload_format: str
     ) -> None:
@@ -706,17 +744,38 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         self._payload_format = initial_payload_format
         self._copied_section: tuple[str, int] | None = None
         self._copied_reset_timer = None
+        self._section_cache: dict[str, list[_EchoTextualSection]] = {}
+
+    def _resolve_sections(
+        self,
+        payload_format: str
+    ) -> list[_EchoTextualSection]:
+        """Build and cache section lists only when a view is first opened."""
+
+        cached_sections = self._section_cache.get(payload_format)
+        if cached_sections is not None:
+            return cached_sections
+
+        section_source: list[_EchoTextualSection] | SectionBuilder
+        if payload_format == "json":
+            section_source = self._json_sections
+        elif payload_format == "raw":
+            section_source = self._raw_sections
+        else:
+            section_source = self._yaml_sections
+
+        resolved_sections = (
+            section_source()
+            if callable(section_source)
+            else section_source
+        )
+        self._section_cache[payload_format] = resolved_sections
+        return resolved_sections
 
     def _current_sections(self) -> list[_EchoTextualSection]:
         """Return the current section list for the selected payload format."""
 
-        if self._payload_format == "json":
-            return self._json_sections
-
-        if self._payload_format == "raw":
-            return self._raw_sections
-
-        return self._yaml_sections
+        return self._resolve_sections(self._payload_format)
 
     def action_show_yaml(self) -> None:
         """Switch the interactive payload view to YAML."""
@@ -1156,15 +1215,21 @@ def _render_debug_echo_failure(
         total_seconds = total_seconds,
         network_seconds = network_seconds,
     )
+    parsed_response_payload = (
+        parse_debug_payload(response_payload)
+        if response_payload is not None
+        else None
+    )
 
     if _should_use_textual_echo_view(debug = True):
         _EchoTextualApp(
             header_panel = _build_echo_header_panel(),
-            yaml_sections = _build_echo_error_textual_sections(
+            yaml_sections = lambda: _build_echo_error_textual_sections(
                 domain = domain,
                 payload_format = "yaml",
                 outbound_payload = outbound_payload,
                 response_payload = response_payload,
+                parsed_response_payload = parsed_response_payload,
                 verification_lines = verification_lines,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
@@ -1174,11 +1239,12 @@ def _render_debug_echo_failure(
                 response_metadata = response_metadata,
                 transport_metadata = transport_metadata,
             ),
-            json_sections = _build_echo_error_textual_sections(
+            json_sections = lambda: _build_echo_error_textual_sections(
                 domain = domain,
                 payload_format = "json",
                 outbound_payload = outbound_payload,
                 response_payload = response_payload,
+                parsed_response_payload = parsed_response_payload,
                 verification_lines = verification_lines,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
@@ -1188,11 +1254,12 @@ def _render_debug_echo_failure(
                 response_metadata = response_metadata,
                 transport_metadata = transport_metadata,
             ),
-            raw_sections = _build_echo_error_textual_sections(
+            raw_sections = lambda: _build_echo_error_textual_sections(
                 domain = domain,
                 payload_format = "raw",
                 outbound_payload = outbound_payload,
                 response_payload = response_payload,
+                parsed_response_payload = parsed_response_payload,
                 verification_lines = verification_lines,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
@@ -1203,7 +1270,7 @@ def _render_debug_echo_failure(
                 transport_metadata = transport_metadata,
             ),
             footer_panel = footer_panel,
-            initial_payload_format = "json" if debug_json else "yaml",
+            initial_payload_format = "json",
         ).run()
         return 1
 

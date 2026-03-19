@@ -475,6 +475,50 @@ def test_echo_textual_app_toggle_switches_payload_sections():
     assert app._current_sections()[0].title == "YAML section"
 
 
+def test_echo_textual_app_builds_sections_lazily_and_caches_each_view():
+    calls: list[str] = []
+
+    def build_sections(label: str) -> list[echo_feature._EchoTextualSection]:
+        """Build one labeled section list and record when it happens."""
+
+        calls.append(label)
+        return [
+            echo_feature._EchoTextualSection(
+                title = f"{label} section",
+                body = Text(label, style = echo_feature.DEBUG_VALUE_STYLE),
+            )
+        ]
+
+    app = echo_feature._EchoTextualApp(
+        header_panel = echo_feature._build_echo_header_panel(),
+        yaml_sections = lambda: build_sections("yaml"),
+        json_sections = lambda: build_sections("json"),
+        raw_sections = lambda: build_sections("raw"),
+        footer_panel = echo_feature._build_echo_footer_panel(
+            total_seconds = 0.2,
+            network_seconds = 0.1,
+            dkim_and_dnssec_verified = True,
+            cdn_distribution_detected = True,
+        ),
+        initial_payload_format = "yaml",
+    )
+
+    assert calls == []
+    assert app._current_sections()[0].title == "yaml section"
+    assert calls == ["yaml"]
+
+    assert app._current_sections()[0].title == "yaml section"
+    assert calls == ["yaml"]
+
+    app.action_show_json()
+    assert app._current_sections()[0].title == "json section"
+    assert calls == ["yaml", "json"]
+
+    app.action_show_raw()
+    assert app._current_sections()[0].title == "raw section"
+    assert calls == ["yaml", "json", "raw"]
+
+
 def test_echo_textual_app_styles_control_links_blue():
     css = echo_feature._EchoTextualApp.CSS
 
@@ -622,6 +666,74 @@ def test_echo_textual_sections_mark_payload_blocks_as_copyable():
     assert sections[0].copy_text is not None
     assert sections[1].copy_text is not None
     assert sections[2].copy_text is None
+
+
+def test_echo_interactive_viewer_defaults_to_json_for_faster_startup(
+    monkeypatch, tmp_path
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+    request_message = Msg(
+        To = "vault.example.com",
+        Subject = "Echo@Domain",
+        Correlation = "123e4567-e89b-12d3-a456-426614174000",
+        Body = {},
+    )
+    response_payload = make_echo_response_payload(
+        from_value = "vault.example.com",
+        correlation = request_message.Correlation,
+        private_key = remote_key_pair.PrivateKey,
+    ).decode("utf-8")
+    observed: dict[str, object] = {}
+
+    class FakeEchoTextualApp:
+        """Capture the initial payload format without running Textual."""
+
+        def __init__(self, **kwargs):
+            observed.update(kwargs)
+
+        def run(self):
+            observed["ran"] = True
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            response_payload,
+            request_message,
+            "vault.example.com",
+        ),
+    )
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
+    )
+    monkeypatch.setattr(
+        echo_feature,
+        "_should_use_textual_echo_view",
+        lambda *, debug: debug,
+    )
+    monkeypatch.setattr(echo_feature, "_EchoTextualApp", FakeEchoTextualApp)
+
+    exit_code = cli.main(["echo", "--debug", "vault.example.com"])
+
+    assert exit_code == 0
+    assert observed["initial_payload_format"] == "json"
+    assert observed["ran"] is True
 
 
 def test_echo_json_textual_renderable_uses_syntax_highlighting():
@@ -917,8 +1029,99 @@ def test_echo_debug_prints_metadata_performance_metrics_in_network_timing(
     assert "\nNetwork timing:\n" in captured.out
     assert " - Total duration: 120 ms" in captured.out
     assert " - Latency share: 33% (40 ms)" in captured.out
+    assert " - Client overhead: 80 ms" in captured.out
     assert " - Total execution: 8 ms" in captured.out
     assert " - Downstream execution: 0 ms" in captured.out
+    assert captured.err == ""
+
+
+def test_echo_debug_prints_wrapped_sync_meta_timing_details(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+    request_message = Msg(
+        To = "vault.example.com",
+        Subject = "Echo@Domain",
+        Correlation = "123e4567-e89b-12d3-a456-426614174000",
+        Body = {},
+    )
+    nested_response = cli.json.loads(
+        make_echo_response_payload(
+            from_value = "vault.example.com",
+            correlation = request_message.Correlation,
+            private_key = remote_key_pair.PrivateKey,
+        ).decode("utf-8")
+    )
+    response_payload = cli.json.dumps(
+        {
+            "Meta": {
+                "LatencyMs": 12,
+            },
+            "Request": {
+                "Body": {},
+                "Header": {
+                    "From": "Anonymous",
+                },
+            },
+            "Response": {
+                **nested_response,
+                "Meta": {
+                    "TotalExecutionMs": 8,
+                    "DownstreamExecutionMs": 3,
+                },
+            },
+        }
+    )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            kwargs["timing"].update({"network_seconds": 0.04}),
+            (
+                response_payload,
+                request_message,
+                "vault.example.com",
+            ),
+        )[-1],
+    )
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
+    )
+    perf_counter_values = iter([20.0, 20.10])
+    monkeypatch.setattr(
+        time,
+        "perf_counter",
+        lambda: next(perf_counter_values),
+    )
+
+    exit_code = cli.main(["echo", "--debug", "vault.example.com"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "\nNetwork timing:\n" in captured.out
+    assert " - Total duration: 100 ms" in captured.out
+    assert " - Latency share: 40% (40 ms)" in captured.out
+    assert " - Client overhead: 60 ms" in captured.out
+    assert " - Remote latency: 12 ms" in captured.out
+    assert " - Total execution: 8 ms" in captured.out
+    assert " - Downstream execution: 3 ms" in captured.out
     assert captured.err == ""
 
 
