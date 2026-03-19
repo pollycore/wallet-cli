@@ -578,6 +578,35 @@ def test_echo_textual_app_includes_scroll_bindings():
     assert {"up", "down", "pageup", "pagedown"} <= scroll_bindings
 
 
+def test_echo_textual_app_disables_kitty_keyboard_protocol_on_mount():
+    app = echo_feature._EchoTextualApp(
+        header_panel = echo_feature._build_echo_header_panel(),
+        yaml_sections = [],
+        json_sections = [],
+        raw_sections = [],
+        footer_panel = echo_feature._build_echo_footer_panel(
+            total_seconds = 0.2,
+            network_seconds = 0.1,
+            dkim_and_dnssec_verified = True,
+            cdn_distribution_detected = True,
+        ),
+        initial_payload_format = "yaml",
+    )
+    writes: list[str] = []
+
+    class FakeDriver:
+        """Capture terminal escape sequences written during mount."""
+
+        def write(self, data: str) -> None:
+            writes.append(data)
+
+    app._driver = FakeDriver()
+
+    app._disable_terminal_keyboard_protocol()
+
+    assert writes == [app._DISABLE_KITTY_KEYBOARD_PROTOCOL]
+
+
 def test_echo_textual_app_quit_action_exits_the_app():
     app = echo_feature._EchoTextualApp(
         header_panel = echo_feature._build_echo_header_panel(),

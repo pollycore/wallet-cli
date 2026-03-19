@@ -7,10 +7,12 @@ import sys
 from dataclasses import dataclass
 
 try:
+    from textual import events
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, Vertical, VerticalScroll
     from textual.widgets import Link, Static
 except ImportError:  # pragma: no cover - dependency is expected in runtime envs
+    events = None
     App = None
     ComposeResult = object
     Horizontal = None
@@ -39,6 +41,9 @@ SectionBuilder = Callable[[], list[_EchoTextualSection]]
 
 class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
     """TTY-only Textual viewer for the interactive echo result layout."""
+
+    _DISABLE_KITTY_KEYBOARD_PROTOCOL = "\x1b[<u"
+    """Escape sequence that restores standard terminal key handling."""
 
     CSS = """
     Screen {
@@ -196,6 +201,24 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
 
         scroll_view = self.query_one("#body")
         getattr(scroll_view, method_name)(animate = False)
+
+    def _disable_terminal_keyboard_protocol(self) -> None:
+        """Restore terminal-managed shortcuts such as macOS zoom keys."""
+
+        driver = getattr(self, "_driver", None)
+        if driver is None:
+            return
+
+        write = getattr(driver, "write", None)
+        if write is None:
+            return
+
+        write(self._DISABLE_KITTY_KEYBOARD_PROTOCOL)
+
+    def on_mount(self, _event: events.Mount) -> None:
+        """Disable Textual's enhanced keyboard protocol for this viewer."""
+
+        self._disable_terminal_keyboard_protocol()
 
     def action_show_yaml(self) -> None:
         """Switch the interactive payload view to YAML."""

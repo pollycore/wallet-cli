@@ -91,3 +91,4 @@
 - When verifying local CLI edits through a repo virtualenv, avoid invoking the installed `pw` entry point directly if self-upgrade preflight is enabled, because it can replace the editable build with the latest published release mid-check.
 - For local repo development, prefer the editable-install `pw-dev` entry point over environment-variable workarounds; it should run the same CLI code as `pw` but without the upgrade preflight.
 - For convenience from the repo root, keep a checked-in `./pw-dev` launcher that sets `PYTHONPATH` to `./python`, skips upgrade preflight, and prefers the repo `.venv-tests` interpreter when available.
+- For the interactive `pw echo --debug` Textual viewer on macOS terminals, disable Textual's kitty keyboard protocol after mount so terminal-owned shortcuts like `Cmd+=` and `Cmd+-` keep working instead of being captured by the app.

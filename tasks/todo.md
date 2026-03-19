@@ -1,5 +1,14 @@
 # Task Plan
 
+- [x] Inspect the interactive `pw echo` Textual viewer startup and confirm why terminal zoom shortcuts stop working after mount
+- [x] Disable the enhanced keyboard protocol inside the mounted echo viewer so macOS terminal zoom shortcuts keep working
+- [x] Add focused regression coverage, verify with the repo test interpreter, and record the maintenance note
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo_textual.py` so the interactive `pw echo --debug` viewer disables Textual's kitty keyboard protocol on mount, which restores terminal-managed macOS `Cmd` zoom shortcuts while keeping the existing Rich/Textual layout and scroll bindings intact.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` coverage that locks in the viewer's keyboard-protocol disable escape sequence without needing a live terminal driver.
+
 - [x] Inspect the current `pw echo --debug` timing metadata flow and confirm where wrapped `Meta.ColdMs` is available
 - [x] Add `Meta.ColdMs` to the shared echo timing calculations and `Network timing` rendering path
 - [x] Add focused regression coverage, verify with the repo test interpreter, and record the maintenance note
