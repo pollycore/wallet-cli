@@ -263,6 +263,11 @@ def test_bind_raises_alert_when_same_domain_bind_changes(monkeypatch, tmp_path):
         return subprocess.CompletedProcess(command, 0)
 
     monkeypatch.setattr(cli.bind_feature.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        cli.bind_feature,
+        "PYTEST_CURRENT_TEST_ENV",
+        "PW_FAKE_PYTEST_CURRENT_TEST")
+    monkeypatch.delenv("PW_FAKE_PYTEST_CURRENT_TEST", raising = False)
     monkeypatch.setattr(cli.bind_feature.sys, "argv", ["/tmp/fake-runner.py"])
     monkeypatch.setattr(cli.bind_feature, "get_bind_change_version", lambda: "9.9.9")
     expected_script_path = str(Path("/tmp/fake-runner.py").resolve())
