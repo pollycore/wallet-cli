@@ -38,6 +38,7 @@
 - In the interactive `pw echo --debug` Textual viewer, open on the YAML payload view by default so the default debug experience matches the non-`--json` formatter; reserve JSON views for explicit toggles or `--debug --json`.
 - In interactive `pw echo --debug`, keep the request phase in the terminal with a concise `Sending message...` spinner, then open the Textual viewer only after the response or debug failure sections are fully prepared so the app paints instantly with final content.
 - In interactive `pw echo --debug`, do not print the outbound payload during the spinner/send phase; keep both outbound and inbound payload blocks inside the final Textual view.
+- In `pw echo --debug`, keep the top header box out of the spinner/send phase too; render it only with the final debug output or final Textual app once the response is ready.
 - In the interactive `pw echo --debug` Textual viewer, payload-style sections such as outbound/inbound payloads and DNS diagnostics should expose per-section clipboard actions near their titles so users can copy one block without exporting the whole screen.
 - In the interactive `pw echo --debug` Textual viewer, keep the main `VerticalScroll` body keyboard-scrollable with the arrow keys and `Page Up` / `Page Down` so long debug payloads remain navigable without leaving the app.
 - `pw echo --debug` should keep the underlying transport exception detail for network failures instead of collapsing it to the normal friendly resolver wording, so low-level troubleshooting remains available on demand.

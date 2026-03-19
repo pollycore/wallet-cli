@@ -916,6 +916,17 @@ def test_echo_interactive_viewer_hides_transport_debug_payloads_while_sending(
     private_key_path.write_bytes(local_key_pair.private_pem_bytes())
     public_key_path.write_bytes(local_key_pair.public_pem_bytes())
     observed: dict[str, object] = {}
+    request_message = Msg(
+        To = "vault.example.com",
+        Subject = "Echo@Domain",
+        Correlation = "123e4567-e89b-12d3-a456-426614174000",
+        Body = {},
+    )
+    response_payload = make_echo_response_payload(
+        from_value = "vault.example.com",
+        correlation = request_message.Correlation,
+        private_key = local_key_pair.PrivateKey,
+    ).decode("utf-8")
 
     class FakeEchoTextualApp:
         """Avoid launching Textual while capturing the command setup."""
@@ -948,48 +959,38 @@ def test_echo_interactive_viewer_hides_transport_debug_payloads_while_sending(
         )(),
     )
 
-    def fake_resolve_echo_command(
-        _domain,
-        *,
-        debug,
-        transport_debug,
-        json_output,
-        **_kwargs
-    ):
-        observed["debug"] = debug
-        observed["transport_debug"] = transport_debug
-        observed["json_output"] = json_output
-        return echo_feature._EchoCommandFailure(
-            normalized_domain = "vault.example.com",
-            error_lines = {"Status": "failed", "Error": "boom"},
-            outbound_payload = None,
-            response_payload = None,
-            parsed_response_payload = None,
-            verification_lines = {},
-            dns_diagnostics = None,
-            dns_link_context = None,
-            response_metadata = None,
-            transport_metadata = {},
-            total_seconds = 0.0,
-            network_seconds = 0.0,
-            footer_panel = echo_feature._build_echo_error_footer_panel(
-                total_seconds = 0.0,
-                network_seconds = 0.0,
-            ),
-        )
-
     monkeypatch.setattr(
         echo_feature,
-        "_resolve_echo_command",
-        fake_resolve_echo_command,
+        "send_wallet_message",
+        lambda **kwargs: (
+            observed.update(
+                {
+                    "debug": kwargs["debug"],
+                    "json_output": kwargs["debug_json"],
+                }
+            ),
+            (
+                response_payload,
+                request_message,
+                "vault.example.com",
+            ),
+        )[-1],
+    )
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: (
+            local_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
     )
 
     exit_code = cli.main(["echo", "--debug", "vault.example.com"])
 
-    assert exit_code == 1
+    assert exit_code == 0
     assert observed == {
-        "debug": True,
-        "transport_debug": False,
+        "debug": False,
         "json_output": False,
     }
 
@@ -1061,6 +1062,82 @@ def test_echo_non_debug_shows_spinner_while_sending(
     captured = capsys.readouterr()
     assert captured.out == "✅ Verified echo response (420 ms, 24% latency)\n"
     assert captured.err == ""
+
+
+def test_echo_debug_delays_header_until_after_sending_spinner(
+    monkeypatch, tmp_path
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+    events: list[str] = []
+
+    class FakeStatus:
+        """Capture spinner timing relative to the header render."""
+
+        def __init__(self, message: str):
+            self.message = message
+
+        def __enter__(self):
+            events.append(f"enter:{self.message}")
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            events.append("exit")
+            return False
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message),
+    )
+    monkeypatch.setattr(
+        echo_feature._echo_presentation,
+        "_print_echo_header",
+        lambda: events.append("header"),
+    )
+    monkeypatch.setattr(
+        echo_feature,
+        "_resolve_echo_command",
+        lambda _domain, **_kwargs: (
+            events.append("resolve"),
+            echo_feature._EchoCommandFailure(
+                normalized_domain = "vault.example.com",
+                error_lines = {"Status": "failed", "Error": "boom"},
+                outbound_payload = None,
+                response_payload = None,
+                parsed_response_payload = None,
+                verification_lines = {},
+                dns_diagnostics = None,
+                dns_link_context = None,
+                response_metadata = None,
+                transport_metadata = {},
+                total_seconds = 0.0,
+                network_seconds = 0.0,
+                footer_panel = echo_feature._build_echo_error_footer_panel(
+                    total_seconds = 0.0,
+                    network_seconds = 0.0,
+                ),
+            ),
+        )[-1],
+    )
+
+    exit_code = cli.main(["echo", "--debug", "vault.example.com"])
+
+    assert exit_code == 1
+    assert events == [
+        "enter:Sending message...",
+        "resolve",
+        "exit",
+        "header",
+    ]
 
 
 def test_echo_json_textual_renderable_uses_syntax_highlighting():

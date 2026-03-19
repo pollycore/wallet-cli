@@ -54,6 +54,8 @@ from pollyweb_cli.features.echo_runtime import (
 )
 from pollyweb_cli.tools.debug import (
     DEBUG_VALUE_STYLE,
+    print_debug_json_payload,
+    print_debug_payload,
     print_json_payload,
     print_labeled_value_lines,
     print_section_title,
@@ -161,9 +163,6 @@ def cmd_echo(
 ) -> int:
     """Run the echo command and verify the signed response."""
 
-    if debug:
-        _echo_presentation._print_echo_header()
-
     _echo_runtime.send_wallet_message = send_wallet_message
 
     if _should_use_textual_echo_view(debug = debug):
@@ -218,6 +217,8 @@ def cmd_echo(
         )
 
     if isinstance(resolved, _EchoCommandFailure):
+        if debug:
+            _echo_presentation._print_echo_header()
         return _render_debug_echo_failure(
             domain = resolved.normalized_domain,
             debug_json = json_output,
@@ -245,6 +246,19 @@ def cmd_echo(
                 network_seconds = resolved.network_seconds)
         )
         return 0
+
+    _echo_presentation._print_echo_header()
+
+    debug_payload_printer = print_debug_json_payload if json_output else print_debug_payload
+    if resolved.outbound_payload is not None:
+        debug_payload_printer(
+            f"Outbound payload to https://pw.{resolved.normalized_domain}/inbox",
+            resolved.outbound_payload,
+        )
+    debug_payload_printer(
+        "Inbound payload",
+        resolved.parsed_response_payload,
+    )
 
     print_section_title(f"Verified echo response from {domain}")
     print_labeled_value_lines(

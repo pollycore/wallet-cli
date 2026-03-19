@@ -54,6 +54,7 @@
 - For interactive `pw echo --debug`, keep YAML as the initial payload view unless the user explicitly asks for JSON via `--json`; the default debug view should match the CLI's normal YAML-style payload formatting.
 - For interactive `pw echo --debug`, show a terminal `Sending message...` spinner while the request and debug sections are being prepared, and only launch the Textual viewer once the final success or failure content is ready.
 - For interactive `pw echo --debug`, keep transport-level debug payload printing off during that spinner phase so the outbound payload does not flash before the final Textual viewer opens.
+- For `pw echo --debug`, keep the top header box delayed until after the spinner/request phase too, so the send step stays visually minimal and the final layout appears all at once.
 - For plain `pw echo`, use the same `Sending message...` spinner around the request phase as the debug path, while keeping the final non-debug output to the single concise verification line.
 - For interactive `pw echo --debug`, copy actions work best at the section level: keep copyable text alongside each payload-style block so the UI can offer one-button clipboard export next to that block’s title.
 - For `pw echo` transport failures, keep the default path user-friendly, but let `--debug` surface the raw underlying network exception so missing-domain troubleshooting still has the low-level clue when needed.
