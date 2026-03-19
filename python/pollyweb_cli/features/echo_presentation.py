@@ -421,6 +421,14 @@ def _build_echo_timing_lines(
         if isinstance(latency_ms, int):
             lines["Remote latency"] = f"{latency_ms} ms"
 
+        total_ms = response_metadata.get("TotalMs")
+        if isinstance(total_ms, int):
+            lines["Message total"] = f"{total_ms} ms"
+
+        handler_ms = response_metadata.get("HandlerMs")
+        if isinstance(handler_ms, int):
+            lines["Message handler"] = f"{handler_ms} ms"
+
         total_execution_ms = response_metadata.get("TotalExecutionMs")
         if isinstance(total_execution_ms, int):
             lines["Total execution"] = f"{total_execution_ms} ms"

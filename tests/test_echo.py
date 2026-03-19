@@ -1147,6 +1147,8 @@ def test_echo_debug_prints_wrapped_sync_meta_timing_details(
             "Response": {
                 **nested_response,
                 "Meta": {
+                    "TotalMs": 90,
+                    "HandlerMs": 0,
                     "TotalExecutionMs": 8,
                     "DownstreamExecutionMs": 3,
                 },
@@ -1194,6 +1196,8 @@ def test_echo_debug_prints_wrapped_sync_meta_timing_details(
     assert " - Latency share: 40% (40 ms)" in captured.out
     assert " - Client overhead: 60 ms" in captured.out
     assert " - Remote latency: 12 ms" in captured.out
+    assert " - Message total: 90 ms" in captured.out
+    assert " - Message handler: 0 ms" in captured.out
     assert " - Total execution: 8 ms" in captured.out
     assert " - Downstream execution: 3 ms" in captured.out
     assert captured.err == ""

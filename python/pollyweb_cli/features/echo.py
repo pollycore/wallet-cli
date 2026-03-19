@@ -163,7 +163,13 @@ def _coerce_echo_response_metadata(
         coerced: dict[str, object] = {}
         found_value = False
 
-        for key in ("LatencyMs", "TotalExecutionMs", "DownstreamExecutionMs"):
+        for key in (
+            "LatencyMs",
+            "TotalMs",
+            "HandlerMs",
+            "TotalExecutionMs",
+            "DownstreamExecutionMs",
+        ):
             value = metadata.get(key)
             if value is not None:
                 coerced[key] = value
