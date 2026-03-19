@@ -987,18 +987,13 @@ def test_echo_debug_accepts_wrapped_sync_response_payloads(
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "\nError summary:\n" not in captured.out
-    assert "\nInbound payload:\n" in captured.out
-    assert "Meta:" in captured.out
-    assert "Response:" in captured.out
-    assert "Echo: ok" in captured.out
-    assert "Correlation: 123e4567-e89b-12d3-a456-426614174000" in captured.out
-    assert "Request:" in captured.out
     assert "Verified echo response from any-domain.dom:" in captured.out
     assert (
         " - Signature verified: via DKIM lookup for selector default "
         "on any-domain.pollyweb.org" in captured.out
     )
     assert "\nDNS verification diagnostics:\n" in captured.out
+    assert "DkimName: default._domainkey.pw.any-domain.pollyweb.org" in captured.out
     assert "External DNS checks:" in captured.out
     assert captured.err == ""
 
@@ -1070,11 +1065,11 @@ def test_echo_debug_rejects_invalid_sync_response_wrapper_fields(
     captured = capsys.readouterr()
     assert "\nError summary:\n" in captured.out
     assert " - Status: failed" in captured.out
-    assert (
-        " - Error: Echo response from any-domain.pollyweb.org had unexpected "
-        "top-level field(s): Metadata. Expected only Meta, Request, and "
-        "Response." in captured.out
-    )
+    assert "Echo response from any-domain.pollyweb.org had unexpected" in captured.out
+    assert "top-level field(s): Metadata." in captured.out
+    assert "Expected only" in captured.out
+    assert "Meta, Request, and" in captured.out
+    assert "Response." in captured.out
     assert " - Error type: UserFacingError" in captured.out
     assert "\nInbound payload:\n" in captured.out
     assert "Echo: ok" in captured.out

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import time
 import urllib.error
@@ -60,6 +61,8 @@ from pollyweb_cli.tools.transport import send_wallet_message
 
 
 ECHO_SUBJECT = "Echo@Domain"
+ALLOWED_ECHO_RESPONSE_FIELDS = frozenset({"Body", "Hash", "Header", "Signature"})
+ALLOWED_SYNC_RESPONSE_FIELDS = frozenset({"Meta", "Request", "Response"})
 
 
 class _EchoTextualApp(_echo_presentation._EchoTextualApp):
@@ -269,6 +272,54 @@ def _build_echo_failure_verification_lines(
     return verification_lines
 
 
+def _parse_echo_response(
+    response_payload: str,
+    normalized_domain: str
+) -> Msg:
+    """Parse an echo response, supporting both direct and wrapped sync payloads."""
+
+    parse_parameters = inspect.signature(Msg.parse).parameters
+    if "sync_response" in parse_parameters:
+        return Msg.parse(
+            response_payload,
+            sync_response = True)
+
+    try:
+        loaded_payload = json.loads(response_payload)
+    except json.JSONDecodeError:
+        return Msg.parse(
+            response_payload,
+            allowed_top_level_fields = ALLOWED_ECHO_RESPONSE_FIELDS)
+
+    if not isinstance(loaded_payload, dict):
+        return Msg.parse(
+            response_payload,
+            allowed_top_level_fields = ALLOWED_ECHO_RESPONSE_FIELDS)
+
+    if "Response" not in loaded_payload:
+        return Msg.parse(
+            loaded_payload,
+            allowed_top_level_fields = ALLOWED_ECHO_RESPONSE_FIELDS)
+
+    unexpected_fields = sorted(
+        field
+        for field in loaded_payload
+        if field not in ALLOWED_SYNC_RESPONSE_FIELDS
+    )
+    if unexpected_fields:
+        allowed_fields = "Meta, Request, and Response"
+        unexpected = ", ".join(unexpected_fields)
+        raise UserFacingError(
+            f"Echo response from {normalized_domain} had unexpected "
+            f"top-level field(s): {unexpected}. Expected only {allowed_fields}."
+        )
+
+    response_message = loaded_payload.get("Response")
+    return Msg.parse(
+        response_message,
+        allowed_top_level_fields = ALLOWED_ECHO_RESPONSE_FIELDS)
+
+
 def _describe_echo_network_error(
     domain: str,
     reason: object,
@@ -344,9 +395,9 @@ def cmd_echo(
             allowed_to.add(stored_bind)
 
         try:
-            response = Msg.parse(
+            response = _parse_echo_response(
                 response_payload,
-                sync_response = True)
+                normalized_domain)
         except MsgValidationError as exc:
             raise _to_echo_user_facing_error(
                 exc,

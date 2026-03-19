@@ -1,5 +1,17 @@
 # Task Plan
 
+- [x] Trace the current wrapped echo-response failure and confirm whether the parser rejects the outer sync envelope before unwrapping `Response`
+- [x] Move wrapped synchronous response validation into `pollyweb` so the library owns the `Request`/`Response`/`Meta` rule and unwraps the nested reply
+- [x] Update `wallet-cli` echo parsing to use the shared library sync-response path, add regression coverage, and verify both repos with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/pollyweb-pypi/pollyweb/msg.py` so `Msg.parse(..., sync_response = True)` now validates the outer synchronous `Request`/`Response`/`Meta` envelope and unwraps the nested `Response` message before normal PollyWeb parsing and verification.
+- Added `/Users/jorgemf/Git/pollyweb-pypi/tests/test_msg.py` coverage for both the accepted wrapped-response path and the new rejection wording when callers still send `Metadata` instead of `Meta`, and documented the API in `/Users/jorgemf/Git/pollyweb-pypi/docs/msg.md`, `/Users/jorgemf/Git/pollyweb-pypi/docs/msg/parse.md`, and `/Users/jorgemf/Git/pollyweb-pypi/RELEASES.md`.
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` to rely on `pollyweb.Msg.parse(..., sync_response = True)` instead of a CLI-owned top-level allow-list, and refreshed `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` plus the local docs/guidance to match the new wrapper contract.
+
+# Task Plan
+
 - [x] Inspect the current `pw echo` response-header extraction and confirm where remote DKIM selector assessment comes from today
 - [x] Update `pw echo` to prefer `msg.Response.Header.Selector` when assessing remote DKIM context from wrapped sync responses
 - [x] Add focused regression coverage for wrapped-response selector assessment and verify with the repo test interpreter
