@@ -1,5 +1,16 @@
 # Task Plan
 
+- [x] Inspect the current `pw bind` instructions and implementation to confirm whether malformed domains are validated before transport
+- [x] Add an early `pw bind` domain-validation step so malformed domains fail as direct user-facing errors before keys load or network work starts
+- [x] Add focused regression coverage and verify the affected bind and CLI suites with the repo test interpreter
+
+# Review
+
+- Updated [/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py](/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py) so `pw bind` now normalizes and validates the target domain up front through PollyWeb message validation, then reuses that validated domain through the rest of the bind flow. Malformed inputs now fail immediately with a direct `UserFacingError` instead of leaking into the generic command-failure path.
+- Added [/Users/jorgemf/Git/wallet-cli/tests/test_bind.py](/Users/jorgemf/Git/wallet-cli/tests/test_bind.py) coverage that proves an invalid bind target is rejected before key loading begins, while the existing unresolved-host path still stays covered.
+- Updated [/Users/jorgemf/Git/wallet-cli/docs/commands/bind.md](/Users/jorgemf/Git/wallet-cli/docs/commands/bind.md), [/Users/jorgemf/Git/wallet-cli/AGENTS.md](/Users/jorgemf/Git/wallet-cli/AGENTS.md), and [/Users/jorgemf/Git/wallet-cli/tasks/lessons.md](/Users/jorgemf/Git/wallet-cli/tasks/lessons.md) so the new bind validation rule is documented for future work.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_bind.py` (`19 passed`) and `./.venv-tests/bin/python -m pytest -q tests/test_cli_core.py` (`39 passed`).
+
 - [x] Inspect the current `pw test` success-line timing helpers and confirm why wrapped `Response.Meta.TotalMs` is not affecting the latency percentage
 - [x] Update `pw test` latency calculation so wrapped response totals reduce the transport share shown in the concise success line
 - [x] Add focused regression coverage and verify with the repo test interpreter

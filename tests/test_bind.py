@@ -631,6 +631,64 @@ def test_bind_accepts_json_bind_value_without_prefix(
     assert f"Stored bind for any-hoster.pollyweb.org: {bind_uuid}" in captured.out
 
 
+def test_bind_accepts_wrapped_sync_response_shape(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+    bind_uuid = str(uuid.uuid4())
+
+    wrapped_response = {
+        "Request": {
+            "Header": {
+                "To": "any-listener.pollyweb.org",
+                "Subject": "Bind@Vault",
+            }
+        },
+        "Response": {
+            "Header": {
+                "From": "any-listener.pollyweb.org",
+                "Subject": "Bind@Vault",
+            },
+            "Body": {
+                "Bind": bind_uuid,
+                "Schema": "pollyweb.org/BIND:1.0",
+            },
+        },
+    }
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(
+        cli.urllib.request,
+        "urlopen",
+        lambda request: DummyResponse(
+            cli.json.dumps(wrapped_response).encode("utf-8")
+        ),
+    )
+
+    exit_code = cli.main(["bind", "any-listener.dom"])
+
+    assert exit_code == 0
+    assert cli.yaml.safe_load(binds_path.read_text()) == [
+        {
+            "Bind": bind_uuid,
+            "Schema": "pollyweb.org/BIND:1.0",
+            "Domain": "any-listener.pollyweb.org",
+        }
+    ]
+    captured = capsys.readouterr()
+    assert f"Stored bind for any-listener.dom: {bind_uuid}" in captured.out
+
+
 def test_bind_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
@@ -660,3 +718,31 @@ def test_bind_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
         "Could not resolve PollyWeb inbox host pw.any-host.pollyweb.org"
         in captured.err
     )
+
+
+def test_bind_rejects_invalid_domain_before_loading_keys(
+    monkeypatch,
+    tmp_path,
+    capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    require_calls: list[str] = []
+
+    def fake_require_keys():
+        require_calls.append("called")
+
+    monkeypatch.setattr(cli, "_maybe_upgrade_before_command", lambda argv: None)
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli, "require_configured_keys", fake_require_keys)
+
+    exit_code = cli.main(["bind", "bad domain.com"])
+
+    assert exit_code == 1
+    assert require_calls == []
+    captured = capsys.readouterr()
+    assert "Invalid domain for `pw bind`: bad domain.com" in captured.err
+    assert "Normalized target: bad domain.com" in captured.err
+    assert "Reason: To must be a domain string or a UUID" in captured.err

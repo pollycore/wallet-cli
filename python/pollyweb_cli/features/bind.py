@@ -14,7 +14,7 @@ import urllib.error
 from pathlib import Path
 
 import yaml
-from pollyweb import KeyPair, normalize_domain_name
+from pollyweb import KeyPair, Msg, MsgValidationError, normalize_domain_name
 
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.tools.debug import parse_debug_payload, print_yaml_payload
@@ -61,10 +61,67 @@ def parse_bind_candidate(bind_candidate: object) -> str | None:
     return None
 
 
+def _extract_bind_entry_from_mapping(
+    value: object
+) -> dict[str, str] | None:
+    """Walk a nested response mapping and return the first bind entry found."""
+
+    if not isinstance(value, dict):
+        return None
+
+    bind_candidate = parse_bind_candidate(value.get("Bind"))
+    schema_candidate = value.get(BIND_SCHEMA_KEY)
+    if bind_candidate is not None:
+        entry = {"Bind": bind_candidate}
+        if isinstance(schema_candidate, str):
+            entry[BIND_SCHEMA_KEY] = schema_candidate
+        return entry
+
+    for key in ("Response", "Body", "Request", "Header"):
+        nested_value = value.get(key)
+        nested_entry = _extract_bind_entry_from_mapping(nested_value)
+        if nested_entry is not None:
+            return nested_entry
+
+    for nested_value in value.values():
+        nested_entry = _extract_bind_entry_from_mapping(nested_value)
+        if nested_entry is not None:
+            return nested_entry
+
+    return None
+
+
 def normalize_bind_domain(domain: str) -> str:
     """Normalize supported bind-domain aliases to canonical hostnames."""
 
     return normalize_domain_name(domain)
+
+
+def validate_bind_domain(domain: str) -> str:
+    """Normalize and validate a bind target before any network work starts."""
+
+    normalized_domain = normalize_bind_domain(domain)
+
+    try:
+        Msg.from_outbound(
+            {
+                "To": normalized_domain,
+                "Subject": BIND_SUBJECT,
+                "Body": {},
+            }
+        )
+    except MsgValidationError as exc:
+        raise UserFacingError(
+            "\n".join(
+                [
+                    f"Invalid domain for `pw bind`: {domain}",
+                    f"Normalized target: {normalized_domain}",
+                    f"Reason: {exc}",
+                ]
+            )
+        ) from None
+
+    return normalized_domain
 
 
 def serialize_public_key_value(public_key_pem: str) -> str:
@@ -83,7 +140,11 @@ def parse_bind_response(payload: str) -> dict[str, str]:
         match = BIND_PATTERN.search(payload)
         bind_value = normalize_bind_value(match.group(0)) if match is not None else None
 
-    schema_value: str | None = None
+    entry: dict[str, str] | None = (
+        {"Bind": bind_value}
+        if bind_value is not None
+        else None
+    )
 
     try:
         parsed = json.loads(payload)
@@ -91,24 +152,11 @@ def parse_bind_response(payload: str) -> dict[str, str]:
         parsed = None
 
     if isinstance(parsed, dict):
-        bind_candidate = parse_bind_candidate(parsed.get("Bind"))
-        if bind_candidate is not None:
-            bind_value = bind_candidate
+        nested_entry = _extract_bind_entry_from_mapping(parsed)
+        if nested_entry is not None:
+            entry = nested_entry
 
-        schema_candidate = parsed.get(BIND_SCHEMA_KEY)
-        if isinstance(schema_candidate, str):
-            schema_value = schema_candidate
-
-        body = parsed.get("Body")
-        if isinstance(body, dict):
-            bind_candidate = parse_bind_candidate(body.get("Bind"))
-            if bind_candidate is not None:
-                bind_value = bind_candidate
-            schema_candidate = body.get(BIND_SCHEMA_KEY)
-            if isinstance(schema_candidate, str):
-                schema_value = schema_candidate
-
-    if bind_value is None:
+    if entry is None:
         preview = " ".join(payload.split())
         if len(preview) > 160:
             preview = preview[:157] + "..."
@@ -129,9 +177,6 @@ def parse_bind_response(payload: str) -> dict[str, str]:
             )
         )
 
-    entry = {"Bind": bind_value}
-    if schema_value is not None:
-        entry[BIND_SCHEMA_KEY] = schema_value
     return entry
 
 
@@ -477,11 +522,13 @@ def cmd_bind(
 ) -> int:
     """Run the bind command and persist the resulting bind token."""
 
+    normalized_domain = validate_bind_domain(domain)
+
     try:
         require_configured_keys()
         key_pair = load_signing_key_pair()
         bind_entry, raw_payload = send_bind_message(
-            domain,
+            normalized_domain,
             key_pair,
             public_key_path,
             binds_path,
@@ -490,7 +537,7 @@ def cmd_bind(
             anonymous=anonymous,
             unsigned=unsigned,
         )
-        save_bind(bind_entry, domain, binds_path)
+        save_bind(bind_entry, normalized_domain, binds_path)
     except FileNotFoundError:
         raise UserFacingError(
             f"Missing PollyWeb keys in {config_dir}. Run `pw config` first."
@@ -501,7 +548,7 @@ def cmd_bind(
         ) from None
     except urllib.error.URLError as exc:
         reason = describe_bind_network_error(
-            domain,
+            normalized_domain,
             exc.reason)
         raise UserFacingError(
             f"Could not bind {domain}. Network request failed: {reason}"
