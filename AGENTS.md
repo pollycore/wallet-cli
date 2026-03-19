@@ -63,6 +63,7 @@
 - `pw bind` should treat an unchanged canonical domain/schema bind UUID as a true no-op: do not rewrite `~/.pollyweb/binds.yaml`, do not append a normal bind log entry, and do not surface change notifications.
 - For discovery, if `pw bind` receives a different bind UUID for the same canonical domain and schema, raise an error instead of replacing the stored bind, append an `ALERT` entry to `~/.pollyweb/binds.log` including the triggering script path and CLI version, and attempt a local OS notification so concurrent churn is obvious.
 - Automated pytest runs should stay quiet even when they intentionally exercise bind-change alerts: keep the `ALERT` log and raised error, but suppress the local OS notification while `pytest` is running.
+- Plain successful `pw bind` runs should stay as terse as `pw echo` and `pw test`: without `--debug`, print only `✅ Bound to <domain>`.
 - Domain-signed PollyWeb messages should omit `Header.Algorithm`; receivers must infer the signature algorithm from DKIM using the declared `Selector`, and `wallet-cli` should not add or require that header for domain senders.
 - Plain `pw echo` should stay concise on success and print only the verification line with total duration and network-latency percentage.
 - Only `pw echo --debug` should show the top header and bottom summary box, and only interactive `--debug` TTY runs should switch to the Textual viewer so those boxes react to terminal resize.

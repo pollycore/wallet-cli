@@ -1,10 +1,18 @@
 # Task Plan
 
+- [x] Inspect the current `pw bind` success output and confirm where non-debug completion text is rendered
+- [x] Update non-debug `pw bind` success output so it only prints `✅ Bound to <domain>` while leaving debug and JSON paths unchanged
+- [x] Verify the focused bind suite with the repo test interpreter and record the review note
+
 - [x] Inspect the current `pw test` default fixture discovery and confirm whether nested `pw-tests` folders are included
 - [x] Update `pw test` directory discovery so default runs include YAML fixtures inside `pw-tests` subfolders in deterministic order
 - [x] Verify the focused `pw test` suite with the repo test interpreter and record the maintenance note
 
 # Review
+
+- Updated [/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py](/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py) so the plain successful `pw bind` path now prints only `✅ Bound to <domain>`, with the existing `--debug` and `--json` output paths left unchanged.
+- Updated [/Users/jorgemf/Git/wallet-cli/tests/test_bind.py](/Users/jorgemf/Git/wallet-cli/tests/test_bind.py) to lock the non-debug success output to the new single-line message for normal, `.dom`, and `--anonymous` bind flows.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_bind.py` (`20 passed`).
 
 - Updated [/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py](/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py) so default `pw test` discovery now walks `./pw-tests` recursively with `rglob("*.yaml")`, which includes wrapped fixtures inside nested folders while keeping deterministic alphabetical path ordering.
 - Added [/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py](/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py) coverage that proves a default `pw test` run now includes nested `pw-tests` fixtures and preserves the expected ordered pass output.

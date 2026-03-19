@@ -51,6 +51,7 @@
 - For `pw echo --debug`, include the message's own timing fields from wrapped `Meta` / `Response.Meta` in the `Network timing` section, including `TotalMs` and `HandlerMs`, so the local transport math and the message-reported timings are visible side by side.
 - For `pw echo --debug`, carry wrapped sync `Meta.ColdMs` through the same metadata merge as `LatencyMs`, `TotalMs`, and `HandlerMs`, and surface it as a `Cold start` line in `Network timing` when present.
 - For `pw echo`, translate `urllib.error.URLError` resolver failures into a human-readable PollyWeb inbox-host message instead of exposing raw `socket.gaierror(...)` text.
+- For plain `pw bind`, keep the success path terse: without `--debug`, print only `✅ Bound to <domain>` and do not echo the bind UUID or binds file path.
 - For `pw echo`, mirror the `pw msg` and `pw test` format switch: `--json` should print the raw synchronous response, while `--debug --json` should keep the echo verification UI but switch payload-style sections from YAML-style formatting to raw JSON.
 - For shared `--json` output, add Rich syntax coloring only for interactive terminals; keep the compact JSON bytes unchanged for redirected/scripted output so `--json` stays automation-safe.
 - For interactive `pw echo --debug --json`, remember that the final Textual body uses its own payload renderables; if only the pre-app console helper gets JSON coloring, the app repaint will replace it with plain white JSON a moment later.

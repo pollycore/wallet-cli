@@ -558,6 +558,5 @@ def cmd_bind(
         print(raw_payload)
         return 0
 
-    print(f"Stored bind for {domain}: {normalize_bind_value(bind_entry['Bind'])}")
-    print(f"Updated {binds_path}")
+    print(f"✅ Bound to {domain}")
     return 0

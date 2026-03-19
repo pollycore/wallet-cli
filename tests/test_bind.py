@@ -81,8 +81,7 @@ def test_bind_sends_unsigned_anonymous_message_and_stores_bind(
     assert '"Signature":"' not in body
 
     captured = capsys.readouterr()
-    assert stored_bind_value in captured.out
-    assert str(binds_path) in captured.out
+    assert captured.out == "✅ Bound to vault.example.com\n"
 
 def test_bind_normalizes_dom_alias_when_using_wallet_send(
     monkeypatch, tmp_path, capsys
@@ -124,7 +123,7 @@ def test_bind_normalizes_dom_alias_when_using_wallet_send(
     assert '"Domain":"any-hoster.pollyweb.org"' in body
 
     captured = capsys.readouterr()
-    assert "Stored bind for any-hoster.dom" in captured.out
+    assert captured.out == "✅ Bound to any-hoster.dom\n"
 
 def test_bind_anonymous_flag_ignores_stored_bind(
     monkeypatch, tmp_path, capsys
@@ -160,7 +159,7 @@ def test_bind_anonymous_flag_ignores_stored_bind(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert "Stored bind for vault.example.com" in captured.out
+    assert captured.out == "✅ Bound to vault.example.com\n"
 
 
 def test_bind_logs_created_bind_entry(monkeypatch, tmp_path, capsys):
@@ -628,7 +627,7 @@ def test_bind_accepts_json_bind_value_without_prefix(
         {"Bind": bind_uuid, "Domain": "any-hoster.pollyweb.org"}
     ]
     captured = capsys.readouterr()
-    assert f"Stored bind for any-hoster.pollyweb.org: {bind_uuid}" in captured.out
+    assert captured.out == "✅ Bound to any-hoster.pollyweb.org\n"
 
 
 def test_bind_accepts_wrapped_sync_response_shape(
@@ -686,7 +685,7 @@ def test_bind_accepts_wrapped_sync_response_shape(
         }
     ]
     captured = capsys.readouterr()
-    assert f"Stored bind for any-listener.dom: {bind_uuid}" in captured.out
+    assert captured.out == "✅ Bound to any-listener.dom\n"
 
 
 def test_bind_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
