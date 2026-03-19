@@ -1,5 +1,6 @@
 # Lessons
 
+- For `pw test`, treat wrapped `Response.Meta.TotalMs` as server time inside the round trip when calculating the concise success-line latency share, so the displayed percentage reflects the remaining transport time instead of the raw wall-clock send duration.
 - When splitting `pw echo` into smaller sub-feature modules, keep both `pollyweb_cli.features.echo` and `pollyweb_cli.features.echo_presentation` as thin compatibility facades, and preserve the old patchable helper surface on `echo.py` including `send_wallet_message`, `DEBUG_CONSOLE`, payload renderers, section builders, and legacy internal call signatures that focused tests monkeypatch directly.
 - For `pw echo` timing, treat wrapped sync metadata as transport timing hints rather than as part of the signed reply envelope: merge top-level `Meta`, nested `Response.Meta`, and legacy `Body.Metadata`, strip `Response.Meta` before `Msg.parse(...)`, and keep an explicit client-overhead line in milliseconds beside the network share.
 - For the interactive Textual echo viewer, bind common close keys directly to `quit` (`Ctrl+C`, `Ctrl+W`, `q`, `x`, `Esc`) instead of relying on Textual's inherited quit-help toast, so macOS and Linux users can leave the app with the shortcuts they already expect.

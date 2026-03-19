@@ -174,6 +174,24 @@ def test_extract_test_total_seconds_keeps_larger_local_duration():
     ) == pytest.approx(0.35)
 
 
+def test_extract_test_latency_seconds_uses_wrapped_response_total_ms():
+    payload = json.dumps(
+        {
+            "Response": {
+                "Meta": {
+                    "TotalMs": 252,
+                },
+            },
+        }
+    )
+
+    assert test_feature.extract_test_latency_seconds(
+        payload,
+        total_seconds = 0.56,
+        network_seconds = 0.55,
+    ) == pytest.approx(0.308)
+
+
 def test_test_success_output_uses_wrapped_response_total_ms_for_latency_share(
     monkeypatch, tmp_path, capsys
 ):
@@ -188,16 +206,21 @@ def test_test_success_output_uses_wrapped_response_total_ms_for_latency_share(
 
     monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
     monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    perf_counter_values = iter([10.0, 10.56])
+    monkeypatch.setattr(
+        test_feature.time,
+        "perf_counter",
+        lambda: next(perf_counter_values))
 
     def fake_send_wallet_message(**kwargs):
-        kwargs["timing"]["network_seconds"] = 0.1
+        kwargs["timing"]["network_seconds"] = 0.55
         return (
             json.dumps(
                 {
                     "Request": {},
                     "Response": {
                         "Meta": {
-                            "TotalMs": 400,
+                            "TotalMs": 252,
                         },
                         "Header": {
                             "Subject": "Echo@Domain",
@@ -219,7 +242,7 @@ def test_test_success_output_uses_wrapped_response_total_ms_for_latency_share(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == "✅ Passed: test (400 ms, 25% latency)"
+    assert captured.out.strip() == "✅ Passed: test (560 ms, 55% latency)"
 
 def test_test_debug_json_passes_raw_debug_flag_to_transport(
     monkeypatch, tmp_path, capsys

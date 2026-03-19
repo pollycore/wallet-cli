@@ -83,6 +83,37 @@ def format_test_success_message(
     )
 
 
+def extract_test_response_total_seconds(
+    response_payload: str
+) -> float | None:
+    """Read the wrapped response total-duration hint from one sync payload."""
+
+    try:
+        loaded_payload = json.loads(response_payload)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(loaded_payload, dict):
+        return None
+
+    wrapped_response = loaded_payload.get("Response")
+    if not isinstance(wrapped_response, dict):
+        return None
+
+    response_metadata = wrapped_response.get("Meta")
+    if not isinstance(response_metadata, dict):
+        return None
+
+    total_milliseconds = response_metadata.get("TotalMs")
+    if isinstance(total_milliseconds, bool) or not isinstance(total_milliseconds, int):
+        return None
+
+    if total_milliseconds < 0:
+        return None
+
+    return total_milliseconds / 1000
+
+
 def extract_test_total_seconds(
     response_payload: str,
     *,
@@ -91,34 +122,33 @@ def extract_test_total_seconds(
     """Choose the best total duration hint for `pw test` success output."""
 
     total_seconds = measured_total_seconds
-
-    try:
-        loaded_payload = json.loads(response_payload)
-    except json.JSONDecodeError:
-        return total_seconds
-
-    if not isinstance(loaded_payload, dict):
-        return total_seconds
-
-    wrapped_response = loaded_payload.get("Response")
-    if not isinstance(wrapped_response, dict):
-        return total_seconds
-
-    response_metadata = wrapped_response.get("Meta")
-    if not isinstance(response_metadata, dict):
-        return total_seconds
-
-    total_milliseconds = response_metadata.get("TotalMs")
-    if isinstance(total_milliseconds, bool) or not isinstance(total_milliseconds, int):
-        return total_seconds
-
-    if total_milliseconds < 0:
+    response_total_seconds = extract_test_response_total_seconds(response_payload)
+    if response_total_seconds is None:
         return total_seconds
 
     # Treat the wrapped sync metadata as a timing hint so the concise success
     # line can reflect server-reported end-to-end duration when it is available
     # without undercutting a larger locally measured wall-clock duration.
-    return max(total_seconds, total_milliseconds / 1000)
+    return max(total_seconds, response_total_seconds)
+
+
+def extract_test_latency_seconds(
+    response_payload: str,
+    *,
+    total_seconds: float,
+    network_seconds: float
+) -> float:
+    """Choose the transport-latency share shown in `pw test` success output."""
+
+    response_total_seconds = extract_test_response_total_seconds(response_payload)
+
+    if response_total_seconds is None:
+        return network_seconds
+
+    # When the response reports its own end-to-end execution time, treat that
+    # server-side total as part of the round trip before calculating the
+    # remaining transport share for the concise success line.
+    return max(0.0, total_seconds - response_total_seconds)
 
 
 def resolve_bind_placeholder(
@@ -544,7 +574,10 @@ def run_message_test_fixture(
     total_seconds = extract_test_total_seconds(
         response_payload,
         measured_total_seconds = total_seconds)
-    network_seconds = timing.get("network_seconds", 0.0)
+    network_seconds = extract_test_latency_seconds(
+        response_payload,
+        total_seconds = total_seconds,
+        network_seconds = timing.get("network_seconds", 0.0))
     print(
         format_test_success_message(
             fixture_path.stem,

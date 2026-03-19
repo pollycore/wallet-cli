@@ -1,5 +1,15 @@
 # Task Plan
 
+- [x] Inspect the current `pw test` success-line timing helpers and confirm why wrapped `Response.Meta.TotalMs` is not affecting the latency percentage
+- [x] Update `pw test` latency calculation so wrapped response totals reduce the transport share shown in the concise success line
+- [x] Add focused regression coverage and verify with the repo test interpreter
+
+# Review
+
+- Updated [/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py](/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py) so `pw test` now reads wrapped `Response.Meta.TotalMs` through a shared helper and uses that server-reported duration when calculating the displayed latency share, instead of treating the whole round trip as pure network time.
+- Added [/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py](/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py) coverage for both the helper-level latency math and the command-level success line, including a pinned 560 ms round-trip / 252 ms response-meta case.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_test_command.py` (`38 passed, 1 skipped`).
+
 - [x] Inspect the interactive `pw echo` Textual viewer startup and confirm why terminal zoom shortcuts stop working after mount
 - [x] Disable the enhanced keyboard protocol inside the mounted echo viewer so macOS terminal zoom shortcuts keep working
 - [x] Add focused regression coverage, verify with the repo test interpreter, and record the maintenance note
