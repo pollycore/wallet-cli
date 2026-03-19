@@ -22,6 +22,7 @@ DEBUG_VALUE_STYLE = "#d0e2ff"
 DEBUG_LITERAL_STYLE = "#08bdba"
 DEBUG_PUNCTUATION_STYLE = "dim"
 DEBUG_SECTION_TITLE_STYLE = "bold white"
+DEBUG_CODE_BACKGROUND_STYLE = "on #262620"
 HTTP_CODE_STYLES = {
     1: "cyan",
     2: "green",
@@ -315,4 +316,5 @@ def render_debug_yaml(yaml_payload: str) -> Text:
         if remainder.strip() == "|":
             literal_indent = indent_width
 
+    rendered.stylize(DEBUG_CODE_BACKGROUND_STYLE)
     return rendered

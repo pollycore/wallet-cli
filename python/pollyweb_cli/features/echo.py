@@ -20,12 +20,13 @@ from rich.text import Text
 
 try:
     from textual.app import App, ComposeResult
-    from textual.containers import Horizontal, VerticalScroll
+    from textual.containers import Horizontal, Vertical, VerticalScroll
     from textual.widgets import Button, Static
 except ImportError:  # pragma: no cover - dependency is expected in runtime envs
     App = None
     ComposeResult = object
     Horizontal = None
+    Vertical = None
     VerticalScroll = None
     Button = None
     Static = None
@@ -591,7 +592,7 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         height: 1fr;
     }
 
-    #format-bar {
+    #header-bar {
         height: auto;
         margin: 0 0 1 0;
     }
@@ -602,7 +603,10 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
     }
 
     .format-button {
-        margin: 0 1 0 0;
+        width: auto;
+        min-width: 6;
+        height: auto;
+        margin: 0 0 0 1;
     }
 
     .copy-button {
@@ -680,25 +684,25 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
     def compose(self) -> ComposeResult:
         """Compose the reactive echo layout."""
 
-        yield Static(self._header_panel, classes = "section")
         yield Horizontal(
+            Static(self._header_panel, classes = "section"),
             Button(
-                "YAML",
+                "Yaml",
                 id = "toggle-yaml",
-                variant = "primary" if self._payload_format == "yaml" else "default",
+                variant = "success" if self._payload_format == "yaml" else "default",
                 classes = "format-button",
             ),
             Button(
-                "JSON",
+                "Json",
                 id = "toggle-json",
-                variant = "primary" if self._payload_format == "json" else "default",
+                variant = "success" if self._payload_format == "json" else "default",
                 classes = "format-button",
             ),
-            id = "format-bar",
+            id = "header-bar",
         )
         yield VerticalScroll(
             *[
-                Group(
+                Vertical(
                     Horizontal(
                         Static(
                             _render_section_title(section.title),
@@ -717,6 +721,7 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
                         classes = "section-bar",
                     ),
                     Static(section.body, classes = "section"),
+                    classes = "section",
                 )
                 for index, section in enumerate(self._current_sections())
             ],

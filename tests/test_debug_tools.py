@@ -11,6 +11,15 @@ def test_build_json_syntax_uses_pretty_indented_json():
     assert renderable.code == '{\n  "outer": {\n    "inner": true\n  }\n}'
 
 
+def test_render_debug_yaml_adds_code_block_background():
+    renderable = debug_tools.render_debug_yaml("Header:\n  Subject: Echo@Domain")
+
+    assert any(
+        span.style == debug_tools.DEBUG_CODE_BACKGROUND_STYLE
+        for span in renderable.spans
+    )
+
+
 def test_print_json_payload_uses_rich_syntax_for_interactive_terminals(
     monkeypatch
 ):

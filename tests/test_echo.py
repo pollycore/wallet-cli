@@ -382,10 +382,12 @@ def test_echo_textual_app_keeps_rich_static_sections():
 
     original_static = echo_feature.Static
     original_horizontal = echo_feature.Horizontal
+    original_vertical = echo_feature.Vertical
     original_button = echo_feature.Button
     original_vertical_scroll = echo_feature.VerticalScroll
     echo_feature.Static = FakeStatic
     echo_feature.Horizontal = FakeVerticalScroll
+    echo_feature.Vertical = FakeVerticalScroll
     echo_feature.Button = FakeStatic
     echo_feature.VerticalScroll = FakeVerticalScroll
 
@@ -419,16 +421,17 @@ def test_echo_textual_app_keeps_rich_static_sections():
     finally:
         echo_feature.Static = original_static
         echo_feature.Horizontal = original_horizontal
+        echo_feature.Vertical = original_vertical
         echo_feature.Button = original_button
         echo_feature.VerticalScroll = original_vertical_scroll
 
-    assert len(composed) == 4
+    assert len(composed) == 3
     assert len(created_static_widgets) >= 4
     assert any(
         getattr(widget.renderable, "plain", None) == "Verified response:"
         for widget in created_static_widgets
     )
-    assert len(composed[2].children) == 1
+    assert len(composed[1].children) == 1
 
 
 def test_echo_textual_app_toggle_switches_payload_sections():
