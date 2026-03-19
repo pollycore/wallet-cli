@@ -148,7 +148,7 @@ def _build_echo_footer_panel(
         Text("✅ Signed message", style = body_style),
         Text("│", style = accent_style),
         Text(
-            f" ⏳ Duration {total_milliseconds} ms  Latency {latency_share:.0f}%",
+            f" ⏳ Time {total_milliseconds} ms  Network {latency_share:.0f}%",
             style = body_style,
         ),
     )
@@ -193,7 +193,7 @@ def _build_echo_error_footer_panel(
         Text("ℹ️ Review the error summary above", style = body_style),
         Text("│", style = accent_style),
         Text(
-            f" ⏳ Duration {total_milliseconds} ms  Latency {latency_share:.0f}%",
+            f" ⏳ Time {total_milliseconds} ms  Network {latency_share:.0f}%",
             style = body_style,
         ),
     )

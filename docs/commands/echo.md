@@ -15,7 +15,7 @@ Plain `pw echo` stays concise and prints only the final verification line with t
 - `✅ DKIM and DNSSEC`: the reply signature was verified through DKIM lookup and the returned DNS diagnostics showed authenticated DNSSEC data.
 - `✅ Signed message`: the reply carried a valid signed PollyWeb message.
 - `✅ CDN distribution` or `⏳ CDN distribution`: transport headers did or did not expose an identifiable edge/CDN provider.
-- `⏳ Duration <ms>  Latency <percent>%`: the total command duration and the share spent in the network send.
+- `⏳ Time <ms>  Network <percent>%`: the total command duration and the share spent in the network send.
 
 Outside `--debug`, the command does not print those boxes.
 
