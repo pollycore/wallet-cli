@@ -612,6 +612,16 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         margin: 0 0 0 0;
     }
 
+    .section-title {
+        width: 1fr;
+    }
+
+    .section-controls {
+        width: auto;
+        height: auto;
+        align: right middle;
+    }
+
     .section-block {
         height: auto;
         margin: 0 0 1 0;
@@ -724,17 +734,21 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
                     Horizontal(
                         Static(
                             _render_section_title(section.title),
+                            classes = "section-title",
                         ),
-                        *(
-                            [
-                                Button(
-                                    "Copy",
-                                    id = f"copy-{index}",
-                                    classes = "copy-button",
-                                )
-                            ]
-                            if section.copy_text is not None
-                            else []
+                        Horizontal(
+                            *(
+                                [
+                                    Button(
+                                        "Copy",
+                                        id = f"copy-{index}",
+                                        classes = "copy-button",
+                                    )
+                                ]
+                                if section.copy_text is not None
+                                else []
+                            ),
+                            classes = "section-controls",
                         ),
                         classes = "section-bar",
                     ),
