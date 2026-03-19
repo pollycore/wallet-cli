@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import json
+import re
 import socket
 import stat
 import sys
@@ -58,6 +59,18 @@ def _materialize_inbound_wildcards(
 
     return value
 
+
+def assert_passed_output(
+    line: str,
+    fixture_stem: str
+):
+    """Assert that a `pw test` success line includes timing details."""
+
+    assert re.fullmatch(
+        rf"✅ Passed: {re.escape(fixture_stem)} \(\d+ ms, \d+% latency\)",
+        line,
+    )
+
 def test_test_loads_wrapped_fixture_and_verifies_inbound(
     monkeypatch, tmp_path, capsys
 ):
@@ -89,7 +102,7 @@ def test_test_loads_wrapped_fixture_and_verifies_inbound(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.strip(), test_path.stem)
 
 def test_test_json_flag_keeps_success_output_concise(
     monkeypatch, tmp_path, capsys
@@ -118,7 +131,7 @@ def test_test_json_flag_keeps_success_output_concise(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.strip(), test_path.stem)
 
 def test_test_debug_json_passes_raw_debug_flag_to_transport(
     monkeypatch, tmp_path, capsys
@@ -162,7 +175,7 @@ def test_test_debug_json_passes_raw_debug_flag_to_transport(
         "debug_json": True,
     }
     captured = capsys.readouterr()
-    assert captured.out.splitlines()[-1] == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.splitlines()[-1], test_path.stem)
 
 
 def test_test_accepts_long_wrapped_outbound_json_without_path_probe_failure(
@@ -218,7 +231,7 @@ def test_test_accepts_long_wrapped_outbound_json_without_path_probe_failure(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.strip(), test_path.stem)
 
 def test_test_resolves_bind_placeholder_from_stored_binds(
     monkeypatch, tmp_path, capsys
@@ -269,7 +282,7 @@ def test_test_resolves_bind_placeholder_from_stored_binds(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.strip(), test_path.stem)
 
 def test_test_resolves_bind_placeholder_for_dom_alias(
     monkeypatch, tmp_path, capsys
@@ -321,7 +334,7 @@ def test_test_resolves_bind_placeholder_for_dom_alias(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.strip(), test_path.stem)
 
 def test_test_reports_missing_bind_for_placeholder(
     monkeypatch, tmp_path, capsys
@@ -397,7 +410,7 @@ def test_test_resolves_public_key_placeholder_from_wallet(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.strip(), test_path.stem)
 
 
 def test_test_reports_missing_public_key_for_placeholder(
@@ -494,10 +507,10 @@ def test_test_without_path_runs_pw_tests_yaml_files_in_alphabetical_order(
     assert exit_code == 0
     assert observed_paths == ["a-first.yaml", "b-second.yaml"]
     captured = capsys.readouterr()
-    assert captured.out.splitlines() == [
-        "✅ Passed: a-first",
-        "✅ Passed: b-second",
-    ]
+    lines = captured.out.splitlines()
+    assert len(lines) == 2
+    assert_passed_output(lines[0], "a-first")
+    assert_passed_output(lines[1], "b-second")
 
 
 def test_test_without_path_reports_missing_pw_tests_directory(
@@ -549,7 +562,7 @@ def test_test_command_accepts_every_checked_in_test_message_fixture(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {fixture_path.stem}"
+    assert_passed_output(captured.out.strip(), fixture_path.stem)
 
 def test_test_reports_missing_expected_inbound_key(
     monkeypatch, tmp_path, capsys
@@ -607,7 +620,7 @@ def test_test_accepts_missing_expected_inbound_key_when_fixture_value_is_empty(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.strip(), test_path.stem)
 
 def test_test_accepts_present_empty_expected_inbound_key(
     monkeypatch, tmp_path, capsys
@@ -639,7 +652,7 @@ def test_test_accepts_present_empty_expected_inbound_key(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.strip(), test_path.stem)
 
 def test_test_accepts_literal_double_quote_empty_marker_in_response(
     monkeypatch, tmp_path, capsys
@@ -682,7 +695,7 @@ def test_test_accepts_literal_double_quote_empty_marker_in_response(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.strip(), test_path.stem)
 
 def test_test_accepts_empty_object_as_empty_in_response(
     monkeypatch, tmp_path, capsys
@@ -721,7 +734,7 @@ def test_test_accepts_empty_object_as_empty_in_response(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.strip(), test_path.stem)
 
 def test_test_accepts_uuid_wildcard_in_inbound_expectation(
     monkeypatch, tmp_path, capsys
@@ -759,7 +772,7 @@ def test_test_accepts_uuid_wildcard_in_inbound_expectation(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.strip(), test_path.stem)
 
 def test_test_reports_invalid_uuid_for_uuid_wildcard(
     monkeypatch, tmp_path, capsys
@@ -822,7 +835,7 @@ def test_test_accepts_string_wildcard_in_inbound_expectation(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.strip(), test_path.stem)
 
 @pytest.mark.parametrize(
     ("response_payload", "expected_message"),
@@ -905,7 +918,7 @@ def test_test_accepts_timestamp_wildcard_in_inbound_expectation(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+    assert_passed_output(captured.out.strip(), test_path.stem)
 
 
 @pytest.mark.parametrize(

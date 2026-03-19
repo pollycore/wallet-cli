@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 import re
 import socket
+import time
 import urllib.error
 from typing import Any
 import uuid
@@ -59,6 +60,26 @@ DEFAULT_TESTS_DIR = "pw-tests"
 _Z_TIMESTAMP_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$"
 )
+
+
+def format_test_success_message(
+    fixture_name: str,
+    *,
+    total_seconds: float,
+    network_seconds: float
+) -> str:
+    """Build the concise success line for one passing test fixture."""
+
+    total_milliseconds = max(0, round(total_seconds * 1000))
+    network_share = 0.0
+
+    if total_seconds > 0:
+        network_share = (network_seconds / total_seconds) * 100
+
+    return (
+        f"✅ Passed: {fixture_name} ({total_milliseconds} ms, "
+        f"{network_share:.0f}% latency)"
+    )
 
 
 def resolve_bind_placeholder(
@@ -410,6 +431,9 @@ def run_message_test_fixture(
 ) -> None:
     """Send one wrapped test fixture and verify its expected inbound response."""
 
+    started_at = time.perf_counter()
+    timing: dict[str, float] = {}
+
     try:
         require_configured_keys()
         key_pair = load_signing_key_pair()
@@ -432,6 +456,7 @@ def run_message_test_fixture(
             schema_value = request.get("Schema"),
             anonymous = anonymous,
             unsigned = unsigned,
+            timing = timing,
         )
     except FileNotFoundError:
         if fixture_path.suffix in {".yaml", ".yml", ".json"}:
@@ -465,4 +490,11 @@ def run_message_test_fixture(
             expected_inbound,
             "response")
 
-    print(f"✅ Passed: {fixture_path.stem}")
+    total_seconds = time.perf_counter() - started_at
+    network_seconds = timing.get("network_seconds", 0.0)
+    print(
+        format_test_success_message(
+            fixture_path.stem,
+            total_seconds = total_seconds,
+            network_seconds = network_seconds)
+    )

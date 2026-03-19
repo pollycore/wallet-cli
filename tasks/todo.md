@@ -1,5 +1,10 @@
 # Task Plan
 
+- [x] Review the written `pw test` success-output contract and current implementation path
+- [x] Add total-duration and latency timing to each passing `pw test` success line
+- [x] Update `pw test` docs, repo guidance, and regression coverage for the new timing output
+- [x] Verify with `PYTHONPATH=$PWD/python ./.venv-tests/bin/python -m pytest -q tests/test_test_command.py`
+
 - [x] Add a root-level `pw-dev` launcher that runs the repo checkout directly
 - [x] Document the root shortcut alongside the editable-install entry point
 - [x] Verify the launcher from the repo root with the local test environment
@@ -18,6 +23,11 @@
 - [x] Verify with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py`
 
 # Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py` so each passing `pw test` fixture now prints one concise line with total duration in milliseconds and the percentage of that time spent in the network send, reusing the shared wallet-send timing hook already exposed by the transport layer.
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py` to lock in the new `✅ Passed: ... (<ms> ms, <%> latency)` shape across explicit fixtures, default `pw-tests` sweeps, and debug/json variants without depending on exact clock values.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/test.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the new `pw test` success-output contract is documented for future work.
+- Verified with `PYTHONPATH=$PWD/python ./.venv-tests/bin/python -m pytest -q tests/test_test_command.py` (`30 passed, 1 skipped`).
 
 - Added a checked-in root launcher at `/Users/jorgemf/Git/wallet-cli/pw-dev` that prefers `./.venv-tests/bin/python`, falls back to `python3` or `python`, sets `PYTHONPATH` to the repo `python` directory, and invokes `main_dev()` so local runs skip the published-runtime upgrade preflight.
 - Updated `/Users/jorgemf/Git/wallet-cli/README.md`, `/Users/jorgemf/Git/wallet-cli/docs/install.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to document the new root-level `./pw-dev` workflow.

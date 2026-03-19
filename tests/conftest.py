@@ -9,13 +9,15 @@ from pathlib import Path
 import pytest
 import urllib.request
 
-# Add the repository's package source directory so plain `pytest` can import
-# `pollyweb_cli` without requiring an editable install first.
+# Force the repository source directory to the front of `sys.path` so tests
+# never import a stale installed `pollyweb_cli` package ahead of the checkout.
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYTHON_SOURCE = REPO_ROOT / "python"
 
-if str(PYTHON_SOURCE) not in sys.path:
-    sys.path.insert(0, str(PYTHON_SOURCE))
+while str(PYTHON_SOURCE) in sys.path:
+    sys.path.remove(str(PYTHON_SOURCE))
+
+sys.path.insert(0, str(PYTHON_SOURCE))
 
 from pollyweb_cli import cli
 from pollyweb_cli.tools import transport as transport_tools

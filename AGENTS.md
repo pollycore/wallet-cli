@@ -25,7 +25,7 @@
 - `pw test` also resolves the exact string `"<PublicKey>"` from `~/.pollyweb/public.pem` before sending, using the same PEM-stripping serialization as `pw bind`.
 - Keep a pytest coverage hook that iterates every checked-in file under `test-msgs` and runs `cli.main(["test", <fixture>])`, so adding a new wrapped fixture automatically adds command coverage.
 - Keep pytest isolated from the real user profile: tests should run with CLI config paths redirected into a temp `.pollyweb`, patch `transport.DEFAULT_BINDS_PATH` alongside `cli.BINDS_PATH`, and pre-push smoke checks should also override `HOME` so no test can touch `~/.pollyweb`.
-- Successful `pw test` runs should stay concise: print `✅ Passed: <filename-without-extension>` for each passing fixture, including default directory sweeps, and do not print the received message outside `--debug`.
+- Successful `pw test` runs should stay concise: print one `✅ Passed: <filename-without-extension> (<total-ms> ms, <latency>% latency)` line for each passing fixture, including default directory sweeps, and do not print the received message outside `--debug`.
 - When a `pw test` send fails with an HTTP response whose body includes an `error` field, append that inbound error detail to the existing `Error: HTTP ...` output so the red failure area explains the server-side cause without requiring `--debug`.
 - `pw bind` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
 - `pw echo` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
