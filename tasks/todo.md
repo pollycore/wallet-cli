@@ -1,5 +1,17 @@
 # Task Plan
 
+- [x] Fix `parse_message_request()` so long inline JSON is parsed before any filesystem existence check
+- [x] Add regression coverage for `pw test` style wrapped outbound JSON that used to trigger `OSError: [Errno 63] File name too long`
+- [x] Update docs/repo guidance if the user-visible behavior changed
+- [x] Verify with focused pytest, then the full repo test interpreter
+- [ ] Commit, push to `main`, wait for PyPI publish, upgrade `pw` in `any-buffer`, and rerun `pw test --debug`
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/msg.py` so inline JSON message arguments are parsed before any `Path.exists()` probe, preventing macOS from raising `OSError: [Errno 63] File name too long` when `pw test` serializes a wrapped `Outbound` fixture into a long JSON string.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py` coverage for the exact wrapped `Proxy@Domain -> Push@Buffer` fixture shape that failed in `any-buffer`, locking in both the parser behavior and the normalized `.dom` transport target.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_test_command.py` (`30 passed, 1 skipped`) and `./.venv-tests/bin/python -m pytest` (`171 passed, 1 skipped`).
+
 - [x] Confirm the latest published `pollyweb` release and compare it with the repo floor
 - [x] Run a PyPI-backed upgrade in the repo test virtualenv
 - [x] Verify the repo with the required `./.venv-tests/bin/python -m pytest` command

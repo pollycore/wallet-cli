@@ -190,11 +190,9 @@ def parse_message_request(arguments: list[str]) -> tuple[dict[str, object], str]
 
     if len(arguments) == 1:
         candidate = arguments[0]
-        candidate_path = Path(candidate)
 
-        if candidate_path.exists() or candidate_path.suffix in MESSAGE_FILE_SUFFIXES:
-            return load_message_request(candidate_path), str(candidate_path)
-
+        # Treat inline JSON as JSON first so large payloads do not get passed
+        # into `Path.exists()`, which can raise `OSError` on long strings.
         if candidate.lstrip().startswith("{"):
             try:
                 loaded = json.loads(candidate)
@@ -204,6 +202,11 @@ def parse_message_request(arguments: list[str]) -> tuple[dict[str, object], str]
                 ) from None
 
             return _normalize_loaded_message(loaded, "JSON message argument"), candidate
+
+        candidate_path = Path(candidate)
+
+        if candidate_path.exists() or candidate_path.suffix in MESSAGE_FILE_SUFFIXES:
+            return load_message_request(candidate_path), str(candidate_path)
 
     return parse_inline_message_arguments(arguments), "inline message arguments"
 

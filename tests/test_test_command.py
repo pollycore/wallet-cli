@@ -164,6 +164,62 @@ def test_test_debug_json_passes_raw_debug_flag_to_transport(
     captured = capsys.readouterr()
     assert captured.out.splitlines()[-1] == f"✅ Passed: {test_path.stem}"
 
+
+def test_test_accepts_long_wrapped_outbound_json_without_path_probe_failure(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  Header:\n"
+            "    To: any-streamer.dom\n"
+            "    Subject: Proxy@Domain\n"
+            "  Body:\n"
+            "    Header:\n"
+            "      To: any-buffer.dom\n"
+            "      Subject: Push@Buffer\n"
+            "    Body:\n"
+            "      Queue: ab594eec-8244-4159-8f0c-cd2f07700a1e\n"
+            "      Subscriber: any-subscriber.dom\n"
+            "      Message: my-encrypted-content-here\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    def fake_send_wallet_message(**kwargs):
+        assert kwargs["domain"] == "any-streamer.pollyweb.org"
+        assert kwargs["subject"] == "Proxy@Domain"
+        assert kwargs["body"] == {
+            "Header": {
+                "To": "any-buffer.dom",
+                "Subject": "Push@Buffer",
+            },
+            "Body": {
+                "Queue": "ab594eec-8244-4159-8f0c-cd2f07700a1e",
+                "Subscriber": "any-subscriber.dom",
+                "Message": "my-encrypted-content-here",
+            },
+        }
+        return (
+            '{"Header":{"Subject":"Proxy@Domain"}}',
+            None,
+            "any-streamer.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == f"✅ Passed: {test_path.stem}"
+
 def test_test_resolves_bind_placeholder_from_stored_binds(
     monkeypatch, tmp_path, capsys
 ):
