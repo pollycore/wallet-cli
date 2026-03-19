@@ -201,6 +201,19 @@ def normalize_test_response(
             f"Response from {source_name} must be a JSON object."
         ) from None
 
+    # Some proxied domains return a plain JSON body inside the shared
+    # `Proxy@Domain` envelope.  In that case, unwrap the nested response so
+    # fixtures can assert against the actual service body instead of the
+    # transport wrapper.
+    if set(loaded.keys()) == {"Request", "Response"}:
+        nested_response = loaded.get("Response")
+        if (
+            isinstance(nested_response, dict)
+            and "Header" not in nested_response
+            and "Body" not in nested_response
+        ):
+            loaded = dict(nested_response)
+
     # Mirror the simpler message-shaped fixtures by surfacing common header
     # values at the top level in addition to the raw Header object.
     header = loaded.get("Header")
