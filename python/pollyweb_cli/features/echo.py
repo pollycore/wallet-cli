@@ -670,7 +670,7 @@ def _rewrite_echo_request_validation_error(
     message = str(exc)
 
     if message == "To must be a domain string or a UUID":
-        return "To must be a domain string. `pw echo` sends to a domain, not a UUID."
+        return "To must be a domain string."
 
     return message
 

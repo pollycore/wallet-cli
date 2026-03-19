@@ -799,10 +799,7 @@ def test_echo_debug_shows_in_app_summary_for_request_validation_errors(
     assert " - Status: failed" in captured.out
     assert " - Error type: MsgValidationError" in captured.out
     assert " - Stage: request construction" in captured.out
-    assert (
-        " - Error: To must be a domain string. `pw echo` sends to a domain, "
-        "not a UUID."
-    ) in captured.out
+    assert " - Error: To must be a domain string." in captured.out
     assert "Echo summary" in captured.out
     assert "❌ Echo request failed" in captured.out
     assert "Traceback" not in captured.out
@@ -838,7 +835,7 @@ def test_echo_reports_domain_only_request_validation_errors(
     assert captured.out == ""
     assert (
         "Error: Echo request to 123e4567-e89b-12d3-a456-426614174000 failed: "
-        "To must be a domain string. `pw echo` sends to a domain, not a UUID."
+        "To must be a domain string."
     ) in captured.err
 
 
