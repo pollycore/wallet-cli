@@ -1,5 +1,11 @@
 # Task Plan
 
+- [ ] Review the current `pw echo --debug` startup flow and isolate the network-bound work from the Textual render path
+- [ ] Launch the interactive debug viewer immediately with a loading spinner while the echo request runs in the background, then swap in the success or failure sections when the request completes
+- [ ] Add focused regression coverage for the new loading-state app flow and verify with the repo test interpreter
+
+# Review
+
 - [x] Inspect the current `pw test` timing calculation and the wrapped sync response metadata shape
 - [x] Update `pw test` to consider `Response.Meta.TotalMs` when formatting total duration and latency share
 - [x] Add focused regression coverage for metadata-backed `pw test` timing and verify with the repo test interpreter
