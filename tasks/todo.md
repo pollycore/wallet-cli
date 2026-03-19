@@ -1,5 +1,16 @@
 # Task Plan
 
+- [x] Inspect the current `pw echo` feature boundaries and define smaller sub-feature modules that preserve the existing `echo.py` facade
+- [x] Move `pw echo` parsing, metadata, rendering, and Textual viewer internals into sibling modules while keeping test-facing exports stable
+- [x] Verify the refactor with focused echo tests in the repo virtualenv and record any new maintenance lesson
+
+# Review
+
+- Split `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` and `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo_presentation.py` into smaller sibling sub-feature modules for models, response parsing, runtime orchestration, rendering, section building, and the Textual viewer.
+- Kept `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` as the command and compatibility facade, and kept `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo_presentation.py` as the presentation facade so existing tests and nearby imports can keep using the old module paths.
+- Restored the old patchable surface on `pollyweb_cli.features.echo`, including helpers such as `send_wallet_message`, `DEBUG_CONSOLE`, payload renderers, section builders, and the legacy `_resolve_echo_command(..., transport_debug=...)` call shape.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`39 passed`).
+
 - [x] Review the current `pw echo --debug` startup flow and isolate the network-bound work from the Textual render path
 - [x] Keep the request phase in the terminal with a `Sending message...` spinner, then open the Textual viewer only after the success or failure sections are fully prepared
 - [x] Add focused regression coverage for the new spinner-first flow and verify with the repo test interpreter
