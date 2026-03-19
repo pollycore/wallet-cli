@@ -488,7 +488,9 @@ def get_test_fixture_paths(
             f"No test path was provided and {tests_dir} is not a directory."
         ) from None
 
-    fixture_paths = sorted(tests_dir.glob("*.yaml"))
+    # Walk the default fixtures directory recursively so `pw test` picks up
+    # wrapped YAML files grouped into nested folders as part of one sweep.
+    fixture_paths = sorted(tests_dir.rglob("*.yaml"))
     if not fixture_paths:
         raise UserFacingError(
             f"No YAML test fixtures were found in {tests_dir}."

@@ -1,5 +1,6 @@
 # Lessons
 
+- For default `pw test` directory sweeps, walk `./pw-tests` recursively with a deterministic sort so new YAML fixtures in nested feature folders run automatically without changing the command line.
 - For `pw bind`, support wrapped synchronous PollyWeb response envelopes in addition to the legacy bare-token replies: when the server returns `{"Request": ..., "Response": {"Body": {"Bind": ...}}}`, extract the bind from the nested `Response.Body` payload before surfacing the old "missing bind token" error.
 - For `pw test`, treat wrapped `Response.Meta.TotalMs` as server time inside the round trip when calculating the concise success-line latency share, so the displayed percentage reflects the remaining transport time instead of the raw wall-clock send duration.
 - When splitting `pw echo` into smaller sub-feature modules, keep both `pollyweb_cli.features.echo` and `pollyweb_cli.features.echo_presentation` as thin compatibility facades, and preserve the old patchable helper surface on `echo.py` including `send_wallet_message`, `DEBUG_CONSOLE`, payload renderers, section builders, and legacy internal call signatures that focused tests monkeypatch directly.

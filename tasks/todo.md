@@ -1,5 +1,16 @@
 # Task Plan
 
+- [x] Inspect the current `pw test` default fixture discovery and confirm whether nested `pw-tests` folders are included
+- [x] Update `pw test` directory discovery so default runs include YAML fixtures inside `pw-tests` subfolders in deterministic order
+- [x] Verify the focused `pw test` suite with the repo test interpreter and record the maintenance note
+
+# Review
+
+- Updated [/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py](/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py) so default `pw test` discovery now walks `./pw-tests` recursively with `rglob("*.yaml")`, which includes wrapped fixtures inside nested folders while keeping deterministic alphabetical path ordering.
+- Added [/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py](/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py) coverage that proves a default `pw test` run now includes nested `pw-tests` fixtures and preserves the expected ordered pass output.
+- Updated [/Users/jorgemf/Git/wallet-cli/AGENTS.md](/Users/jorgemf/Git/wallet-cli/AGENTS.md) and [/Users/jorgemf/Git/wallet-cli/tasks/lessons.md](/Users/jorgemf/Git/wallet-cli/tasks/lessons.md) so the recursive fixture-sweep rule is captured for future maintenance.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_test_command.py` (`39 passed, 1 skipped`).
+
 - [x] Inspect the current `pw bind` instructions and implementation to confirm whether malformed domains are validated before transport
 - [x] Add an early `pw bind` domain-validation step so malformed domains fail as direct user-facing errors before keys load or network work starts
 - [x] Add focused regression coverage and verify the affected bind and CLI suites with the repo test interpreter

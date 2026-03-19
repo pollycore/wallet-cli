@@ -16,7 +16,7 @@
 - `--unsigned` on wallet-backed send commands must keep the selected sender but strip `Hash` and `Signature` before transport; this includes UUID-backed senders as well as anonymous ones.
 - For inline `pw msg` arguments, header keys are case-insensitive for `to`, `subject`, `from`, `schema`, `body`, and `header`.
 - `pw test [path]` reads a wrapped YAML fixture, sends only its `Outbound` payload with the same signing rules as `pw msg`, and treats `Inbound` as an expected subset of the returned JSON payload.
-- `pw test` with no path looks for `./pw-tests`, then runs each `*.yaml` fixture there in alphabetical order using the same wrapped fixture rules.
+- `pw test` with no path looks for `./pw-tests`, then runs each `*.yaml` fixture there and in nested subfolders in deterministic alphabetical path order using the same wrapped fixture rules.
 - `parse_message_request()` must treat a single JSON-string argument as JSON before probing it as a filesystem path, because `pw test` serializes wrapped `Outbound` fixtures to JSON and long payloads can otherwise trip macOS `OSError: [Errno 63] File name too long`.
 - `pw test --json` should be accepted for parity with the shared wallet send path; it keeps the normal concise pass/fail output, and when combined with `--debug` it switches debug payload rendering to raw JSON.
 - `pw test` inbound validation should treat an expected empty scalar value such as `''` or `null` as satisfied by the same empty value, the literal string `''`, or no field at all, so fixtures can describe intentionally blank optional fields without failing when services serialize or omit them differently.
