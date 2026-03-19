@@ -273,6 +273,11 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
     assert " - From matched expected domain: vault.example.com" in captured.out
     assert " - To matched expected sender: vault.example.com" in captured.out
     assert " - Subject matched expected echo subject: Echo@Domain" in captured.out
+    assert "\nNetwork timing:\n" in captured.out
+    assert " - Total duration:" in captured.out
+    assert " - Latency share:" in captured.out
+    assert "\nEdge / CDN hints:\n" in captured.out
+    assert " - Transport headers unavailable in this runtime" in captured.out
     assert captured.err == ""
 
 def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
@@ -349,7 +354,88 @@ def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
     )
     assert " - From matched expected domain: any-domain.pollyweb.org" in captured.out
     assert " - To matched expected sender: any-domain.pollyweb.org" in captured.out
+    assert "\nNetwork timing:\n" in captured.out
+    assert "\nEdge / CDN hints:\n" in captured.out
     assert captured.err == ""
+
+
+def test_echo_debug_prints_cloudfront_edge_hints_when_transport_headers_are_available(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+    request_message = Msg(
+        To = "vault.example.com",
+        Subject = "Echo@Domain",
+        Correlation = "123e4567-e89b-12d3-a456-426614174000",
+        Body = {},
+    )
+    response_payload = make_echo_response_payload(
+        from_value = "vault.example.com",
+        correlation = request_message.Correlation,
+        private_key = remote_key_pair.PrivateKey,
+    ).decode("utf-8")
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            kwargs["timing"].update({"network_seconds": 0.33}),
+            kwargs["transport_metadata"].update(
+                {
+                    "http_status": 200,
+                    "http_reason": "OK",
+                    "request_url": "https://pw.vault.example.com/inbox",
+                    "response_headers": {
+                        "server": "CloudFront",
+                        "via": "1.1 123abc.cloudfront.net (CloudFront)",
+                        "x-cache": "Miss from cloudfront",
+                        "x-amz-cf-pop": "LIS50-P1",
+                        "x-amz-cf-id": "cloudfront-request-id",
+                    },
+                }
+            ),
+            (response_payload, request_message, "vault.example.com"),
+        )[-1],
+    )
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
+    )
+    perf_counter_values = iter([50.0, 50.4])
+    monkeypatch.setattr(
+        time,
+        "perf_counter",
+        lambda: next(perf_counter_values),
+    )
+
+    exit_code = cli.main(["echo", "--debug", "vault.example.com"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "\nEdge / CDN hints:\n" in captured.out
+    assert " - Request URL: https://pw.vault.example.com/inbox" in captured.out
+    assert " - HTTP status: 200 OK" in captured.out
+    assert " - Edge provider: CloudFront" in captured.out
+    assert " - Edge PoP: LIS50-P1" in captured.out
+    assert " - Server header: CloudFront" in captured.out
+    assert " - Via header: 1.1 123abc.cloudfront.net (CloudFront)" in captured.out
+    assert " - X-Cache: Miss from cloudfront" in captured.out
+    assert " - CloudFront request ID: cloudfront-request-id" in captured.out
 
 
 def test_echo_debug_rejects_unexpected_top_level_response_fields(

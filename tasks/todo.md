@@ -1,5 +1,10 @@
 # Task Plan
 
+- [x] Review the current `pw echo --debug` summary layout and identify where timing details are printed
+- [x] Split echo timing into its own debug section and add a separate edge/CDN hints section with best-effort provider and PoP clues
+- [x] Update echo docs/guidance and add focused regression coverage for the new debug sections
+- [x] Verify with `PYTHONPATH=$PWD/python ./.venv-tests/bin/python -m pytest -q tests/test_echo.py`
+
 - [x] Review the written `pw test` success-output contract and current implementation path
 - [x] Add total-duration and latency timing to each passing `pw test` success line
 - [x] Update `pw test` docs, repo guidance, and regression coverage for the new timing output
@@ -23,6 +28,11 @@
 - [x] Verify with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py`
 
 # Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so `pw echo --debug` now prints timing details in a dedicated `Network timing` section and a separate `Edge / CDN hints` section that surfaces best-effort transport metadata such as request URL, HTTP status, detected CDN provider, CloudFront-style PoP values, and key edge headers when available.
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/transport.py` to capture response headers from the shared wallet send path during debug-capable calls without changing the `Wallet.send(...)` flow, so echo debug output can report edge-routing clues such as `Via`, `X-Cache`, `X-Amz-Cf-Pop`, and `X-Amz-Cf-Id`.
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py`, `/Users/jorgemf/Git/wallet-cli/tests/cli_test_helpers.py`, `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to document and lock in the new debug-section layout plus the CloudFront/PoP hint behavior.
+- Verified with `PYTHONPATH=$PWD/python ./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`13 passed`).
 
 - Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py` so each passing `pw test` fixture now prints one concise line with total duration in milliseconds and the percentage of that time spent in the network send, reusing the shared wallet-send timing hook already exposed by the transport layer.
 - Updated `/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py` to lock in the new `✅ Passed: ... (<ms> ms, <%> latency)` shape across explicit fixtures, default `pw-tests` sweeps, and debug/json variants without depending on exact clock values.

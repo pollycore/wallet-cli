@@ -19,8 +19,14 @@ TEST_MSGS_DIR = Path(__file__).resolve().parents[1] / "test-msgs"
 class DummyResponse:
     """Minimal urlopen-style response wrapper for CLI tests."""
 
-    def __init__(self, payload: bytes):
+    def __init__(
+        self,
+        payload: bytes,
+        *,
+        headers: dict[str, str] | None = None
+    ):
         self._payload = payload
+        self.headers = headers or {}
 
     def read(self) -> bytes:
         """Return the fixed payload body."""

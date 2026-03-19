@@ -29,6 +29,7 @@
 - For `pw echo`, do not assume the synchronous reply `To` will always echo the target domain; if the target domain has a stored bind, treat that bind UUID as an equally valid echoed recipient.
 - For plain `pw echo` success output, keep the command quiet and print only `✅ Verified echo response`; reserve the echoed payload for `--debug` so the default path stays concise.
 - For plain `pw echo` success output, keep the command quiet and to one line, but include the total duration in milliseconds plus the network-latency percentage so users get timing without dumping payload details.
+- For `pw echo --debug`, keep the latency metrics in their own `Network timing` section and print a separate `Edge / CDN hints` section with best-effort provider and PoP clues from transport headers, while falling back gracefully when the runtime cannot expose those headers.
 - For `pw echo`, translate `urllib.error.URLError` resolver failures into a human-readable PollyWeb inbox-host message instead of exposing raw `socket.gaierror(...)` text.
 - For `pw echo` transport failures, keep the default path user-friendly, but let `--debug` surface the raw underlying network exception so missing-domain troubleshooting still has the low-level clue when needed.
 - For `pw echo`, validate the raw synchronous response shape before pretty-printing it: reject any top-level fields outside `Header`, `Body`, `Hash`, and `Signature` so misplaced server properties are caught immediately.

@@ -156,6 +156,147 @@ def _format_echo_success_metrics(
     )
 
 
+def _normalize_response_headers(
+    transport_metadata: dict[str, object]
+) -> dict[str, str]:
+    """Return lower-cased HTTP response headers captured from transport."""
+
+    raw_headers = transport_metadata.get("response_headers")
+    if not isinstance(raw_headers, dict):
+        return {}
+
+    normalized_headers: dict[str, str] = {}
+
+    for key, value in raw_headers.items():
+        if isinstance(key, str) and isinstance(value, str):
+            normalized_headers[key.lower()] = value
+
+    return normalized_headers
+
+
+def _detect_edge_provider(
+    headers: dict[str, str]
+) -> str | None:
+    """Infer the CDN or edge provider from captured response headers."""
+
+    via_value = headers.get("via", "").lower()
+    server_value = headers.get("server", "").lower()
+    x_cache_value = headers.get("x-cache", "").lower()
+
+    if (
+        "x-amz-cf-pop" in headers
+        or "x-amz-cf-id" in headers
+        or "cloudfront" in via_value
+        or "cloudfront" in x_cache_value
+    ):
+        return "CloudFront"
+
+    if "cf-ray" in headers or "cloudflare" in server_value:
+        return "Cloudflare"
+
+    if "fastly" in server_value or "x-served-by" in headers:
+        return "Fastly"
+
+    return None
+
+
+def _detect_edge_pop(
+    headers: dict[str, str],
+    *,
+    provider: str | None
+) -> str | None:
+    """Infer the edge PoP from provider-specific response headers."""
+
+    if provider == "CloudFront":
+        pop_value = headers.get("x-amz-cf-pop")
+        if isinstance(pop_value, str) and pop_value:
+            return pop_value
+
+    if provider == "Cloudflare":
+        cf_ray = headers.get("cf-ray")
+        if isinstance(cf_ray, str) and "-" in cf_ray:
+            return cf_ray.rsplit("-", 1)[-1]
+
+    return None
+
+
+def _print_echo_timing_details(
+    *,
+    total_seconds: float,
+    network_seconds: float
+) -> None:
+    """Render the echo timing details as a dedicated debug section."""
+
+    print()
+    print("Network timing:")
+    print(f" - Total duration: {max(0, round(total_seconds * 1000))} ms")
+    if total_seconds > 0:
+        print(f" - Latency share: {(network_seconds / total_seconds) * 100:.0f}%")
+    else:
+        print(" - Latency share: 0%")
+
+
+def _print_echo_edge_details(
+    transport_metadata: dict[str, object]
+) -> None:
+    """Render best-effort CDN and edge-routing hints from HTTP transport."""
+
+    print()
+    print("Edge / CDN hints:")
+
+    headers = _normalize_response_headers(transport_metadata)
+    if not headers:
+        print(" - Transport headers unavailable in this runtime")
+        return
+
+    provider = _detect_edge_provider(headers)
+    pop_value = _detect_edge_pop(
+        headers,
+        provider = provider)
+
+    request_url = transport_metadata.get("request_url")
+    if isinstance(request_url, str) and request_url:
+        print(f" - Request URL: {request_url}")
+
+    http_status = transport_metadata.get("http_status")
+    http_reason = transport_metadata.get("http_reason")
+    if isinstance(http_status, int):
+        if isinstance(http_reason, str) and http_reason:
+            print(f" - HTTP status: {http_status} {http_reason}")
+        else:
+            print(f" - HTTP status: {http_status}")
+
+    if provider is not None:
+        print(f" - Edge provider: {provider}")
+    else:
+        print(" - Edge provider: no CDN fingerprint detected")
+
+    if pop_value is not None:
+        print(f" - Edge PoP: {pop_value}")
+    else:
+        print(" - Edge PoP: unavailable")
+
+    server_value = headers.get("server")
+    if server_value:
+        print(f" - Server header: {server_value}")
+
+    via_value = headers.get("via")
+    if via_value:
+        print(f" - Via header: {via_value}")
+
+    x_cache_value = headers.get("x-cache")
+    if x_cache_value:
+        print(f" - X-Cache: {x_cache_value}")
+
+    cloudfront_id = headers.get("x-amz-cf-id")
+    if cloudfront_id:
+        print(f" - CloudFront request ID: {cloudfront_id}")
+
+    cf_ray_value = headers.get("cf-ray")
+    if cf_ray_value:
+        print(f" - Cloudflare Ray ID: {cf_ray_value}")
+
+
 def _describe_echo_network_error(
     domain: str,
     reason: object,
@@ -191,6 +332,7 @@ def cmd_echo(
     dns_diagnostics = None
     dns_link_context: tuple[str, str] | None = None
     timing: dict[str, float] = {}
+    transport_metadata: dict[str, object] = {}
     started_at = time.perf_counter()
 
     try:
@@ -206,6 +348,7 @@ def cmd_echo(
             anonymous=anonymous,
             unsigned=unsigned,
             timing=timing,
+            transport_metadata=transport_metadata,
         )
         if debug:
             dns_link_context = _echo_dns_context(
@@ -308,13 +451,8 @@ def cmd_echo(
     print(f" - To matched expected sender: {response.To}")
     print(f" - Subject matched expected echo subject: {response.Subject}")
     print(f" - Correlation matched the request: {response.Correlation}")
-    print(
-        f" - Total duration: {max(0, round(total_seconds * 1000))} ms"
-    )
-    if total_seconds > 0:
-        print(
-            f" - Network latency share: {(network_seconds / total_seconds) * 100:.0f}%"
-        )
-    else:
-        print(" - Network latency share: 0%")
+    _print_echo_timing_details(
+        total_seconds = total_seconds,
+        network_seconds = network_seconds)
+    _print_echo_edge_details(transport_metadata)
     return 0
