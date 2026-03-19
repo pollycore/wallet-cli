@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import builtins
 import json
 import socket
@@ -482,6 +483,49 @@ def test_echo_textual_app_styles_control_links_blue():
     assert "color: #3b82f6;" in css
 
 
+def test_echo_textual_app_includes_common_quit_bindings():
+    app = echo_feature._EchoTextualApp(
+        header_panel = echo_feature._build_echo_header_panel(),
+        yaml_sections = [],
+        json_sections = [],
+        raw_sections = [],
+        footer_panel = echo_feature._build_echo_footer_panel(
+            total_seconds = 0.2,
+            network_seconds = 0.1,
+            dkim_and_dnssec_verified = True,
+            cdn_distribution_detected = True,
+        ),
+        initial_payload_format = "yaml",
+    )
+    quit_bindings = {
+        binding[0]
+        for binding in app.BINDINGS
+        if binding[1] == "quit"
+    }
+
+    assert {"q", "x", "escape", "ctrl+c", "ctrl+w"} <= quit_bindings
+
+
+def test_echo_textual_app_quit_action_exits_the_app():
+    app = echo_feature._EchoTextualApp(
+        header_panel = echo_feature._build_echo_header_panel(),
+        yaml_sections = [],
+        json_sections = [],
+        raw_sections = [],
+        footer_panel = echo_feature._build_echo_footer_panel(
+            total_seconds = 0.2,
+            network_seconds = 0.1,
+            dkim_and_dnssec_verified = True,
+            cdn_distribution_detected = True,
+        ),
+        initial_payload_format = "yaml",
+    )
+
+    asyncio.run(app.action_quit())
+
+    assert app._exit is True
+
+
 def test_echo_textual_app_routes_link_actions_to_toggles_and_copy():
     app = echo_feature._EchoTextualApp(
         header_panel = echo_feature._build_echo_header_panel(),
@@ -878,7 +922,88 @@ def test_echo_debug_prints_metadata_performance_metrics_in_network_timing(
     assert captured.err == ""
 
 
-def test_echo_debug_rejects_unexpected_top_level_response_fields(
+def test_echo_debug_accepts_wrapped_sync_response_payloads(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+    request_message = Msg(
+        To = "any-domain.pollyweb.org",
+        Subject = "Echo@Domain",
+        Correlation = "123e4567-e89b-12d3-a456-426614174000",
+        Body = {},
+    )
+    nested_response = cli.json.loads(
+        make_echo_response_payload(
+            from_value = "any-domain.pollyweb.org",
+            correlation = request_message.Correlation,
+            private_key = remote_key_pair.PrivateKey,
+        ).decode("utf-8")
+    )
+    response_payload = cli.json.dumps(
+        {
+            "Meta": {
+                "LatencyMs": 12,
+            },
+            "Request": {
+                "Body": {},
+                "Header": {
+                    "From": "Anonymous",
+                },
+            },
+            "Response": nested_response,
+        }
+    )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            response_payload,
+            request_message,
+            "any-domain.pollyweb.org",
+        ),
+    )
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
+    )
+    exit_code = cli.main(["echo", "--debug", "any-domain.dom"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "\nError summary:\n" not in captured.out
+    assert "\nInbound payload:\n" in captured.out
+    assert "Meta:" in captured.out
+    assert "Response:" in captured.out
+    assert "Echo: ok" in captured.out
+    assert "Correlation: 123e4567-e89b-12d3-a456-426614174000" in captured.out
+    assert "Request:" in captured.out
+    assert "Verified echo response from any-domain.dom:" in captured.out
+    assert (
+        " - Signature verified: via DKIM lookup for selector default "
+        "on any-domain.pollyweb.org" in captured.out
+    )
+    assert "\nDNS verification diagnostics:\n" in captured.out
+    assert "External DNS checks:" in captured.out
+    assert captured.err == ""
+
+
+def test_echo_debug_rejects_invalid_sync_response_wrapper_fields(
     monkeypatch, tmp_path, capsys
 ):
     config_dir = tmp_path / ".pollyweb"
@@ -896,28 +1021,34 @@ def test_echo_debug_rejects_unexpected_top_level_response_fields(
     )
     response_payload = cli.json.dumps(
         {
-            "Body": {"Echo": "ok"},
-            "Header": {
-                "Algorithm": "ed25519-sha256",
-                "Correlation": request_message.Correlation,
-                "From": "any-domain.pollyweb.org",
-                "Schema": "pollyweb.org/MSG:1.0",
-                "Selector": "default",
-                "Subject": "Echo@Domain",
-                "Timestamp": "2026-03-18T16:18:38.411Z",
-                "To": "any-domain.pollyweb.org",
+            "Metadata": {
+                "LatencyMs": 12,
             },
-            "Hash": "fb79347b8a1117f5a74eae029be8629e7e6d8286c0e3020a08641d0e512add49",
             "Request": {
                 "Body": {},
                 "Header": {
                     "From": "Anonymous",
                 },
             },
-            "Signature": (
-                "78QEPU+LdK1Fxu0DdXJLlh/pcWs024KkJ3ToCOFpk+KddEfebVh6xK9rmzvoLVS1"
-                "qxmagMETICfnYiZA/IZECg=="
-            ),
+            "Response": {
+                "Body": {
+                    "Echo": "ok",
+                },
+                "Header": {
+                    "Correlation": request_message.Correlation,
+                    "From": "any-domain.pollyweb.org",
+                    "Schema": "pollyweb.org/MSG:1.0",
+                    "Selector": "default",
+                    "Subject": "Echo@Domain",
+                    "Timestamp": "2026-03-18T16:18:38.411Z",
+                    "To": "any-domain.pollyweb.org",
+                },
+                "Hash": "fb79347b8a1117f5a74eae029be8629e7e6d8286c0e3020a08641d0e512add49",
+                "Signature": (
+                    "78QEPU+LdK1Fxu0DdXJLlh/pcWs024KkJ3ToCOFpk+KddEfebVh6xK9rmzvoLVS1"
+                    "qxmagMETICfnYiZA/IZECg=="
+                ),
+            },
         }
     )
 
@@ -941,13 +1072,12 @@ def test_echo_debug_rejects_unexpected_top_level_response_fields(
     assert " - Status: failed" in captured.out
     assert (
         " - Error: Echo response from any-domain.pollyweb.org had unexpected "
-        "top-level field(s): Request. Expected only Body, Hash, Header, and "
-        "Signature." in captured.out
+        "top-level field(s): Metadata. Expected only Meta, Request, and "
+        "Response." in captured.out
     )
     assert " - Error type: UserFacingError" in captured.out
     assert "\nInbound payload:\n" in captured.out
     assert "Echo: ok" in captured.out
-    assert "Correlation: 123e4567-e89b-12d3-a456-426614174000" in captured.out
     assert "Request:" in captured.out
     assert "\nReply details from any-domain.pollyweb.org:\n" in captured.out
     assert " - Signature field: present in the reply (selector default)" in captured.out
@@ -1009,6 +1139,80 @@ def test_echo_debug_prints_dns_diagnostics_on_verification_failure(
     assert "Selector: pw1" in captured.out
     assert "DkimName: pw1._domainkey.pw.vault.example.com" in captured.out
     assert "dnssec-debugger.verisignlabs.com/pw.vault.example.com" in captured.out
+    assert captured.err == ""
+
+
+def test_echo_debug_assesses_wrapped_response_dkim_from_nested_selector(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+    request_message = Msg(
+        To = "vault.example.com",
+        Subject = "Echo@Domain",
+        Correlation = "123e4567-e89b-12d3-a456-426614174000",
+        Body = {},
+    )
+    response_payload = cli.json.dumps(
+        {
+            "Header": {
+                "From": "transport.example.com",
+                "Selector": "local-wrapper",
+            },
+            "Request": {
+                "Body": {},
+                "Header": {
+                    "From": "Anonymous",
+                },
+            },
+            "Response": {
+                "Body": {
+                    "Echo": "ok",
+                },
+                "Header": {
+                    "Correlation": request_message.Correlation,
+                    "From": "vault.example.com",
+                    "Schema": "pollyweb.org/MSG:1.0",
+                    "Selector": "pw1",
+                    "Subject": "Echo@Domain",
+                    "Timestamp": "2026-03-18T16:18:38.411Z",
+                    "To": "vault.example.com",
+                },
+                "Hash": "fb79347b8a1117f5a74eae029be8629e7e6d8286c0e3020a08641d0e512add49",
+                "Signature": (
+                    "78QEPU+LdK1Fxu0DdXJLlh/pcWs024KkJ3ToCOFpk+KddEfebVh6xK9rmzvoLVS1"
+                    "qxmagMETICfnYiZA/IZECg=="
+                ),
+            },
+        }
+    )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            response_payload,
+            request_message,
+            "vault.example.com",
+        ),
+    )
+
+    exit_code = cli.main(["echo", "--debug", "vault.example.com"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "\nReply details from vault.example.com:\n" in captured.out
+    assert " - Signature field: present in the reply (selector pw1)" in captured.out
+    assert "dkim%3Apw.vault.example.com%3Apw1" in captured.out
+    assert "dkim%3Apw.vault.example.com%3Alocal-wrapper" not in captured.out
     assert captured.err == ""
 
 

@@ -1,5 +1,6 @@
 # Lessons
 
+- For the interactive Textual echo viewer, bind common close keys directly to `quit` (`Ctrl+C`, `Ctrl+W`, `q`, `x`, `Esc`) instead of relying on Textual's inherited quit-help toast, so macOS and Linux users can leave the app with the shortcuts they already expect.
 - For narrow Rich footer panels, avoid decorative emoji in fixed summary labels; terminal width and grapheme handling can treat icons like `ℹ️` as wider than expected and push the right border out of alignment.
 - When a debug payload formatter uses helper string subclasses such as `_LiteralDebugString`, keep every render path on the same shared YAML dumper; a plain `yaml.dump(...)` in a side path like the Textual echo viewer can leak `!!python/object...` tags into user-facing output.
 - For wallet-backed CLI sends, do not keep a separate CLI message-wrapper helper around `Msg(...)`; build the wallet sender in shared transport and construct outbound requests through `pollyweb.Msg.from_outbound(...)` so request defaults stay owned by the published library.
@@ -48,11 +49,12 @@
 - For interactive `pw echo --debug`, treat YAML-vs-JSON as a view concern inside the Textual app: build both section variants up front and toggle between them locally instead of forcing the user to close the viewer and rerun the command.
 - For interactive `pw echo --debug`, copy actions work best at the section level: keep copyable text alongside each payload-style block so the UI can offer one-button clipboard export next to that block’s title.
 - For `pw echo` transport failures, keep the default path user-friendly, but let `--debug` surface the raw underlying network exception so missing-domain troubleshooting still has the low-level clue when needed.
-- For `pw echo`, validate the raw synchronous response shape before pretty-printing it: reject any top-level fields outside `Header`, `Body`, `Hash`, and `Signature` so misplaced server properties are caught immediately.
+- For `pw echo`, treat the synchronous inbox payload as a library-owned `Request`/`Response`/`Meta` envelope: parse it through `pollyweb.Msg.parse(..., sync_response = True)` so the shared package validates the wrapper and unwraps the nested signed `Response` message.
 - For `pw echo --debug`, keep the inbound payload visible on failure whenever the server already replied; users need the raw response for troubleshooting even when parse or verification checks reject it.
 - For `pw echo --debug`, keep a reply-details/signature block visible on failure whenever a response payload exists, even if verification did not complete; users still need the reported schema, selector, signature presence, and echoed headers beside the error summary.
 - For `pw echo --debug`, collect and print the PollyWeb branch `DS` lookup and DKIM `TXT` lookup details, including the queried DNS names, returned record text, and DNSSEC AD-flag state, and print those diagnostics even when signature verification fails after the response is received.
 - For `pw echo --debug`, always render the `DNS verification diagnostics` section on failure; if the library has no diagnostics for that failure mode, show an explicit unavailable status instead of dropping the section.
+- For `pw echo` remote DKIM assessment on wrapped sync responses, derive the branch/selector link context and reply-details selector from the nested `Response.Header` values rather than any outer transport wrapper header.
 - For `pw echo --debug`, early request-building or parsing failures must stay inside the debug UI: render an `Error summary` section plus the usual timing/footer context instead of leaking a top-level traceback or stderr-only failure.
 - For `pw echo --debug`, the CLI must not perform its own parallel DNS trust check; render only the `pollyweb` package's DNS diagnostics, and pair them with click-through external links so users can compare the package verdict against MXToolbox, DNSSEC Debugger, and Google DNS.
 - For `pw echo --debug`, label the MXToolbox click-through URL as a DKIM test link for the verified `pw.<domain>` branch and selector so the action is obvious from the terminal output.

@@ -1,5 +1,29 @@
 # Task Plan
 
+- [x] Inspect the current `pw echo` response-header extraction and confirm where remote DKIM selector assessment comes from today
+- [x] Update `pw echo` to prefer `msg.Response.Header.Selector` when assessing remote DKIM context from wrapped sync responses
+- [x] Add focused regression coverage for wrapped-response selector assessment and verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so debug failure reply details now assess the signed selector and signature/hash presence from the nested `Response` message when a synchronous payload is transport-wrapped.
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo_presentation.py` so external DKIM/DNS reference links prefer `Response.Header.Selector` and `Response.Header.From` over wrapper headers.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` coverage for wrapped echo responses to lock the CLI to the nested remote selector.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` to document the wrapped-response DKIM assessment rule.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py`.
+
+- [x] Trace the interactive echo viewer quit behavior and confirm why `Ctrl+C` does not close the app
+- [x] Bind `Ctrl+C` and other common terminal close keys directly to the viewer quit action
+- [x] Add focused regression coverage and verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo_presentation.py` so the interactive `pw echo --debug` viewer now treats `Ctrl+C`, `Ctrl+W`, `q`, `x`, and `Esc` as direct quit keys instead of falling back to Textual's inherited quit-help toast.
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` to lock in both the common quit bindings and the underlying quit action behavior on the viewer app.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py`.
+
+# Task Plan
+
 - [x] Inspect the `pw echo --debug` failure renderer and confirm why the DNS and signature-related sections disappear behind the error summary
 - [x] Keep a reply-details section and DNS diagnostics section visible for debug failures, including parse/shape failures with no library DNS diagnostics
 - [x] Verify with focused echo tests, then record the maintenance note

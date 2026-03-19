@@ -60,7 +60,6 @@ from pollyweb_cli.tools.transport import send_wallet_message
 
 
 ECHO_SUBJECT = "Echo@Domain"
-ALLOWED_ECHO_RESPONSE_FIELDS = frozenset({"Body", "Hash", "Header", "Signature"})
 
 
 class _EchoTextualApp(_echo_presentation._EchoTextualApp):
@@ -224,7 +223,14 @@ def _build_echo_failure_verification_lines(
     if not isinstance(payload, dict):
         return {}
 
-    header = payload.get("Header")
+    response = payload.get("Response")
+    if isinstance(response, dict):
+        header = response.get("Header")
+        signed_payload = response
+    else:
+        header = payload.get("Header")
+        signed_payload = payload
+
     if not isinstance(header, dict):
         header = {}
 
@@ -233,13 +239,13 @@ def _build_echo_failure_verification_lines(
     if isinstance(schema, str) and schema:
         verification_lines["Schema reported"] = schema
 
-    if isinstance(payload.get("Hash"), str) and payload["Hash"]:
+    if isinstance(signed_payload.get("Hash"), str) and signed_payload["Hash"]:
         verification_lines["Canonical payload hash"] = "present in the reply"
     else:
         verification_lines["Canonical payload hash"] = "missing from the reply"
 
     selector = header.get("Selector")
-    signature = payload.get("Signature")
+    signature = signed_payload.get("Signature")
     if isinstance(signature, str) and signature:
         if isinstance(selector, str) and selector:
             verification_lines["Signature field"] = (
@@ -340,7 +346,7 @@ def cmd_echo(
         try:
             response = Msg.parse(
                 response_payload,
-                allowed_top_level_fields = ALLOWED_ECHO_RESPONSE_FIELDS)
+                sync_response = True)
         except MsgValidationError as exc:
             raise _to_echo_user_facing_error(
                 exc,

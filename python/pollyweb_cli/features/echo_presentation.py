@@ -676,7 +676,10 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
     """
     BINDINGS = [
         ("q", "quit", "Quit"),
+        ("x", "quit", "Quit"),
         ("escape", "quit", "Quit"),
+        ("ctrl+c", "quit", "Quit"),
+        ("ctrl+w", "quit", "Quit"),
         ("y", "show_yaml", "YAML"),
         ("j", "show_json", "JSON"),
         ("r", "show_raw", "Raw"),
@@ -911,6 +914,12 @@ def _extract_response_header(
         loaded_payload = json.loads(payload)
     except json.JSONDecodeError:
         return None
+
+    response = loaded_payload.get("Response")
+    if isinstance(response, dict):
+        header = response.get("Header")
+        if isinstance(header, dict):
+            return header
 
     header = loaded_payload.get("Header")
     if not isinstance(header, dict):
