@@ -1,10 +1,15 @@
 # Task Plan
 
-- [ ] Review the current `pw echo --debug` startup flow and isolate the network-bound work from the Textual render path
-- [ ] Launch the interactive debug viewer immediately with a loading spinner while the echo request runs in the background, then swap in the success or failure sections when the request completes
-- [ ] Add focused regression coverage for the new loading-state app flow and verify with the repo test interpreter
+- [x] Review the current `pw echo --debug` startup flow and isolate the network-bound work from the Textual render path
+- [x] Keep the request phase in the terminal with a `Sending message...` spinner, then open the Textual viewer only after the success or failure sections are fully prepared
+- [x] Add focused regression coverage for the new spinner-first flow and verify with the repo test interpreter
 
 # Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so interactive `pw echo --debug` now resolves the request and prebuilds the final Textual sections behind a terminal `Sending message...` spinner, then opens the viewer only after the final success or failure content is ready.
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` with a regression that locks in the spinner lifecycle and confirms the Textual app opens only after the request phase completes.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the new spinner-first interactive debug behavior is documented for future work.
+- Verified with `./.venv-tests/bin/python -m py_compile python/pollyweb_cli/features/echo.py python/pollyweb_cli/features/echo_presentation.py` and `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`38 passed`).
 
 - [x] Inspect the current `pw test` timing calculation and the wrapped sync response metadata shape
 - [x] Update `pw test` to consider `Response.Meta.TotalMs` when formatting total duration and latency share

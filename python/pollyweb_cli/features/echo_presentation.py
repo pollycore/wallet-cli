@@ -757,6 +757,7 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         self._copied_section: tuple[str, int] | None = None
         self._copied_reset_timer = None
         self._section_cache: dict[str, list[_EchoTextualSection]] = {}
+        self._exit_code = 0
 
     def _resolve_sections(
         self,
@@ -1308,7 +1309,7 @@ def _render_debug_echo_failure(
                 transport_metadata = transport_metadata,
             ),
             footer_panel = footer_panel,
-            initial_payload_format = "json",
+            initial_payload_format = "yaml" if not debug_json else "raw",
         ).run()
         return 1
 

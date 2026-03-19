@@ -742,7 +742,7 @@ def test_echo_textual_sections_mark_payload_blocks_as_copyable():
     assert sections[2].copy_text is None
 
 
-def test_echo_interactive_viewer_defaults_to_json_for_faster_startup(
+def test_echo_interactive_viewer_defaults_to_yaml(
     monkeypatch, tmp_path
 ):
     config_dir = tmp_path / ".pollyweb"
@@ -806,8 +806,103 @@ def test_echo_interactive_viewer_defaults_to_json_for_faster_startup(
     exit_code = cli.main(["echo", "--debug", "vault.example.com"])
 
     assert exit_code == 0
-    assert observed["initial_payload_format"] == "json"
+    assert observed["initial_payload_format"] == "yaml"
     assert observed["ran"] is True
+
+
+def test_echo_interactive_viewer_shows_sending_spinner_before_opening(
+    monkeypatch, tmp_path
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    remote_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+    request_message = Msg(
+        To = "vault.example.com",
+        Subject = "Echo@Domain",
+        Correlation = "123e4567-e89b-12d3-a456-426614174000",
+        Body = {},
+    )
+    response_payload = make_echo_response_payload(
+        from_value = "vault.example.com",
+        correlation = request_message.Correlation,
+        private_key = remote_key_pair.PrivateKey,
+    ).decode("utf-8")
+    events: list[str] = []
+
+    class FakeStatus:
+        """Capture the spinner lifecycle around the background work."""
+
+        def __init__(self, message: str):
+            self.message = message
+
+        def __enter__(self):
+            events.append(f"enter:{self.message}")
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            events.append("exit")
+            return False
+
+    class FakeEchoTextualApp:
+        """Capture when the Textual app opens relative to the spinner."""
+
+        def __init__(self, **_kwargs):
+            events.append("app:init")
+
+        def run(self):
+            events.append("app:run")
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            events.append("send"),
+            (
+                response_payload,
+                request_message,
+                "vault.example.com",
+            ),
+        )[-1],
+    )
+    monkeypatch.setattr(
+        pollyweb_msg,
+        "_resolve_dkim_public_key",
+        lambda domain, selector: (
+            remote_key_pair.PublicKey,
+            "ed25519",
+            _fake_dns_diagnostics(domain, selector),
+        ),
+    )
+    monkeypatch.setattr(
+        echo_feature,
+        "_should_use_textual_echo_view",
+        lambda *, debug: debug,
+    )
+    monkeypatch.setattr(echo_feature, "_EchoTextualApp", FakeEchoTextualApp)
+    monkeypatch.setattr(
+        echo_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message),
+    )
+
+    exit_code = cli.main(["echo", "--debug", "vault.example.com"])
+
+    assert exit_code == 0
+    assert events == [
+        "enter:Sending message...",
+        "send",
+        "exit",
+        "app:init",
+        "app:run",
+    ]
 
 
 def test_echo_json_textual_renderable_uses_syntax_highlighting():
