@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import http.client
+import io
 import json
 from pathlib import Path
 import time
+from types import MethodType
+from urllib.parse import urlsplit
 import uuid
 
 import urllib.error
 
 from pollyweb import KeyPair, Msg, Wallet, normalize_domain_name
+import pollyweb._transport as pollyweb_transport
+import pollyweb.msg as pollyweb_msg
 import yaml
 
 from pollyweb_cli.errors import UserFacingError
@@ -192,7 +198,8 @@ def send_wallet_message(
     anonymous: bool = False,
     unsigned: bool = False,
     debug_json: bool = False,
-    timing: dict[str, float] | None = None
+    timing: dict[str, float] | None = None,
+    transport_metadata: dict[str, object] | None = None
 ) -> tuple[str, Msg, str]:
     """Send one wallet-backed PollyWeb message and return the raw response."""
 
@@ -222,42 +229,131 @@ def send_wallet_message(
         wallet,
         request_message,
         unsigned = unsigned)
+
+    original_post = pollyweb_msg.post_json_bytes
+    original_transport_post = pollyweb_transport.post_json_bytes
+    original_pool_post = pollyweb_transport._HTTPS_CONNECTION_POOL.post
+
+    def capture_pool_post(
+        pool_self,
+        url: str,
+        body: bytes,
+        *,
+        headers: dict[str, str] | None = None,
+        timeout: float = 10.0
+    ) -> bytes:
+        """Mirror PollyWeb HTTPS transport while also collecting response metadata."""
+
+        request_headers = {
+            "Content-Type": "application/json",
+        }
+        if headers:
+            request_headers.update(headers)
+
+        parsed = urlsplit(url)
+        if parsed.scheme != "https":
+            raise ValueError("PollyWeb transport only supports https URLs")
+        if not parsed.hostname:
+            raise ValueError("PollyWeb transport requires a hostname")
+
+        host = parsed.hostname
+        port = parsed.port or 443
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+
+        for attempt in range(2):
+            connection = pool_self._get_connection(
+                host,
+                port,
+                timeout = timeout)
+
+            try:
+                connection.request(
+                    "POST",
+                    path,
+                    body = body,
+                    headers = request_headers)
+                response = connection.getresponse()
+                raw = response.read()
+
+                if transport_metadata is not None:
+                    transport_metadata["http_status"] = response.status
+                    transport_metadata["http_reason"] = response.reason
+                    transport_metadata["request_url"] = url
+                    transport_metadata["response_headers"] = dict(response.headers.items())
+
+                if response.will_close:
+                    pool_self._drop_connection(host, port)
+
+                if response.status >= 400:
+                    raise urllib.error.HTTPError(
+                        url,
+                        response.status,
+                        response.reason,
+                        response.headers,
+                        io.BytesIO(raw))
+
+                return raw
+            except (
+                OSError,
+                http.client.HTTPException,
+            ):
+                pool_self._drop_connection(host, port)
+                if attempt == 1:
+                    raise
+
+        raise RuntimeError("Unreachable HTTPS transport retry state")
+
     try:
+        if transport_metadata is not None:
+            pollyweb_transport._HTTPS_CONNECTION_POOL.post = MethodType(
+                capture_pool_post,
+                pollyweb_transport._HTTPS_CONNECTION_POOL,
+            )
+
         send_started_at = time.perf_counter()
-        response = outbound_message.send()
-        send_finished_at = time.perf_counter()
-    except urllib.error.HTTPError as exc:
-        send_finished_at = time.perf_counter()
+
+        try:
+            response = outbound_message.send()
+            send_finished_at = time.perf_counter()
+        except urllib.error.HTTPError as exc:
+            send_finished_at = time.perf_counter()
+
+            if timing is not None:
+                timing["network_seconds"] = send_finished_at - send_started_at
+
+            error_body = None
+
+            try:
+                error_body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                error_body = None
+
+            setattr(exc, "pollyweb_error_body", error_body)
+
+            if debug:
+                try:
+                    debug_printer = print_debug_json_payload if debug_json else print_debug_payload
+                    debug_printer(
+                        "Inbound payload",
+                        parse_debug_payload(error_body))
+                except Exception:
+                    pass
+            raise
 
         if timing is not None:
             timing["network_seconds"] = send_finished_at - send_started_at
 
-        error_body = None
-
-        try:
-            error_body = exc.read().decode("utf-8", errors="replace")
-        except Exception:
-            error_body = None
-
-        setattr(exc, "pollyweb_error_body", error_body)
+        response_payload = serialize_wallet_response(response)
 
         if debug:
-            try:
-                debug_printer = print_debug_json_payload if debug_json else print_debug_payload
-                debug_printer(
-                    "Inbound payload",
-                    parse_debug_payload(error_body))
-            except Exception:
-                pass
-        raise
+            debug_printer = print_debug_json_payload if debug_json else print_debug_payload
+            debug_printer("Inbound payload", parse_debug_payload(response_payload))
 
-    if timing is not None:
-        timing["network_seconds"] = send_finished_at - send_started_at
-
-    response_payload = serialize_wallet_response(response)
-
-    if debug:
-        debug_printer = print_debug_json_payload if debug_json else print_debug_payload
-        debug_printer("Inbound payload", parse_debug_payload(response_payload))
-
-    return response_payload, request_message, normalized_domain
+        return response_payload, request_message, normalized_domain
+    finally:
+        if transport_metadata is not None:
+            pollyweb_transport._HTTPS_CONNECTION_POOL.post = original_pool_post
+            pollyweb_msg.post_json_bytes = original_post
+            pollyweb_transport.post_json_bytes = original_transport_post
