@@ -432,9 +432,6 @@ def cmd_echo(
     print()
     print_yaml_payload(parse_debug_payload(response_payload))
     print()
-    _print_echo_dns_diagnostics(dns_diagnostics)
-    if dns_link_context is not None:
-        _print_echo_dns_reference_links(*dns_link_context)
     print_section_title(f"Verified echo response from {domain}")
     if verification is not None:
         print(f" - Schema validated: {verification.schema}")
@@ -459,6 +456,9 @@ def cmd_echo(
     print(f" - To matched expected sender: {response.To}")
     print(f" - Subject matched expected echo subject: {response.Subject}")
     print(f" - Correlation matched the request: {response.Correlation}")
+    _print_echo_dns_diagnostics(dns_diagnostics)
+    if dns_link_context is not None:
+        _print_echo_dns_reference_links(*dns_link_context)
     _print_echo_timing_details(
         total_seconds = total_seconds,
         network_seconds = network_seconds)
