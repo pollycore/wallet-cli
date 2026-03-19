@@ -1,5 +1,27 @@
 # Task Plan
 
+- [x] Inspect the `pw echo --debug` failure renderer and confirm why the DNS and signature-related sections disappear behind the error summary
+- [x] Keep a reply-details section and DNS diagnostics section visible for debug failures, including parse/shape failures with no library DNS diagnostics
+- [x] Verify with focused echo tests, then record the maintenance note
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` to derive best-effort reply details from any received echo response before rendering debug failures, so signature-related fields still appear alongside the error summary.
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo_presentation.py` so debug failure output always renders both a reply-details block and a `DNS verification diagnostics` block; when library diagnostics are unavailable, the section now says so instead of disappearing.
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` to lock in both regression cases: unexpected top-level fields and signature-verification failures must still show the reply-details and DNS sections.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`28 passed`).
+
+- [x] Inspect the `pw echo` failure render path and confirm why the inbound payload disappears on validation errors
+- [x] Pass the raw inbound response through the debug failure renderer so both console and Textual views still show it
+- [x] Verify with focused echo tests and record the maintenance note
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` and `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo_presentation.py` so `pw echo --debug` now carries any received synchronous response into the failure renderer, which keeps the inbound payload visible in both the plain debug output and the interactive Textual viewer even when later parse or verification checks fail.
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` to lock in the regression case where an echo reply contains unexpected top-level fields: the command must still show the inbound payload before the error summary.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the debug failure contract is documented for future work.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`27 passed`).
+
 - [x] Split `pw echo` presentation helpers into a dedicated module while keeping command logic in `echo.py`
 - [x] Preserve the existing test-facing helper surface and update imports without changing behavior
 - [x] Verify the affected echo/debug suites with the repo test interpreter

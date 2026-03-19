@@ -212,6 +212,57 @@ def _rewrite_echo_request_validation_error(
     return message
 
 
+def _build_echo_failure_verification_lines(
+    response_payload: str | None
+) -> dict[str, str]:
+    """Build best-effort reply details for debug failure output."""
+
+    if response_payload is None:
+        return {}
+
+    payload = parse_debug_payload(response_payload)
+    if not isinstance(payload, dict):
+        return {}
+
+    header = payload.get("Header")
+    if not isinstance(header, dict):
+        header = {}
+
+    verification_lines: dict[str, str] = {}
+    schema = header.get("Schema")
+    if isinstance(schema, str) and schema:
+        verification_lines["Schema reported"] = schema
+
+    if isinstance(payload.get("Hash"), str) and payload["Hash"]:
+        verification_lines["Canonical payload hash"] = "present in the reply"
+    else:
+        verification_lines["Canonical payload hash"] = "missing from the reply"
+
+    selector = header.get("Selector")
+    signature = payload.get("Signature")
+    if isinstance(signature, str) and signature:
+        if isinstance(selector, str) and selector:
+            verification_lines["Signature field"] = (
+                f"present in the reply (selector {selector})"
+            )
+        else:
+            verification_lines["Signature field"] = "present in the reply"
+    else:
+        verification_lines["Signature field"] = "missing from the reply"
+
+    for key, label in (
+        ("From", "From reported by reply"),
+        ("To", "To reported by reply"),
+        ("Subject", "Subject reported by reply"),
+        ("Correlation", "Correlation reported by reply"),
+    ):
+        value = header.get(key)
+        if isinstance(value, str) and value:
+            verification_lines[label] = value
+
+    return verification_lines
+
+
 def _describe_echo_network_error(
     domain: str,
     reason: object,
@@ -318,6 +369,7 @@ def cmd_echo(
         dns_diagnostics = verification.dns_diagnostics
     except UserFacingError as exc:
         dns_diagnostics = getattr(exc, "diagnostics", dns_diagnostics)
+        verification_lines = _build_echo_failure_verification_lines(response_payload)
         if debug:
             outbound_payload = None
             if request_message is not None:
@@ -342,6 +394,8 @@ def cmd_echo(
                     "Error type": exc.__class__.__name__,
                 },
                 outbound_payload = outbound_payload,
+                response_payload = response_payload,
+                verification_lines = verification_lines,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
                 total_seconds = time.perf_counter() - started_at,
@@ -384,6 +438,8 @@ def cmd_echo(
                 "Stage": "request construction",
             },
             outbound_payload = None,
+            response_payload = response_payload,
+            verification_lines = _build_echo_failure_verification_lines(response_payload),
             dns_diagnostics = dns_diagnostics,
             dns_link_context = dns_link_context,
             total_seconds = time.perf_counter() - started_at,
@@ -405,6 +461,8 @@ def cmd_echo(
                 "Stage": "unexpected failure",
             },
             outbound_payload = None,
+            response_payload = response_payload,
+            verification_lines = _build_echo_failure_verification_lines(response_payload),
             dns_diagnostics = dns_diagnostics,
             dns_link_context = dns_link_context,
             total_seconds = time.perf_counter() - started_at,

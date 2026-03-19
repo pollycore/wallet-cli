@@ -494,6 +494,7 @@ def _build_echo_error_textual_sections(
     payload_format: str,
     outbound_payload: object | None,
     response_payload: str | None,
+    verification_lines: dict[str, str] | None,
     dns_diagnostics,
     dns_link_context: tuple[str, str] | None,
     error_lines: dict[str, str],
@@ -539,15 +540,26 @@ def _build_echo_error_textual_sections(
         )
     )
 
-    if dns_diagnostics is not None:
-        diagnostics_payload = asdict(dns_diagnostics)
+    if verification_lines:
         sections.append(
             _EchoTextualSection(
-                title = "DNS verification diagnostics",
-                body = payload_renderer(diagnostics_payload),
-                copy_text = payload_copy_renderer(diagnostics_payload),
+                title = f"Reply details from {domain}",
+                body = _render_labeled_lines(verification_lines),
             )
         )
+
+    diagnostics_payload = (
+        {"Status": "unavailable for this failure"}
+        if dns_diagnostics is None
+        else asdict(dns_diagnostics)
+    )
+    sections.append(
+        _EchoTextualSection(
+            title = "DNS verification diagnostics",
+            body = payload_renderer(diagnostics_payload),
+            copy_text = payload_copy_renderer(diagnostics_payload),
+        )
+    )
 
     if dns_link_context is not None:
         sections.append(
@@ -645,6 +657,7 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         min-height: 1;
         margin: 0 0 0 0;
         padding: 0 1 0 0;
+        color: #3b82f6;
     }
 
     .copy-link {
@@ -653,6 +666,7 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         min-height: 1;
         margin: 0 0 0 1;
         padding: 0 0;
+        color: #3b82f6;
     }
 
     .is-active {
@@ -953,6 +967,12 @@ def _print_echo_dns_diagnostics(
     """Render DNS verification diagnostics for the echo debug path."""
 
     if diagnostics is None:
+        print()
+        print_section_title("DNS verification diagnostics")
+        print_labeled_value_lines(
+            {"Status": "unavailable for this failure"},
+            prefix = " - ",
+        )
         return
 
     printer = print_debug_json_payload if json_output else print_debug_payload
@@ -1113,6 +1133,7 @@ def _render_debug_echo_failure(
     error_lines: dict[str, str],
     outbound_payload: object | None,
     response_payload: str | None,
+    verification_lines: dict[str, str] | None,
     dns_diagnostics,
     dns_link_context: tuple[str, str] | None,
     total_seconds: float,
@@ -1135,6 +1156,7 @@ def _render_debug_echo_failure(
                 payload_format = "yaml",
                 outbound_payload = outbound_payload,
                 response_payload = response_payload,
+                verification_lines = verification_lines,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
                 error_lines = error_lines,
@@ -1148,6 +1170,7 @@ def _render_debug_echo_failure(
                 payload_format = "json",
                 outbound_payload = outbound_payload,
                 response_payload = response_payload,
+                verification_lines = verification_lines,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
                 error_lines = error_lines,
@@ -1161,6 +1184,7 @@ def _render_debug_echo_failure(
                 payload_format = "raw",
                 outbound_payload = outbound_payload,
                 response_payload = response_payload,
+                verification_lines = verification_lines,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
                 error_lines = error_lines,
@@ -1186,6 +1210,12 @@ def _render_debug_echo_failure(
         error_lines,
         prefix = " - ",
     )
+    if verification_lines:
+        print_section_title(f"Reply details from {domain}")
+        print_labeled_value_lines(
+            verification_lines,
+            prefix = " - ",
+        )
     _print_echo_dns_diagnostics(
         dns_diagnostics,
         json_output = debug_json)

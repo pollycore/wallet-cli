@@ -474,6 +474,14 @@ def test_echo_textual_app_toggle_switches_payload_sections():
     assert app._current_sections()[0].title == "YAML section"
 
 
+def test_echo_textual_app_styles_control_links_blue():
+    css = echo_feature._EchoTextualApp.CSS
+
+    assert ".control-link" in css
+    assert ".copy-link" in css
+    assert "color: #3b82f6;" in css
+
+
 def test_echo_textual_app_routes_link_actions_to_toggles_and_copy():
     app = echo_feature._EchoTextualApp(
         header_panel = echo_feature._build_echo_header_panel(),
@@ -941,7 +949,10 @@ def test_echo_debug_rejects_unexpected_top_level_response_fields(
     assert "Echo: ok" in captured.out
     assert "Correlation: 123e4567-e89b-12d3-a456-426614174000" in captured.out
     assert "Request:" in captured.out
-    assert "\nDNS verification diagnostics:\n" not in captured.out
+    assert "\nReply details from any-domain.pollyweb.org:\n" in captured.out
+    assert " - Signature field: present in the reply (selector default)" in captured.out
+    assert "\nDNS verification diagnostics:\n" in captured.out
+    assert " - Status: unavailable for this failure" in captured.out
     assert "External DNS checks:" in captured.out
     assert captured.err == ""
 
@@ -992,6 +1003,8 @@ def test_echo_debug_prints_dns_diagnostics_on_verification_failure(
     assert " - Status: failed" in captured.out
     assert "did not verify" in captured.out
     assert " - Error type: UserFacingError" in captured.out
+    assert "\nReply details from vault.example.com:\n" in captured.out
+    assert " - Signature field: present in the reply (selector pw1)" in captured.out
     assert "\nDNS verification diagnostics:\n" in captured.out
     assert "Selector: pw1" in captured.out
     assert "DkimName: pw1._domainkey.pw.vault.example.com" in captured.out
