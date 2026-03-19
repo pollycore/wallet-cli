@@ -32,6 +32,7 @@
 - `pw echo --debug` should keep the underlying transport exception detail for network failures instead of collapsing it to the normal friendly resolver wording, so low-level troubleshooting remains available on demand.
 - `pw echo` verification should reject any extra top-level response fields beyond `Header`, `Body`, `Hash`, and `Signature`, so misplaced properties such as a top-level `Request` fail loudly instead of being hidden by debug formatting.
 - `pw echo --debug` should print DNS verification diagnostics for the PollyWeb branch `DS` lookup and DKIM `TXT` lookup, including the DNS names queried, the collected record values, and whether each response carried the DNSSEC AD flag; keep those diagnostics visible even when verification fails after the response arrives.
+- `pw echo --debug` should keep early request-construction and parsing failures inside the CLI app by rendering an `Error summary` section with the failure details and the usual debug footer instead of falling back to a top-level traceback.
 - `pw echo --debug` should label the click-through MXToolbox URL as an explicit DKIM test link for the verified `pw.<domain>` branch and selector so users can open it directly.
 - `pw echo --debug` should also label the DNSSEC Debugger URL as an explicit test link for the verified `pw.<domain>` branch so users can open the exact DNSSEC check directly.
 - `pw echo --debug` should also label the Google DNS URL as an explicit test link for the verified `pw.<domain>` branch so users can open the exact resolver view directly.

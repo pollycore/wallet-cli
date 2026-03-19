@@ -31,6 +31,7 @@
 - The current test and runtime surface needs `pollyweb>=1.0.78`; if repo code or tests import newer PollyWeb diagnostics/types, bump the version floor right away instead of relying on a locally upgraded venv.
 - When a user asks to update the CLI, check the `wallet-cli` source repo first instead of only refreshing the pipx-installed `pw` environment.
 - For `pw echo`, do not assume the synchronous reply `To` will always echo the target domain; if the target domain has a stored bind, treat that bind UUID as an equally valid echoed recipient.
+- For `pw echo` request validation, rewrite the library's generic `To must be a domain string or a UUID` wording into an echo-specific domain-only error, because `pw echo` targets domains and mentioning UUIDs sends users in the wrong direction.
 - Keep plain `pw echo` free of decorative boxes; reserve the top header, bottom summary box, and Textual viewer for `pw echo --debug`.
 - For interactive TTY runs, reserve the Textual viewer for `pw echo --debug` so the reactive layout helps with verbose inspection without changing the normal concise `pw echo` path; preserve the plain CLI output for non-interactive runs and tests.
 - Keep the plain `pw echo` success path to the single verification line with duration and latency, and reserve the echoed payload plus visual summary for `--debug`.
@@ -40,6 +41,7 @@
 - For `pw echo` transport failures, keep the default path user-friendly, but let `--debug` surface the raw underlying network exception so missing-domain troubleshooting still has the low-level clue when needed.
 - For `pw echo`, validate the raw synchronous response shape before pretty-printing it: reject any top-level fields outside `Header`, `Body`, `Hash`, and `Signature` so misplaced server properties are caught immediately.
 - For `pw echo --debug`, collect and print the PollyWeb branch `DS` lookup and DKIM `TXT` lookup details, including the queried DNS names, returned record text, and DNSSEC AD-flag state, and print those diagnostics even when signature verification fails after the response is received.
+- For `pw echo --debug`, early request-building or parsing failures must stay inside the debug UI: render an `Error summary` section plus the usual timing/footer context instead of leaking a top-level traceback or stderr-only failure.
 - For `pw echo --debug`, the CLI must not perform its own parallel DNS trust check; render only the `pollyweb` package's DNS diagnostics, and pair them with click-through external links so users can compare the package verdict against MXToolbox, DNSSEC Debugger, and Google DNS.
 - For `pw echo --debug`, label the MXToolbox click-through URL as a DKIM test link for the verified `pw.<domain>` branch and selector so the action is obvious from the terminal output.
 - For `pw echo --debug`, label the DNSSEC Debugger click-through URL as a test link for the verified `pw.<domain>` branch so the terminal output makes that direct check obvious too.

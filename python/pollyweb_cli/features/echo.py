@@ -165,6 +165,51 @@ def _build_echo_footer_panel(
     )
 
 
+def _build_echo_error_footer_panel(
+    *,
+    total_seconds: float,
+    network_seconds: float
+) -> Panel:
+    """Build the bottom summary panel for a failed echo debug run."""
+
+    accent_style = "bold #d7875f"
+    body_style = "bold white"
+    total_milliseconds = max(0, round(total_seconds * 1000))
+    latency_share = 0.0
+
+    if total_seconds > 0:
+        latency_share = (network_seconds / total_seconds) * 100
+
+    summary = Table.grid(expand = True)
+    summary.add_column(ratio = 1)
+    summary.add_column(width = 1)
+    summary.add_column(ratio = 1)
+    summary.add_row(
+        Text("❌ Echo request failed", style = body_style),
+        Text("│", style = accent_style),
+        Text("⏳ Verification incomplete", style = body_style),
+    )
+    summary.add_row(
+        Text("ℹ️ Review the error summary above", style = body_style),
+        Text("│", style = accent_style),
+        Text(
+            f" ⏳ Duration {total_milliseconds} ms  Latency {latency_share:.0f}%",
+            style = body_style,
+        ),
+    )
+
+    return Panel(
+        summary,
+        title = Text("Echo summary", style = accent_style),
+        title_align = "left",
+        border_style = accent_style,
+        box = ROUNDED,
+        expand = True,
+        width = _get_echo_panel_width(),
+        padding = (0, 1),
+    )
+
+
 def _print_echo_header() -> None:
     """Render the top banner panel for the plain CLI path."""
 
@@ -187,6 +232,21 @@ def _print_echo_footer_summary(
             network_seconds = network_seconds,
             dkim_and_dnssec_verified = dkim_and_dnssec_verified,
             cdn_distribution_detected = cdn_distribution_detected,
+        )
+    )
+
+
+def _print_echo_error_footer_summary(
+    *,
+    total_seconds: float,
+    network_seconds: float
+) -> None:
+    """Render the bottom failure-summary panel for the plain CLI path."""
+
+    DEBUG_CONSOLE.print(
+        _build_echo_error_footer_panel(
+            total_seconds = total_seconds,
+            network_seconds = network_seconds,
         )
     )
 
@@ -377,6 +437,68 @@ def _build_echo_textual_sections(
     return sections
 
 
+def _build_echo_error_textual_sections(
+    *,
+    domain: str,
+    outbound_payload: object | None,
+    dns_diagnostics,
+    dns_link_context: tuple[str, str] | None,
+    error_lines: dict[str, str],
+    total_seconds: float,
+    network_seconds: float,
+    transport_metadata: dict[str, object]
+) -> list[Group]:
+    """Build the error sections shown in the Textual echo viewer."""
+
+    sections: list[Group] = [
+        Group(
+            _render_section_title(f"Outbound payload to https://pw.{domain}/inbox"),
+            _yaml_debug_renderable(
+                {} if outbound_payload is None else outbound_payload
+            ),
+        ),
+        Group(
+            _render_section_title("Error summary"),
+            _render_labeled_lines(error_lines),
+        ),
+    ]
+
+    if dns_diagnostics is not None:
+        sections.append(
+            Group(
+                _render_section_title("DNS verification diagnostics"),
+                _yaml_debug_renderable(asdict(dns_diagnostics)),
+            )
+        )
+
+    if dns_link_context is not None:
+        sections.append(
+            Group(
+                _render_section_title("External DNS checks"),
+                _render_labeled_lines(_echo_dns_reference_links(*dns_link_context)),
+            )
+        )
+
+    sections.append(
+        Group(
+            _render_section_title("Network timing"),
+            _render_labeled_lines(
+                _build_echo_timing_lines(
+                    total_seconds = total_seconds,
+                    network_seconds = network_seconds,
+                )
+            ),
+        )
+    )
+    sections.append(
+        Group(
+            _render_section_title("Edge / CDN hints"),
+            _render_labeled_lines(_build_echo_edge_lines(transport_metadata)),
+        )
+    )
+    return sections
+
+
 class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
     """TTY-only Textual viewer for the interactive echo result layout."""
 
@@ -538,6 +660,19 @@ def _to_echo_user_facing_error(
     return UserFacingError(
         f"Echo response from {domain} did not verify: {message}",
         diagnostics = diagnostics)
+
+
+def _rewrite_echo_request_validation_error(
+    exc: MsgValidationError
+) -> str:
+    """Return echo-specific wording for request-construction validation errors."""
+
+    message = str(exc)
+
+    if message == "To must be a domain string or a UUID":
+        return "To must be a domain string. `pw echo` sends to a domain, not a UUID."
+
+    return message
 
 
 def _format_echo_success_metrics(
@@ -738,6 +873,59 @@ def _describe_echo_network_error(
         reason)
 
 
+def _render_debug_echo_failure(
+    *,
+    domain: str,
+    error_lines: dict[str, str],
+    outbound_payload: object | None,
+    dns_diagnostics,
+    dns_link_context: tuple[str, str] | None,
+    total_seconds: float,
+    network_seconds: float,
+    transport_metadata: dict[str, object]
+) -> int:
+    """Render a debug-friendly echo failure summary without crashing out."""
+
+    footer_panel = _build_echo_error_footer_panel(
+        total_seconds = total_seconds,
+        network_seconds = network_seconds,
+    )
+
+    if _should_use_textual_echo_view(debug = True):
+        _EchoTextualApp(
+            header_panel = _build_echo_header_panel(),
+            sections = _build_echo_error_textual_sections(
+                domain = domain,
+                outbound_payload = outbound_payload,
+                dns_diagnostics = dns_diagnostics,
+                dns_link_context = dns_link_context,
+                error_lines = error_lines,
+                total_seconds = total_seconds,
+                network_seconds = network_seconds,
+                transport_metadata = transport_metadata,
+            ),
+            footer_panel = footer_panel,
+        ).run()
+        return 1
+
+    print_section_title("Error summary")
+    print_labeled_value_lines(
+        error_lines,
+        prefix = " - ",
+    )
+    _print_echo_dns_diagnostics(dns_diagnostics)
+    if dns_link_context is not None:
+        _print_echo_dns_reference_links(*dns_link_context)
+    _print_echo_timing_details(
+        total_seconds = total_seconds,
+        network_seconds = network_seconds)
+    _print_echo_edge_details(transport_metadata)
+    print()
+    DEBUG_CONSOLE.print(footer_panel)
+    print()
+    return 1
+
+
 def cmd_echo(
     domain: str,
     *,
@@ -756,6 +944,9 @@ def cmd_echo(
     timing: dict[str, float] = {}
     transport_metadata: dict[str, object] = {}
     started_at = time.perf_counter()
+    normalized_domain = domain
+    response_payload: str | None = None
+    request_message = None
 
     if debug:
         _print_echo_header()
@@ -816,9 +1007,34 @@ def cmd_echo(
     except UserFacingError as exc:
         dns_diagnostics = getattr(exc, "diagnostics", dns_diagnostics)
         if debug:
-            _print_echo_dns_diagnostics(dns_diagnostics)
-            if dns_link_context is not None:
-                _print_echo_dns_reference_links(*dns_link_context)
+            outbound_payload = None
+            if request_message is not None:
+                wallet, _ = build_wallet_sender(
+                    normalized_domain,
+                    key_pair,
+                    binds_path = binds_path,
+                    anonymous = anonymous,
+                )
+                outbound_payload = build_debug_outbound_payload(
+                    wallet,
+                    request_message,
+                    unsigned = unsigned,
+                )
+
+            return _render_debug_echo_failure(
+                domain = normalized_domain,
+                error_lines = {
+                    "Status": "failed",
+                    "Error": str(exc),
+                    "Error type": exc.__class__.__name__,
+                },
+                outbound_payload = outbound_payload,
+                dns_diagnostics = dns_diagnostics,
+                dns_link_context = dns_link_context,
+                total_seconds = time.perf_counter() - started_at,
+                network_seconds = timing.get("network_seconds", 0.0),
+                transport_metadata = transport_metadata,
+            )
         raise
     except FileNotFoundError:
         raise UserFacingError(
@@ -836,6 +1052,48 @@ def cmd_echo(
         raise UserFacingError(
             f"Echo request to {domain} failed: {reason}"
         ) from None
+    except MsgValidationError as exc:
+        request_error = _rewrite_echo_request_validation_error(exc)
+
+        if not debug:
+            raise UserFacingError(
+                f"Echo request to {normalized_domain} failed: {request_error}"
+            ) from None
+
+        return _render_debug_echo_failure(
+            domain = normalized_domain,
+            error_lines = {
+                "Status": "failed",
+                "Error": request_error,
+                "Error type": exc.__class__.__name__,
+                "Stage": "request construction",
+            },
+            outbound_payload = None,
+            dns_diagnostics = dns_diagnostics,
+            dns_link_context = dns_link_context,
+            total_seconds = time.perf_counter() - started_at,
+            network_seconds = timing.get("network_seconds", 0.0),
+            transport_metadata = transport_metadata,
+        )
+    except Exception as exc:
+        if not debug:
+            raise
+
+        return _render_debug_echo_failure(
+            domain = normalized_domain,
+            error_lines = {
+                "Status": "failed",
+                "Error": str(exc) if str(exc) else repr(exc),
+                "Error type": exc.__class__.__name__,
+                "Stage": "unexpected failure",
+            },
+            outbound_payload = None,
+            dns_diagnostics = dns_diagnostics,
+            dns_link_context = dns_link_context,
+            total_seconds = time.perf_counter() - started_at,
+            network_seconds = timing.get("network_seconds", 0.0),
+            transport_metadata = transport_metadata,
+        )
 
     total_seconds = time.perf_counter() - started_at
     network_seconds = timing.get("network_seconds", 0.0)

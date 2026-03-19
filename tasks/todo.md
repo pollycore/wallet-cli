@@ -385,3 +385,16 @@
 - Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py` so `pw test` now treats the exact expected inbound value `"<str>"` as a wildcard that requires the response field to exist and contain a non-empty string.
 - Added `/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py` coverage for accepted string wildcard matches plus the three failure cases the user called out: missing field, empty string, and non-string values.
 - Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/test.md`, `/Users/jorgemf/Git/wallet-cli/README.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the new fixture sentinel is documented consistently for future work.
+
+# Task Plan
+
+- [x] Inspect the current `pw echo --debug` failure path and identify which exceptions bypass the in-app renderer
+- [x] Keep debug failures inside the echo UI by rendering an explicit error summary instead of leaking a traceback
+- [x] Add regression coverage for debug echo failures and verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so `pw echo --debug` now catches early request-building, parsing, and other debug-path failures and renders them inside the echo UI with an `Error summary`, timing details, and the existing footer instead of leaking a top-level traceback.
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` to lock in the new in-app debug failure summary for both request-validation failures and post-response verification failures.
+- Updated `/Users/jorgemf/Git/wallet-cli/AGENTS.md` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so future `pw echo --debug` work preserves the in-app failure renderer.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`15 passed`).

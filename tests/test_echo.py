@@ -511,14 +511,18 @@ def test_echo_debug_rejects_unexpected_top_level_response_fields(
 
     assert exit_code == 1
     captured = capsys.readouterr()
+    assert "\nError summary:\n" in captured.out
+    assert " - Status: failed" in captured.out
     assert (
-        "unexpected top-level field(s): Request. "
-        "Expected only Body, Hash, Header, and Signature."
-        in captured.err
+        " - Error: Echo response from any-domain.pollyweb.org had unexpected "
+        "top-level field(s): Request. Expected only Body, Hash, Header, and "
+        "Signature." in captured.out
     )
+    assert " - Error type: UserFacingError" in captured.out
     assert "\nDNS verification diagnostics:\n" not in captured.out
     assert "External DNS checks:" in captured.out
     assert "\nEcho response:\n" not in captured.out
+    assert captured.err == ""
 
 
 def test_echo_debug_prints_dns_diagnostics_on_verification_failure(
@@ -563,11 +567,15 @@ def test_echo_debug_prints_dns_diagnostics_on_verification_failure(
 
     assert exit_code == 1
     captured = capsys.readouterr()
-    assert "did not verify" in captured.err
+    assert "\nError summary:\n" in captured.out
+    assert " - Status: failed" in captured.out
+    assert "did not verify" in captured.out
+    assert " - Error type: UserFacingError" in captured.out
     assert "\nDNS verification diagnostics:\n" in captured.out
     assert "Selector: pw1" in captured.out
     assert "DkimName: pw1._domainkey.pw.vault.example.com" in captured.out
     assert "dnssec-debugger.verisignlabs.com/pw.vault.example.com" in captured.out
+    assert captured.err == ""
 
 
 def test_echo_accepts_response_to_stored_bind(
@@ -758,6 +766,80 @@ def test_echo_debug_keeps_raw_dns_failure_details(
         "gaierror(8, 'nodename nor servname provided, or not known')"
     ) in captured.err
     assert "Could not resolve PollyWeb inbox host" not in captured.err
+
+
+def test_echo_debug_shows_in_app_summary_for_request_validation_errors(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature,
+        "send_wallet_message",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            pollyweb_msg.MsgValidationError("To must be a domain string or a UUID")
+        ),
+    )
+
+    exit_code = cli.main(["echo", "--debug", "any-domain"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "pw echo v" in captured.out
+    assert "\nError summary:\n" in captured.out
+    assert " - Status: failed" in captured.out
+    assert " - Error type: MsgValidationError" in captured.out
+    assert " - Stage: request construction" in captured.out
+    assert (
+        " - Error: To must be a domain string. `pw echo` sends to a domain, "
+        "not a UUID."
+    ) in captured.out
+    assert "Echo summary" in captured.out
+    assert "❌ Echo request failed" in captured.out
+    assert "Traceback" not in captured.out
+    assert captured.err == ""
+
+
+def test_echo_reports_domain_only_request_validation_errors(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature,
+        "send_wallet_message",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            pollyweb_msg.MsgValidationError("To must be a domain string or a UUID")
+        ),
+    )
+
+    exit_code = cli.main(["echo", "123e4567-e89b-12d3-a456-426614174000"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert (
+        "Error: Echo request to 123e4567-e89b-12d3-a456-426614174000 failed: "
+        "To must be a domain string. `pw echo` sends to a domain, not a UUID."
+    ) in captured.err
 
 
 def test_echo_reports_human_readable_dns_failures_from_custom_transport(
