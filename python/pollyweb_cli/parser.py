@@ -114,6 +114,7 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
 
     test_parser = subparsers.add_parser(
         "test",
+        aliases = ["tests"],
         help="Send a wrapped test fixture and verify the expected response.",
     )
     test_parser.add_argument(

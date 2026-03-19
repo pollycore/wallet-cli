@@ -738,7 +738,7 @@ def _run_main(
                 json_output = args.json,
                 unsigned = args.unsigned,
                 anonymous = args.anonymous)
-        if args.command == "test":
+        if args.command in {"test", "tests"}:
             return cmd_test(
                 path = args.path,
                 debug = args.debug,

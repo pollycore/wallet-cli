@@ -557,6 +557,17 @@ def test_parser_accepts_test_command_without_path():
     assert args.json is True
 
 
+def test_parser_accepts_tests_command_alias():
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["tests", "./test.yaml", "--debug", "--json"])
+
+    assert args.command == "tests"
+    assert args.path == "./test.yaml"
+    assert args.debug is True
+    assert args.json is True
+
+
 def test_parser_accepts_echo_command():
     parser = cli.build_parser()
 
