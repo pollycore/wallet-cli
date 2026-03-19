@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 import json
+import time
 import urllib.error
 from pathlib import Path
 from urllib.parse import quote
@@ -136,6 +137,25 @@ def _to_echo_user_facing_error(
         diagnostics = diagnostics)
 
 
+def _format_echo_success_metrics(
+    *,
+    total_seconds: float,
+    network_seconds: float
+) -> str:
+    """Format the echo success metrics for concise terminal output."""
+
+    total_milliseconds = max(0, round(total_seconds * 1000))
+    network_share = 0.0
+
+    if total_seconds > 0:
+        network_share = (network_seconds / total_seconds) * 100
+
+    return (
+        f"✅ Verified echo response ({total_milliseconds} ms, "
+        f"{network_share:.0f}% network latency)"
+    )
+
+
 def cmd_echo(
     domain: str,
     *,
@@ -151,6 +171,8 @@ def cmd_echo(
 
     dns_diagnostics = None
     dns_link_context: tuple[str, str] | None = None
+    timing: dict[str, float] = {}
+    started_at = time.perf_counter()
 
     try:
         require_configured_keys()
@@ -164,6 +186,7 @@ def cmd_echo(
             binds_path=binds_path,
             anonymous=anonymous,
             unsigned=unsigned,
+            timing=timing,
         )
         if debug:
             dns_link_context = _echo_dns_context(
@@ -226,8 +249,15 @@ def cmd_echo(
             f"Echo request to {domain} failed: {reason}"
         ) from None
 
+    total_seconds = time.perf_counter() - started_at
+    network_seconds = timing.get("network_seconds", 0.0)
+
     if not debug:
-        print("✅ Verified echo response")
+        print(
+            _format_echo_success_metrics(
+                total_seconds = total_seconds,
+                network_seconds = network_seconds)
+        )
         return 0
 
     print_echo_response(response_payload)
@@ -258,4 +288,13 @@ def cmd_echo(
     print(f" - To matched expected sender: {response.To}")
     print(f" - Subject matched expected echo subject: {response.Subject}")
     print(f" - Correlation matched the request: {response.Correlation}")
+    print(
+        f" - Total duration: {max(0, round(total_seconds * 1000))} ms"
+    )
+    if total_seconds > 0:
+        print(
+            f" - Network latency share: {(network_seconds / total_seconds) * 100:.0f}%"
+        )
+    else:
+        print(" - Network latency share: 0%")
     return 0

@@ -5,6 +5,7 @@ import json
 import socket
 import stat
 import sys
+import time
 import uuid
 import urllib.error
 from pathlib import Path
@@ -17,7 +18,6 @@ from pollyweb_cli import cli
 from pollyweb_cli.features import chat as chat_feature
 from pollyweb_cli.features import echo as echo_feature
 from pollyweb_cli.features import test as test_feature
-from pollyweb_cli.tools import transport as transport_tools
 
 from tests.cli_test_helpers import (
     TEST_MSGS_DIR,
@@ -94,6 +94,12 @@ def test_echo_sends_signed_message_and_verifies_response(
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    perf_counter_values = iter([100.0, 100.10, 100.22, 100.42])
+    monkeypatch.setattr(
+        time,
+        "perf_counter",
+        lambda: next(perf_counter_values),
+    )
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
@@ -108,7 +114,10 @@ def test_echo_sends_signed_message_and_verifies_response(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert captured.out == "✅ Verified echo response\n"
+    assert (
+        captured.out
+        == "✅ Verified echo response (420 ms, 29% network latency)\n"
+    )
     assert captured.err == ""
 
 def test_echo_fails_when_signature_does_not_verify(monkeypatch, tmp_path, capsys):
@@ -501,6 +510,12 @@ def test_echo_accepts_response_to_stored_bind(
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
     monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    perf_counter_values = iter([10.0, 10.02, 10.07, 10.2])
+    monkeypatch.setattr(
+        time,
+        "perf_counter",
+        lambda: next(perf_counter_values),
+    )
     monkeypatch.setattr(
         pollyweb_msg,
         "_resolve_dkim_public_key",
@@ -515,7 +530,7 @@ def test_echo_accepts_response_to_stored_bind(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert "✅ Verified echo response" in captured.out
+    assert "✅ Verified echo response (200 ms, 25% network latency)" in captured.out
     assert captured.err == ""
 
 

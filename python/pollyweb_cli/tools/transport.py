@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 from pathlib import Path
+import time
 import uuid
 
 import urllib.error
@@ -190,7 +191,8 @@ def send_wallet_message(
     binds_path: Path | None = None,
     anonymous: bool = False,
     unsigned: bool = False,
-    debug_json: bool = False
+    debug_json: bool = False,
+    timing: dict[str, float] | None = None
 ) -> tuple[str, Msg, str]:
     """Send one wallet-backed PollyWeb message and return the raw response."""
 
@@ -221,8 +223,15 @@ def send_wallet_message(
         request_message,
         unsigned = unsigned)
     try:
+        send_started_at = time.perf_counter()
         response = outbound_message.send()
+        send_finished_at = time.perf_counter()
     except urllib.error.HTTPError as exc:
+        send_finished_at = time.perf_counter()
+
+        if timing is not None:
+            timing["network_seconds"] = send_finished_at - send_started_at
+
         error_body = None
 
         try:
@@ -241,6 +250,10 @@ def send_wallet_message(
             except Exception:
                 pass
         raise
+
+    if timing is not None:
+        timing["network_seconds"] = send_finished_at - send_started_at
+
     response_payload = serialize_wallet_response(response)
 
     if debug:

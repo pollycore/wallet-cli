@@ -1,5 +1,17 @@
 # Task Plan
 
+- [x] Inspect the written `pw echo` success-output contract and locate the current success print path
+- [x] Add total-duration and network-latency timing to the verified `pw echo` success output
+- [x] Update echo docs/tests/repo guidance for the new one-line timing output
+- [x] Verify with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py`
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so successful `pw echo` runs now print a single verification line that includes total request-and-verification duration in milliseconds plus the percentage of that time spent in the network send, while the debug path also reports the same timing details in the verbose summary.
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/transport.py` to expose measured wallet-send wall time back to callers through an optional timing dict, keeping the shared send path reusable without changing existing call sites.
+- Tightened `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` and refreshed `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the new output contract is documented and locked in.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`11 passed`).
+
 - [x] Fix `parse_message_request()` so long inline JSON is parsed before any filesystem existence check
 - [x] Add regression coverage for `pw test` style wrapped outbound JSON that used to trigger `OSError: [Errno 63] File name too long`
 - [x] Update docs/repo guidance if the user-visible behavior changed

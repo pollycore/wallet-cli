@@ -28,6 +28,7 @@
 - When a user asks to update the CLI, check the `wallet-cli` source repo first instead of only refreshing the pipx-installed `pw` environment.
 - For `pw echo`, do not assume the synchronous reply `To` will always echo the target domain; if the target domain has a stored bind, treat that bind UUID as an equally valid echoed recipient.
 - For plain `pw echo` success output, keep the command quiet and print only `✅ Verified echo response`; reserve the echoed payload for `--debug` so the default path stays concise.
+- For plain `pw echo` success output, keep the command quiet and to one line, but include the total duration in milliseconds plus the network-latency percentage so users get timing without dumping payload details.
 - For `pw echo`, translate `urllib.error.URLError` resolver failures into a human-readable PollyWeb inbox-host message instead of exposing raw `socket.gaierror(...)` text.
 - For `pw echo`, validate the raw synchronous response shape before pretty-printing it: reject any top-level fields outside `Header`, `Body`, `Hash`, and `Signature` so misplaced server properties are caught immediately.
 - For `pw echo --debug`, collect and print the PollyWeb branch `DS` lookup and DKIM `TXT` lookup details, including the queried DNS names, returned record text, and DNSSEC AD-flag state, and print those diagnostics even when signature verification fails after the response is received.
