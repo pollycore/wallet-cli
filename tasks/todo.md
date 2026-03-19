@@ -4,14 +4,15 @@
 - [x] Keep non-interactive `pw echo` behavior stable, update docs/guidance, and verify with the repo test interpreter
 
 - [x] Inspect the current wallet-backed `pw msg` transport path and compare it with the written "use pollyweb" guidance
-- [x] Remove the CLI-side request-message wrapper so the shared transport owns the only remaining outbound `Msg(...)` call
-- [ ] Add regression coverage for the shared transport build path and verify with the repo test interpreter
+- [x] Switch wallet-backed request construction to the published `pollyweb.Msg.from_outbound(...)` API
+- [x] Add regression coverage for the shared transport build path and verify with the repo test interpreter
 
 # Review
 
-- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/transport.py` so wallet-backed sends no longer keep a separate `build_wallet_message()` wrapper; the shared transport now owns the only outbound `Msg(...)` construction site, while keeping wallet sender selection and debug rendering unchanged.
-- Added `/Users/jorgemf/Git/wallet-cli/tests/test_msg_command.py` coverage that locks in the shared transport behavior and proves `send_wallet_message()` still passes the expected normalized `Msg` into `Wallet.send(...)` without reintroducing the deleted wrapper helper.
-- Verification is next with `./.venv-tests/bin/python -m pytest -q tests/test_msg_command.py tests/test_test_command.py`.
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/transport.py` so wallet-backed sends now build outbound requests through the published `pollyweb.Msg.from_outbound(...)` API while keeping wallet sender selection and debug rendering unchanged.
+- Updated `/Users/jorgemf/Git/wallet-cli/pyproject.toml` to require the published `pollyweb>=1.0.79` release that adds `Msg.from_outbound(...)`.
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/test_msg_command.py` and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the shared transport path is locked to the library builder and future CLI changes do not reintroduce a local message wrapper.
+- Verified with `./.venv-tests/bin/python -m pip install --upgrade pollyweb==1.0.79` and `./.venv-tests/bin/python -m pytest -q tests/test_msg_command.py tests/test_test_command.py` (`47 passed, 1 skipped`).
 
 - [x] Review the written `pw echo` output contract and current render path for a new top header
 - [x] Add a boxed top header to `pw echo` without disturbing the existing verification/debug sections

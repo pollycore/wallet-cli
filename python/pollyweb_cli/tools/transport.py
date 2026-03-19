@@ -153,14 +153,16 @@ def build_wallet_request_message(
     """Build one PollyWeb request message for the shared wallet send path."""
 
     normalized_domain = normalize_domain_name(domain)
-    effective_schema = DEFAULT_SCHEMA if schema_value is None else schema_value
+    outbound_request: dict[str, object] = {
+        "To": normalized_domain,
+        "Subject": subject,
+        "Body": body,
+    }
 
-    return Msg(
-        To = normalized_domain,
-        Subject = subject,
-        Body = body,
-        Schema = effective_schema,
-    ), normalized_domain
+    if schema_value is not None:
+        outbound_request["Schema"] = schema_value
+
+    return Msg.from_outbound(outbound_request), normalized_domain
 
 
 def build_wallet_sender(
@@ -219,18 +221,12 @@ def send_wallet_message(
         binds_path = binds_path,
         anonymous = anonymous,
     )
-    message_kwargs: dict[str, object] = {
-        "To": normalized_domain,
-        "Subject": subject,
-        "Body": body,
-    }
-
-    # Keep the CLI-side request build as thin as possible until the published
-    # `pollyweb` library exposes a partial-outbound builder/parser path.
-    if schema_value is not None:
-        message_kwargs["Schema"] = schema_value
-
-    request_message = Msg(**message_kwargs)
+    request_message, normalized_domain = build_wallet_request_message(
+        domain = domain,
+        subject = subject,
+        body = body,
+        schema_value = schema_value,
+    )
 
     if debug:
         request_url = f"https://pw.{normalized_domain}/inbox"

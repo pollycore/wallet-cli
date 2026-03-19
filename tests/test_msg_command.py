@@ -554,6 +554,13 @@ def test_msg_debug_and_json_prints_debug_payloads_as_raw_json(
 
 def test_send_wallet_message_builds_request_at_shared_transport_boundary(monkeypatch):
     key_pair = cli.KeyPair()
+    observed = {}
+
+    original_from_outbound = transport_tools.Msg.from_outbound
+
+    def wrapped_from_outbound(value):
+        observed["value"] = value
+        return original_from_outbound(value)
 
     def fake_send(self):
         assert self.To == "any-hoster.pollyweb.org"
@@ -561,6 +568,7 @@ def test_send_wallet_message_builds_request_at_shared_transport_boundary(monkeyp
         assert self.Body == {"Ping": "pong"}
         return {"ok": True}
 
+    monkeypatch.setattr(transport_tools.Msg, "from_outbound", wrapped_from_outbound)
     monkeypatch.setattr(transport_tools.Msg, "send", fake_send)
 
     response_payload, request_message, normalized_domain = transport_tools.send_wallet_message(
@@ -571,6 +579,12 @@ def test_send_wallet_message_builds_request_at_shared_transport_boundary(monkeyp
     )
 
     assert not hasattr(transport_tools, "build_wallet_message")
+    assert observed["value"] == {
+        "To": "any-hoster.pollyweb.org",
+        "Subject": "Echo@Domain",
+        "Body": {"Ping": "pong"},
+        "Schema": "pollyweb.org/MSG:1.0",
+    }
     assert request_message.To == "any-hoster.pollyweb.org"
     assert request_message.Subject == "Echo@Domain"
     assert request_message.Body == {"Ping": "pong"}

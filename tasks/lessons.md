@@ -1,6 +1,6 @@
 # Lessons
 
-- For wallet-backed CLI sends, do not keep a separate CLI message-wrapper helper around `Msg(...)`; build the wallet sender in shared transport, then create the outbound `Msg` directly at the send boundary until the published `pollyweb` library exposes a dedicated outbound-builder API.
+- For wallet-backed CLI sends, do not keep a separate CLI message-wrapper helper around `Msg(...)`; build the wallet sender in shared transport and construct outbound requests through `pollyweb.Msg.from_outbound(...)` so request defaults stay owned by the published library.
 - When `pw bind` receives a successful response, treat a bare UUID as the primary bind shape, but keep the legacy `Bind:<UUID>` parser path compatible so older hosts still persist the same bare UUID locally.
 - When `pw bind` updates `~/.pollyweb/binds.yaml`, record the change in `~/.pollyweb/binds.log` from the wallet code itself rather than relying on an OS-level file watcher, so bind churn can be traced back to CLI-owned writes.
 - When a `pw bind` response resolves to the same canonical domain/schema bind UUID already on disk, treat it as a true no-op: do not rewrite `~/.pollyweb/binds.yaml`, do not append a normal audit entry, and do not emit any change notification.
