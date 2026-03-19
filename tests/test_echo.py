@@ -383,12 +383,12 @@ def test_echo_textual_app_keeps_rich_static_sections():
     original_static = echo_feature.Static
     original_horizontal = echo_feature.Horizontal
     original_vertical = echo_feature.Vertical
-    original_button = echo_feature.Button
+    original_link = echo_feature.Link
     original_vertical_scroll = echo_feature.VerticalScroll
     echo_feature.Static = FakeStatic
     echo_feature.Horizontal = FakeVerticalScroll
     echo_feature.Vertical = FakeVerticalScroll
-    echo_feature.Button = FakeStatic
+    echo_feature.Link = FakeStatic
     echo_feature.VerticalScroll = FakeVerticalScroll
 
     try:
@@ -422,7 +422,7 @@ def test_echo_textual_app_keeps_rich_static_sections():
         echo_feature.Static = original_static
         echo_feature.Horizontal = original_horizontal
         echo_feature.Vertical = original_vertical
-        echo_feature.Button = original_button
+        echo_feature.Link = original_link
         echo_feature.VerticalScroll = original_vertical_scroll
 
     assert len(composed) == 3
@@ -458,6 +458,44 @@ def test_echo_textual_app_toggle_switches_payload_sections():
         initial_payload_format = "yaml",
     )
 
+    assert app._current_sections()[0].title == "YAML section"
+
+
+def test_echo_textual_app_routes_link_actions_to_toggles_and_copy():
+    app = echo_feature._EchoTextualApp(
+        header_panel = echo_feature._build_echo_header_panel(),
+        yaml_sections = [
+            echo_feature._EchoTextualSection(
+                title = "YAML section",
+                body = Text("yaml body", style = echo_feature.DEBUG_VALUE_STYLE),
+                copy_text = "yaml copy",
+            )
+        ],
+        json_sections = [
+            echo_feature._EchoTextualSection(
+                title = "JSON section",
+                body = Text("json body", style = echo_feature.DEBUG_VALUE_STYLE),
+                copy_text = "json copy",
+            )
+        ],
+        footer_panel = echo_feature._build_echo_footer_panel(
+            total_seconds = 0.2,
+            network_seconds = 0.1,
+            dkim_and_dnssec_verified = True,
+            cdn_distribution_detected = True,
+        ),
+        initial_payload_format = "yaml",
+    )
+    copied = []
+    app.copy_to_clipboard = copied.append
+
+    app.open_url("action://show-json")
+    assert app._current_sections()[0].title == "JSON section"
+
+    app.open_url("action://copy/0")
+    assert copied == ["json copy"]
+
+    app.open_url("action://show-yaml")
     assert app._current_sections()[0].title == "YAML section"
 
     app.action_show_json()
