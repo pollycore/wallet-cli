@@ -1,5 +1,6 @@
 # Lessons
 
+- For narrow Rich footer panels, avoid decorative emoji in fixed summary labels; terminal width and grapheme handling can treat icons like `ℹ️` as wider than expected and push the right border out of alignment.
 - When a debug payload formatter uses helper string subclasses such as `_LiteralDebugString`, keep every render path on the same shared YAML dumper; a plain `yaml.dump(...)` in a side path like the Textual echo viewer can leak `!!python/object...` tags into user-facing output.
 - For wallet-backed CLI sends, do not keep a separate CLI message-wrapper helper around `Msg(...)`; build the wallet sender in shared transport and construct outbound requests through `pollyweb.Msg.from_outbound(...)` so request defaults stay owned by the published library.
 - Keep the top-level CLI boundary responsible for collapsing leaked exceptions into short user-facing errors; on normal runs, validation mistakes should read like user-fixable input problems, and only `--debug` should show full tracebacks.
@@ -48,6 +49,7 @@
 - For interactive `pw echo --debug`, copy actions work best at the section level: keep copyable text alongside each payload-style block so the UI can offer one-button clipboard export next to that block’s title.
 - For `pw echo` transport failures, keep the default path user-friendly, but let `--debug` surface the raw underlying network exception so missing-domain troubleshooting still has the low-level clue when needed.
 - For `pw echo`, validate the raw synchronous response shape before pretty-printing it: reject any top-level fields outside `Header`, `Body`, `Hash`, and `Signature` so misplaced server properties are caught immediately.
+- For `pw echo --debug`, keep the inbound payload visible on failure whenever the server already replied; users need the raw response for troubleshooting even when parse or verification checks reject it.
 - For `pw echo --debug`, collect and print the PollyWeb branch `DS` lookup and DKIM `TXT` lookup details, including the queried DNS names, returned record text, and DNSSEC AD-flag state, and print those diagnostics even when signature verification fails after the response is received.
 - For `pw echo --debug`, early request-building or parsing failures must stay inside the debug UI: render an `Error summary` section plus the usual timing/footer context instead of leaking a top-level traceback or stderr-only failure.
 - For `pw echo --debug`, the CLI must not perform its own parallel DNS trust check; render only the `pollyweb` package's DNS diagnostics, and pair them with click-through external links so users can compare the package verdict against MXToolbox, DNSSEC Debugger, and Google DNS.

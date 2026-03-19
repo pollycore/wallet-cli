@@ -179,7 +179,7 @@ def _build_echo_error_footer_panel(
         Text("⏳ Verification incomplete", style = body_style),
     )
     summary.add_row(
-        Text("ℹ️ Review the error summary above", style = body_style),
+        Text("Review the error summary above", style = body_style),
         Text(
             f"⏳ Time {total_milliseconds} ms  Network {latency_share:.0f}%",
             style = body_style,
@@ -493,6 +493,7 @@ def _build_echo_error_textual_sections(
     domain: str,
     payload_format: str,
     outbound_payload: object | None,
+    response_payload: str | None,
     dns_diagnostics,
     dns_link_context: tuple[str, str] | None,
     error_lines: dict[str, str],
@@ -519,11 +520,24 @@ def _build_echo_error_textual_sections(
             body = payload_renderer(outbound_payload_value),
             copy_text = payload_copy_renderer(outbound_payload_value),
         ),
+    ]
+
+    if response_payload is not None:
+        inbound_payload_value = parse_debug_payload(response_payload)
+        sections.append(
+            _EchoTextualSection(
+                title = "Inbound payload",
+                body = payload_renderer(inbound_payload_value),
+                copy_text = payload_copy_renderer(inbound_payload_value),
+            )
+        )
+
+    sections.append(
         _EchoTextualSection(
             title = "Error summary",
             body = _render_labeled_lines(error_lines),
-        ),
-    ]
+        )
+    )
 
     if dns_diagnostics is not None:
         diagnostics_payload = asdict(dns_diagnostics)
@@ -1098,6 +1112,7 @@ def _render_debug_echo_failure(
     debug_json: bool,
     error_lines: dict[str, str],
     outbound_payload: object | None,
+    response_payload: str | None,
     dns_diagnostics,
     dns_link_context: tuple[str, str] | None,
     total_seconds: float,
@@ -1119,6 +1134,7 @@ def _render_debug_echo_failure(
                 domain = domain,
                 payload_format = "yaml",
                 outbound_payload = outbound_payload,
+                response_payload = response_payload,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
                 error_lines = error_lines,
@@ -1131,6 +1147,7 @@ def _render_debug_echo_failure(
                 domain = domain,
                 payload_format = "json",
                 outbound_payload = outbound_payload,
+                response_payload = response_payload,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
                 error_lines = error_lines,
@@ -1143,6 +1160,7 @@ def _render_debug_echo_failure(
                 domain = domain,
                 payload_format = "raw",
                 outbound_payload = outbound_payload,
+                response_payload = response_payload,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
                 error_lines = error_lines,
@@ -1155,6 +1173,13 @@ def _render_debug_echo_failure(
             initial_payload_format = "json" if debug_json else "yaml",
         ).run()
         return 1
+
+    if response_payload is not None:
+        print_section_title("Inbound payload")
+        if debug_json:
+            print_json_payload(parse_debug_payload(response_payload))
+        else:
+            DEBUG_CONSOLE.print(_yaml_debug_renderable(parse_debug_payload(response_payload)))
 
     print_section_title("Error summary")
     print_labeled_value_lines(

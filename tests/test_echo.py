@@ -937,9 +937,12 @@ def test_echo_debug_rejects_unexpected_top_level_response_fields(
         "Signature." in captured.out
     )
     assert " - Error type: UserFacingError" in captured.out
+    assert "\nInbound payload:\n" in captured.out
+    assert "Echo: ok" in captured.out
+    assert "Correlation: 123e4567-e89b-12d3-a456-426614174000" in captured.out
+    assert "Request:" in captured.out
     assert "\nDNS verification diagnostics:\n" not in captured.out
     assert "External DNS checks:" in captured.out
-    assert "\nEcho response:\n" not in captured.out
     assert captured.err == ""
 
 
@@ -1220,6 +1223,8 @@ def test_echo_debug_shows_in_app_summary_for_request_validation_errors(
     assert " - Error: To must be a domain string." in captured.out
     assert "Echo summary" in captured.out
     assert "❌ Echo request failed" in captured.out
+    assert "Review the error summary above" in captured.out
+    assert "ℹ️ Review the error summary above" not in captured.out
     assert "Traceback" not in captured.out
     assert captured.err == ""
 
