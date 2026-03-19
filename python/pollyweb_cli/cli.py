@@ -13,12 +13,13 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import traceback
 import urllib
 from urllib.parse import urlparse
 
 from packaging.version import InvalidVersion, Version
 import yaml
-from pollyweb import KeyPair, Msg
+from pollyweb import KeyPair, Msg, MsgValidationError
 import pollyweb.msg as pollyweb_msg
 from rich.console import Console
 from rich.markdown import Markdown
@@ -698,6 +699,7 @@ def _run_main(
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    debug_enabled = bool(getattr(args, "debug", False))
 
     try:
         if args.command == "version":
@@ -757,6 +759,26 @@ def _run_main(
                 anonymous = args.anonymous)
     except UserFacingError as exc:
         print_error(f"Error: {exc}")
+        return 1
+    except MsgValidationError as exc:
+        if debug_enabled:
+            traceback.print_exc()
+            return 1
+
+        print_error(
+            "Error: Invalid input. "
+            f"{exc}. Please fix the command input and try again."
+        )
+        return 1
+    except Exception:
+        if debug_enabled:
+            traceback.print_exc()
+            return 1
+
+        print_error(
+            "Error: The command failed unexpectedly. "
+            "Run again with `--debug` for full details."
+        )
         return 1
 
     parser.print_help()

@@ -645,3 +645,53 @@ def test_main_renders_bind_errors_in_red(monkeypatch):
             {"file": cli.sys.stderr},
         )
     ]
+
+def test_main_wraps_validation_errors_without_debug(monkeypatch):
+    monkeypatch.setattr(cli, "_maybe_upgrade_before_command", lambda argv: None)
+    monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: True)
+    monkeypatch.setattr(
+        cli,
+        "cmd_echo",
+        lambda domain, debug, unsigned = False, anonymous = False: (
+            _ for _ in ()
+        ).throw(cli.MsgValidationError("To must be a domain string or a UUID")),
+    )
+    printed = []
+
+    def fake_print(*args, **kwargs):
+        printed.append((args, kwargs))
+
+    monkeypatch.setattr(builtins, "print", fake_print)
+
+    exit_code = cli.main(["echo", "any-domain"])
+
+    assert exit_code == 1
+    assert printed == [
+        (
+            (
+                f"{cli.ERROR_STYLE}Error: Invalid input. "
+                "To must be a domain string or a UUID. "
+                f"Please fix the command input and try again.{cli.ERROR_STYLE_RESET}",
+            ),
+            {"file": cli.sys.stderr},
+        )
+    ]
+
+def test_main_prints_traceback_for_validation_errors_with_debug(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(cli, "_maybe_upgrade_before_command", lambda argv: None)
+    monkeypatch.setattr(
+        cli,
+        "cmd_echo",
+        lambda domain, debug, unsigned = False, anonymous = False: (
+            _ for _ in ()
+        ).throw(cli.MsgValidationError("To must be a domain string or a UUID")),
+    )
+
+    exit_code = cli.main(["echo", "--debug", "any-domain"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Traceback (most recent call last):" in captured.err
+    assert "To must be a domain string or a UUID" in captured.err
