@@ -1,5 +1,16 @@
 # Task Plan
 
+- [x] Reproduce the remaining generic `pw bind` failure for DNS-unresolvable domains and confirm which exception escapes the bind error boundary
+- [x] Catch raw resolver exceptions from wallet transport in `pw bind` and reuse the human-readable inbox-host wording
+- [x] Add regression coverage and verify both pytest and the local `pw-dev bind` repro
+
+# Review
+
+- Updated [/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py](/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py) so `pw bind` now converts both wrapped `urllib.error.URLError` failures and raw transport-level `OSError` / `socket.gaierror` resolver failures into the same readable `Could not resolve PollyWeb inbox host ...` message.
+- Added [/Users/jorgemf/Git/wallet-cli/tests/test_bind.py](/Users/jorgemf/Git/wallet-cli/tests/test_bind.py) coverage for the published-wallet path that raises a raw `socket.gaierror`, which was the gap behind the generic fallback.
+- Updated [/Users/jorgemf/Git/wallet-cli/docs/commands/bind.md](/Users/jorgemf/Git/wallet-cli/docs/commands/bind.md), [/Users/jorgemf/Git/wallet-cli/AGENTS.md](/Users/jorgemf/Git/wallet-cli/AGENTS.md), and [/Users/jorgemf/Git/wallet-cli/tasks/lessons.md](/Users/jorgemf/Git/wallet-cli/tasks/lessons.md) so the DNS-resolution wording and transport-version caveat are documented.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_bind.py tests/test_cli_core.py` (`60 passed`) and `./pw-dev bind any-listenerj.dom`, which now prints the readable inbox-host error instead of the generic unexpected-failure message.
+
 - [x] Inspect the current `pw bind` success output and confirm where non-debug completion text is rendered
 - [x] Update non-debug `pw bind` success output so it only prints `✅ Bound to <domain>` while leaving debug and JSON paths unchanged
 - [x] Verify the focused bind suite with the repo test interpreter and record the review note

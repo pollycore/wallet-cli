@@ -719,6 +719,39 @@ def test_bind_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
     )
 
 
+def test_bind_reports_raw_dns_resolution_failures_from_wallet_send(
+    monkeypatch,
+    tmp_path,
+    capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+
+    def fake_send_wallet_message(**kwargs):
+        raise socket.gaierror(8, "nodename nor servname provided, or not known")
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli.bind_feature, "send_wallet_message", fake_send_wallet_message)
+
+    exit_code = cli.main(["bind", "any-listenerj.dom"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert (
+        "Could not resolve PollyWeb inbox host pw.any-listenerj.pollyweb.org"
+        in captured.err
+    )
+
+
 def test_bind_rejects_invalid_domain_before_loading_keys(
     monkeypatch,
     tmp_path,

@@ -527,16 +527,34 @@ def cmd_bind(
     try:
         require_configured_keys()
         key_pair = load_signing_key_pair()
-        bind_entry, raw_payload = send_bind_message(
-            normalized_domain,
-            key_pair,
-            public_key_path,
-            binds_path,
-            debug=debug,
-            debug_json=json_output,
-            anonymous=anonymous,
-            unsigned=unsigned,
-        )
+        try:
+            bind_entry, raw_payload = send_bind_message(
+                normalized_domain,
+                key_pair,
+                public_key_path,
+                binds_path,
+                debug=debug,
+                debug_json=json_output,
+                anonymous=anonymous,
+                unsigned=unsigned,
+            )
+        except urllib.error.HTTPError:
+            raise
+        except urllib.error.URLError as exc:
+            reason = describe_bind_network_error(
+                normalized_domain,
+                exc.reason)
+            raise UserFacingError(
+                f"Could not bind {domain}. Network request failed: {reason}"
+            ) from None
+        except OSError as exc:
+            reason = describe_bind_network_error(
+                normalized_domain,
+                exc)
+            raise UserFacingError(
+                f"Could not bind {domain}. Network request failed: {reason}"
+            ) from None
+
         save_bind(bind_entry, normalized_domain, binds_path)
     except FileNotFoundError:
         raise UserFacingError(
@@ -545,13 +563,6 @@ def cmd_bind(
     except urllib.error.HTTPError as exc:
         raise UserFacingError(
             f"Could not bind {domain}. The server returned HTTP {exc.code}."
-        ) from None
-    except urllib.error.URLError as exc:
-        reason = describe_bind_network_error(
-            normalized_domain,
-            exc.reason)
-        raise UserFacingError(
-            f"Could not bind {domain}. Network request failed: {reason}"
         ) from None
 
     if json_output:
