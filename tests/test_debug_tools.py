@@ -20,6 +20,14 @@ def test_render_debug_yaml_adds_code_block_background():
     )
 
 
+def test_render_debug_yaml_pads_lines_for_full_block_background():
+    renderable = debug_tools.render_debug_yaml("A: 1\nLongerKey: 2")
+
+    assert renderable.plain.splitlines()[0].endswith(
+        " " * (len("LongerKey: 2") - len("A: 1"))
+    )
+
+
 def test_print_json_payload_uses_rich_syntax_for_interactive_terminals(
     monkeypatch
 ):

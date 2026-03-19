@@ -597,9 +597,28 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         margin: 0 0 1 0;
     }
 
+    #header-panel {
+        width: 1fr;
+    }
+
+    #header-controls {
+        width: auto;
+        height: auto;
+        align: right middle;
+    }
+
     .section-bar {
         height: auto;
         margin: 0 0 0 0;
+    }
+
+    .section-block {
+        height: auto;
+        margin: 0 0 1 0;
+    }
+
+    .section-content {
+        height: auto;
     }
 
     .format-button {
@@ -611,10 +630,6 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
 
     .copy-button {
         margin: 0 0 0 1;
-    }
-
-    .section {
-        margin: 0 0 1 0;
     }
     """
     BINDINGS = [
@@ -685,18 +700,21 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         """Compose the reactive echo layout."""
 
         yield Horizontal(
-            Static(self._header_panel, classes = "section"),
-            Button(
-                "Yaml",
-                id = "toggle-yaml",
-                variant = "success" if self._payload_format == "yaml" else "default",
-                classes = "format-button",
-            ),
-            Button(
-                "Json",
-                id = "toggle-json",
-                variant = "success" if self._payload_format == "json" else "default",
-                classes = "format-button",
+            Static(self._header_panel, id = "header-panel"),
+            Horizontal(
+                Button(
+                    "Yaml",
+                    id = "toggle-yaml",
+                    variant = "success" if self._payload_format == "yaml" else "default",
+                    classes = "format-button",
+                ),
+                Button(
+                    "Json",
+                    id = "toggle-json",
+                    variant = "success" if self._payload_format == "json" else "default",
+                    classes = "format-button",
+                ),
+                id = "header-controls",
             ),
             id = "header-bar",
         )
@@ -720,14 +738,14 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
                         ),
                         classes = "section-bar",
                     ),
-                    Static(section.body, classes = "section"),
-                    classes = "section",
+                    Static(section.body, classes = "section-content"),
+                    classes = "section-block",
                 )
                 for index, section in enumerate(self._current_sections())
             ],
             id = "body",
         )
-        yield Static(self._footer_panel, classes = "section")
+        yield Static(self._footer_panel, classes = "section-block")
 
 
 def _should_use_textual_echo_view(

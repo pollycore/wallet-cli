@@ -279,14 +279,19 @@ def print_section_title(title: str) -> None:
 def render_debug_yaml(yaml_payload: str) -> Text:
     """Apply syntax highlighting to YAML-like debug content."""
 
-    rendered = Text()
+    rendered_lines: list[Text] = []
     literal_indent: int | None = None
+    max_line_width = max(
+        (len(line) for line in yaml_payload.splitlines()),
+        default = 0,
+    )
 
     for line in yaml_payload.splitlines():
-        if rendered:
-            rendered.append("\n")
+        rendered = Text(style = DEBUG_CODE_BACKGROUND_STYLE)
 
         if not line:
+            rendered.append(" " * max_line_width, style = DEBUG_CODE_BACKGROUND_STYLE)
+            rendered_lines.append(rendered)
             continue
 
         indent_width = len(line) - len(line.lstrip(" "))
@@ -298,6 +303,11 @@ def render_debug_yaml(yaml_payload: str) -> Text:
         ):
             rendered.append(indent, style=DEBUG_PUNCTUATION_STYLE)
             rendered.append(stripped, style=DEBUG_LITERAL_STYLE)
+            rendered.append(
+                " " * max(0, max_line_width - len(line)),
+                style = DEBUG_CODE_BACKGROUND_STYLE,
+            )
+            rendered_lines.append(rendered)
             continue
         literal_indent = None
 
@@ -305,6 +315,11 @@ def render_debug_yaml(yaml_payload: str) -> Text:
         if match is None:
             rendered.append(indent, style=DEBUG_PUNCTUATION_STYLE)
             rendered.append(stripped, style=DEBUG_LITERAL_STYLE)
+            rendered.append(
+                " " * max(0, max_line_width - len(line)),
+                style = DEBUG_CODE_BACKGROUND_STYLE,
+            )
+            rendered_lines.append(rendered)
             continue
 
         key, remainder = match.groups()
@@ -315,6 +330,10 @@ def render_debug_yaml(yaml_payload: str) -> Text:
             rendered.append(remainder, style=DEBUG_VALUE_STYLE)
         if remainder.strip() == "|":
             literal_indent = indent_width
+        rendered.append(
+            " " * max(0, max_line_width - len(line)),
+            style = DEBUG_CODE_BACKGROUND_STYLE,
+        )
+        rendered_lines.append(rendered)
 
-    rendered.stylize(DEBUG_CODE_BACKGROUND_STYLE)
-    return rendered
+    return Text("\n").join(rendered_lines)
