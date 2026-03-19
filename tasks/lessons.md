@@ -2,7 +2,9 @@
 
 - When `pw bind` receives a successful response, treat a bare UUID as the primary bind shape, but keep the legacy `Bind:<UUID>` parser path compatible so older hosts still persist the same bare UUID locally.
 - When `pw bind` updates `~/.pollyweb/binds.yaml`, record the change in `~/.pollyweb/binds.log` from the wallet code itself rather than relying on an OS-level file watcher, so bind churn can be traced back to CLI-owned writes.
+- When a `pw bind` response resolves to the same canonical domain/schema bind UUID already on disk, treat it as a true no-op: do not rewrite `~/.pollyweb/binds.yaml`, do not append a normal audit entry, and do not emit any change notification.
 - For bind-churn discovery, treat a changed UUID for the same canonical domain and schema as an error, not a silent replacement; leave `~/.pollyweb/binds.yaml` untouched, append an `ALERT` entry to `~/.pollyweb/binds.log`, and try a local notification so concurrent tests are easier to catch.
+- Keep bind-change OS notifications out of automated pytest runs; the alert should still raise and log, but unit tests should not trigger desktop popups.
 - When a bind-change alert fires, include the current top-level script path in both the raised error and the `~/.pollyweb/binds.log` entry so the offending test runner or script can be identified faster.
 - When a bind-change alert fires, include the installed CLI version alongside the script path so concurrent agents running different builds can be distinguished quickly.
 - Keep all pytest and smoke-test runs off the real user profile by redirecting `cli` path constants, `transport.DEFAULT_BINDS_PATH`, and `HOME` to a temp directory; per-test monkeypatches are not enough as a global safety boundary.

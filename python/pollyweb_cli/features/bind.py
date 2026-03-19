@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version as get_installed_version
 import json
+import os
 import re
 import socket
 import subprocess
@@ -34,6 +35,7 @@ BIND_PATTERN = re.compile(
 )
 MACOS_NOTIFICATION_TITLE = "PollyWeb bind changed"
 CLI_PACKAGE_NAME = "pollyweb-cli"
+PYTEST_CURRENT_TEST_ENV = "PYTEST_CURRENT_TEST"
 
 
 def normalize_bind_value(bind_value: str) -> str:
@@ -269,6 +271,11 @@ def notify_bind_change(
 ) -> None:
     """Attempt to raise a local OS notification for an unexpected bind change."""
 
+    # Keep automated test runs quiet even when they intentionally exercise the
+    # unexpected-bind-change path.
+    if PYTEST_CURRENT_TEST_ENV in os.environ:
+        return
+
     script = (
         'display notification '
         f'"Bind changed for {domain}\\n{previous_bind} -> {new_bind}" '
@@ -359,6 +366,12 @@ def save_bind(
             normalized_domain,
             previous_entry,
             entry)
+
+    # Avoid rewriting the binds file or appending audit noise when the
+    # canonical domain/schema already points at the same bind UUID.
+    if previous_entry == entry:
+        return
+
     binds = [
         existing
         for existing in binds

@@ -14,7 +14,7 @@ Domains ending in `.dom` are normalized to `.pollyweb.org` before the message is
 
 When the domain replies with a payload like `123e4567-e89b-12d3-a456-426614174000`, the CLI stores that UUID in `~/.pollyweb/binds.yaml` as a YAML list item with `Bind` and `Domain` fields. If the same domain and schema already have a different stored bind UUID, the CLI now raises an error instead of replacing it so unexpected bind churn can be investigated. Distinct `Schema` values are still stored as separate entries. The legacy `Bind:<UUID>` response format is still accepted for compatibility.
 
-Each successful `pw bind` write also appends a wallet-managed audit entry to `~/.pollyweb/binds.log`. Unexpected bind changes append an `ALERT` entry there as well, including the detected top-level script path and CLI version that triggered the change attempt, and on macOS the CLI also attempts to raise a local notification so concurrent test runs are easier to spot.
+Each effective `pw bind` write also appends a wallet-managed audit entry to `~/.pollyweb/binds.log`. If the same canonical domain and schema already point at the same bind UUID, the CLI now treats that as a no-op and leaves both `~/.pollyweb/binds.yaml` and `~/.pollyweb/binds.log` untouched. Unexpected bind changes still append an `ALERT` entry including the detected top-level script path and CLI version that triggered the change attempt, and on macOS the CLI attempts to raise a local notification outside automated pytest runs so test suites stay quiet.
 
 Use `--anonymous` to ignore any stored bind and force `From: Anonymous`. Use `--unsigned` to remove `Hash` and `Signature` before sending.
 

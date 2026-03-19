@@ -196,6 +196,28 @@ def test_bind_logs_created_bind_entry(monkeypatch, tmp_path, capsys):
     capsys.readouterr()
 
 
+def test_bind_noop_save_skips_binds_write_and_audit_log(tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    binds_path = config_dir / "binds.yaml"
+    log_path = config_dir / "binds.log"
+    config_dir.mkdir()
+    bind_value = str(uuid.uuid4())
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [{"Bind": bind_value, "Domain": "any-hoster.pollyweb.org"}],
+            sort_keys = False),
+        encoding = "utf-8")
+    original_yaml = binds_path.read_text(encoding = "utf-8")
+
+    cli.save_bind(
+        {"Bind": bind_value},
+        "any-hoster.dom",
+        binds_path)
+
+    assert binds_path.read_text(encoding = "utf-8") == original_yaml
+    assert not log_path.exists()
+
+
 def test_bind_logs_alert_when_replacing_domain_entry(tmp_path):
     config_dir = tmp_path / ".pollyweb"
     binds_path = config_dir / "binds.yaml"
@@ -266,6 +288,45 @@ def test_bind_raises_alert_when_same_domain_bind_changes(monkeypatch, tmp_path):
     assert f"new_bind: {next_bind}" in log_text
     assert notifications
     assert notifications[0][0][0] == "osascript"
+
+
+def test_bind_change_alert_skips_os_notification_during_pytest(
+    monkeypatch,
+    tmp_path
+):
+    config_dir = tmp_path / ".pollyweb"
+    binds_path = config_dir / "binds.yaml"
+    log_path = config_dir / "binds.log"
+    config_dir.mkdir()
+    previous_bind = str(uuid.uuid4())
+    next_bind = str(uuid.uuid4())
+    binds_path.write_text(
+        cli.yaml.safe_dump(
+            [{"Bind": previous_bind, "Domain": "any-hoster.pollyweb.org"}],
+            sort_keys = False),
+        encoding = "utf-8")
+    notifications = []
+
+    def fake_run(command, check, stdout, stderr):
+        notifications.append((command, check, stdout, stderr))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(cli.bind_feature.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        cli.bind_feature,
+        "PYTEST_CURRENT_TEST_ENV",
+        "PW_FAKE_PYTEST_CURRENT_TEST")
+    monkeypatch.setenv("PW_FAKE_PYTEST_CURRENT_TEST", "tests/test_bind.py::test")
+
+    with pytest.raises(cli.UserFacingError):
+        cli.save_bind(
+            {"Bind": next_bind},
+            "any-hoster.pollyweb.org",
+            binds_path)
+
+    log_text = log_path.read_text(encoding = "utf-8")
+    assert "ALERT bind changed for any-hoster.pollyweb.org" in log_text
+    assert notifications == []
 
 def test_serialize_public_key_value_strips_pem_wrappers():
     pem = (

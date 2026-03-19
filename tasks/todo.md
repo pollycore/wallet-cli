@@ -1,5 +1,10 @@
 # Task Plan
 
+- [ ] Review the bind persistence and alert path for no-op writes plus automated-test notifications
+- [ ] Make unchanged bind saves a true no-op with no `binds.yaml` write, no normal bind log entry, and no notification/log churn
+- [ ] Suppress local bind-change OS notifications during automated tests without weakening real unexpected-change alerts
+- [ ] Add focused regression coverage and verify with `PYTHONPATH=$PWD/python ./.venv-tests/bin/python -m pytest -q tests/test_bind.py`
+
 - [x] Review the current `pw echo --debug` summary layout and identify where timing details are printed
 - [x] Split echo timing into its own debug section and add a separate edge/CDN hints section with best-effort provider and PoP clues
 - [x] Update echo docs/guidance and add focused regression coverage for the new debug sections
