@@ -20,6 +20,7 @@ DEBUG_KEY_STYLE = "bold #0f62fe"
 DEBUG_VALUE_STYLE = "#d0e2ff"
 DEBUG_LITERAL_STYLE = "#08bdba"
 DEBUG_PUNCTUATION_STYLE = "dim"
+DEBUG_SECTION_TITLE_STYLE = "bold white"
 HTTP_CODE_STYLES = {
     1: "cyan",
     2: "green",
@@ -161,7 +162,7 @@ def print_debug_payload(title: str, payload: object) -> None:
     """Render a debug payload in a colorized YAML-like format."""
 
     print()
-    print(f"{title}:")
+    print_section_title(title)
     print_yaml_payload(payload)
     print()
 
@@ -183,7 +184,7 @@ def print_debug_json_payload(title: str, payload: object) -> None:
     """Render a debug payload as raw JSON."""
 
     print()
-    print(f"{title}:")
+    print_section_title(title)
     print_json_payload(payload)
     print()
 
@@ -221,7 +222,7 @@ def print_section_title(title: str) -> None:
     """Render a colorized section title that ends with a colon."""
 
     rendered = Text()
-    rendered.append(title, style=DEBUG_KEY_STYLE)
+    rendered.append(title, style=DEBUG_SECTION_TITLE_STYLE)
     rendered.append(":", style=DEBUG_PUNCTUATION_STYLE)
     DEBUG_CONSOLE.print(rendered)
 

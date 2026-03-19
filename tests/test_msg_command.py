@@ -552,6 +552,31 @@ def test_msg_debug_and_json_prints_debug_payloads_as_raw_json(
     assert '{"ok":true}' in captured.out
     assert "ok: true" not in captured.out
 
+def test_send_wallet_message_builds_request_at_shared_transport_boundary(monkeypatch):
+    key_pair = cli.KeyPair()
+
+    def fake_send(self):
+        assert self.To == "any-hoster.pollyweb.org"
+        assert self.Subject == "Echo@Domain"
+        assert self.Body == {"Ping": "pong"}
+        return {"ok": True}
+
+    monkeypatch.setattr(transport_tools.Msg, "send", fake_send)
+
+    response_payload, request_message, normalized_domain = transport_tools.send_wallet_message(
+        domain = "any-hoster.dom",
+        subject = "Echo@Domain",
+        body = {"Ping": "pong"},
+        key_pair = key_pair,
+    )
+
+    assert not hasattr(transport_tools, "build_wallet_message")
+    assert request_message.To == "any-hoster.pollyweb.org"
+    assert request_message.Subject == "Echo@Domain"
+    assert request_message.Body == {"Ping": "pong"}
+    assert normalized_domain == "any-hoster.pollyweb.org"
+    assert response_payload == '{"ok":true}'
+
 def test_msg_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"

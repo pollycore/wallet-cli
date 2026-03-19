@@ -115,10 +115,12 @@ def test_echo_sends_signed_message_and_verifies_response(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert (
-        captured.out
-        == "✅ Verified echo response (420 ms, 29% latency)\n"
-    )
+    assert "pw echo v" in captured.out or "PollyWeb CLI v" in captured.out
+    assert "Echo summary" in captured.out
+    assert "✅ DKIM and DNSSEC" in captured.out
+    assert "✅ Signed message" in captured.out
+    assert "⏳ Duration 420 ms  Latency 29%" in captured.out
+    assert "✅ Verified echo response (420 ms, 29% latency)\n" in captured.out
     assert captured.err == ""
 
 def test_echo_fails_when_signature_does_not_verify(monkeypatch, tmp_path, capsys):
@@ -245,11 +247,17 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
 
     assert exit_code == 0
     captured = capsys.readouterr()
+    assert "pw echo v" in captured.out or "PollyWeb CLI v" in captured.out
+    assert "vault.example.com" in captured.out
+    assert "Echo summary" in captured.out
+    assert "✅ DKIM and DNSSEC" in captured.out
+    assert "✅ Signed message" in captured.out
     assert "\nOutbound payload to https://pw.vault.example.com/inbox:\n" in captured.out
     assert "Subject: Echo@Domain" in captured.out
     assert "To: vault.example.com" in captured.out
     assert "From: Anonymous" in captured.out.split("\n\nInbound payload:\n", 1)[0]
     assert "\n\nInbound payload:\n" in captured.out
+    assert captured.out.count("\n\nInbound payload:\n") == 1
     assert "From: vault.example.com" in captured.out
     assert "Echo: ok" in captured.out
     assert "\nDNS verification diagnostics:\n" in captured.out
@@ -268,9 +276,12 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
     assert "dns.google/resolve?name=pw.vault.example.com&type=A" in captured.out
     assert "Verified echo response from vault.example.com:" in captured.out
     assert " - Schema validated: pollyweb.org/MSG:1.0" in captured.out
-    assert " - Required signed headers were present" in captured.out
-    assert " - Canonical payload hash matched the signed content" in captured.out
-    assert " - Signature verified via DKIM lookup for selector default on vault.example.com" in captured.out
+    assert " - Required signed headers: were present" in captured.out
+    assert " - Canonical payload hash: matched the signed content" in captured.out
+    assert (
+        " - Signature verified: via DKIM lookup for selector default "
+        "on vault.example.com" in captured.out
+    )
     assert " - From matched expected domain: vault.example.com" in captured.out
     assert " - To matched expected sender: vault.example.com" in captured.out
     assert " - Subject matched expected echo subject: Echo@Domain" in captured.out
@@ -278,7 +289,7 @@ def test_echo_debug_prints_outbound_and_inbound_payloads(
     assert " - Total duration:" in captured.out
     assert " - Latency share:" in captured.out
     assert "\nEdge / CDN hints:\n" in captured.out
-    assert " - Transport headers unavailable in this runtime" in captured.out
+    assert " - Transport headers: unavailable in this runtime" in captured.out
     assert captured.err == ""
 
 def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
@@ -326,6 +337,12 @@ def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
 
     assert exit_code == 0
     captured = capsys.readouterr()
+    assert "pw echo v" in captured.out or "PollyWeb CLI v" in captured.out
+    assert "any-domain.dom" in captured.out or "any-domain.pollyweb.org" in captured.out
+    assert "Echo summary" in captured.out
+    assert "Echo summary" in captured.out
+    assert "✅ DKIM and DNSSEC" in captured.out
+    assert "✅ Signed message" in captured.out
     assert (
         "\nOutbound payload to https://pw.any-domain.pollyweb.org/inbox:\n"
         in captured.out
@@ -337,6 +354,7 @@ def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
     assert "Hash:" not in outbound
     assert "Signature:" not in outbound
     assert "\n\nInbound payload:\n" in captured.out
+    assert captured.out.count("\n\nInbound payload:\n") == 1
     assert "From: any-domain.pollyweb.org" in captured.out
     assert "Echo: ok" in captured.out
     assert "\nDNS verification diagnostics:\n" in captured.out
@@ -350,7 +368,7 @@ def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(
     assert "dns.google/resolve?name=pw.any-domain.pollyweb.org&type=A" in captured.out
     assert "Verified echo response from any-domain.dom:" in captured.out
     assert (
-        " - Signature verified via DKIM lookup for selector default "
+        " - Signature verified: via DKIM lookup for selector default "
         "on any-domain.pollyweb.org" in captured.out
     )
     assert " - From matched expected domain: any-domain.pollyweb.org" in captured.out

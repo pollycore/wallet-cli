@@ -143,17 +143,34 @@ def _resolve_wallet_sender(
     return None
 
 
-def build_wallet_message(
+def build_wallet_request_message(
     domain: str,
     subject: str,
     body: dict[str, object],
+    *,
+    schema_value: str | None = DEFAULT_SCHEMA
+) -> tuple[Msg, str]:
+    """Build one PollyWeb request message for the shared wallet send path."""
+
+    normalized_domain = normalize_domain_name(domain)
+    effective_schema = DEFAULT_SCHEMA if schema_value is None else schema_value
+
+    return Msg(
+        To = normalized_domain,
+        Subject = subject,
+        Body = body,
+        Schema = effective_schema,
+    ), normalized_domain
+
+
+def build_wallet_sender(
+    domain: str,
     key_pair: KeyPair,
     from_value: str | None = "Anonymous",
-    schema_value: str | None = DEFAULT_SCHEMA,
     binds_path: Path | None = None,
     anonymous: bool = False
-) -> tuple[Wallet, Msg, str]:
-    """Create a wallet sender and normalized PollyWeb message."""
+) -> tuple[Wallet, str]:
+    """Create the wallet sender used for one outbound request."""
 
     normalized_domain = normalize_domain_name(domain)
     effective_binds_path = DEFAULT_BINDS_PATH if binds_path is None else binds_path
@@ -175,15 +192,7 @@ def build_wallet_message(
             "Wallet-backed commands only support `From: Anonymous` or a UUID bind value."
         ) from None
 
-    message_kwargs: dict[str, object] = {
-        "To": normalized_domain,
-        "Subject": subject,
-        "Body": body,
-    }
-    if schema_value is not None:
-        message_kwargs["Schema"] = schema_value
-
-    return wallet, Msg(**message_kwargs), normalized_domain
+    return wallet, normalized_domain
 
 
 def send_wallet_message(
@@ -203,16 +212,25 @@ def send_wallet_message(
 ) -> tuple[str, Msg, str]:
     """Send one wallet-backed PollyWeb message and return the raw response."""
 
-    wallet, request_message, normalized_domain = build_wallet_message(
-        domain=domain,
-        subject=subject,
-        body=body,
-        key_pair=key_pair,
-        from_value=from_value,
-        schema_value=schema_value,
-        binds_path=binds_path,
-        anonymous=anonymous,
+    wallet, normalized_domain = build_wallet_sender(
+        domain = domain,
+        key_pair = key_pair,
+        from_value = from_value,
+        binds_path = binds_path,
+        anonymous = anonymous,
     )
+    message_kwargs: dict[str, object] = {
+        "To": normalized_domain,
+        "Subject": subject,
+        "Body": body,
+    }
+
+    # Keep the CLI-side request build as thin as possible until the published
+    # `pollyweb` library exposes a partial-outbound builder/parser path.
+    if schema_value is not None:
+        message_kwargs["Schema"] = schema_value
+
+    request_message = Msg(**message_kwargs)
 
     if debug:
         request_url = f"https://pw.{normalized_domain}/inbox"

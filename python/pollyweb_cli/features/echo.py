@@ -3,20 +3,39 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from importlib.metadata import PackageNotFoundError, version as get_installed_version
 import json
+import sys
 import time
 import urllib.error
 from pathlib import Path
 from urllib.parse import quote
 
 from pollyweb import Msg, MsgValidationError
+from rich.box import ROUNDED
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+import yaml
+
+try:
+    from textual.app import App, ComposeResult
+    from textual.containers import VerticalScroll
+    from textual.widgets import Static
+except ImportError:  # pragma: no cover - dependency is expected in runtime envs
+    App = None
+    ComposeResult = object
+    VerticalScroll = None
+    Static = None
 
 from pollyweb_cli.tools.debug import (
+    DEBUG_CONSOLE,
     parse_debug_payload,
     print_debug_payload,
     print_labeled_value_lines,
     print_section_title,
     print_yaml_payload,
+    _format_debug_value,
 )
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.features.bind import (
@@ -29,6 +48,312 @@ from pollyweb_cli.tools.transport import send_wallet_message
 
 ECHO_SUBJECT = "Echo@Domain"
 ALLOWED_ECHO_RESPONSE_FIELDS = frozenset({"Body", "Hash", "Header", "Signature"})
+CLI_PACKAGE_NAME = "pollyweb-cli"
+TEXTUAL_AVAILABLE = App is not None
+
+
+def _get_echo_header_version() -> str:
+    """Return the installed CLI version for the echo header."""
+
+    try:
+        return get_installed_version(CLI_PACKAGE_NAME)
+    except PackageNotFoundError:
+        return "0+unknown"
+
+
+def _get_echo_panel_width() -> int | None:
+    """Return the current terminal width for echo panels when available."""
+
+    console_width = DEBUG_CONSOLE.size.width
+    if console_width <= 0:
+        return None
+
+    return console_width
+
+
+def _build_echo_header_panel() -> Panel:
+    """Build the top banner panel for the echo command."""
+
+    accent_style = "bold #d7875f"
+    muted_style = "#a9a9b3"
+    version = _get_echo_header_version()
+
+    title = Text()
+    title.append("pw echo", style = accent_style)
+    title.append(f" v{version}", style = muted_style)
+    return Panel(
+        Text(
+            (
+                "Sends an Echo@Domain request, then shows the outbound payload, "
+                "the inbound signed reply, the verification checks, DNS details, "
+                "timing, and the final summary below so you can confirm delivery, "
+                "signature validity, DNS trust, and edge routing."
+            ),
+            style = "#a9a9b3",
+            justify = "left",
+        ),
+        title = title,
+        title_align = "left",
+        border_style = accent_style,
+        box = ROUNDED,
+        expand = True,
+        width = _get_echo_panel_width(),
+        padding = (0, 1),
+    )
+
+
+def _build_echo_footer_panel(
+    *,
+    total_seconds: float,
+    network_seconds: float,
+    dkim_and_dnssec_verified: bool,
+    cdn_distribution_detected: bool
+) -> Panel:
+    """Build the bottom summary panel for the echo command."""
+
+    accent_style = "bold #d7875f"
+    body_style = "bold white"
+    total_milliseconds = max(0, round(total_seconds * 1000))
+    latency_share = 0.0
+
+    if total_seconds > 0:
+        latency_share = (network_seconds / total_seconds) * 100
+
+    summary = Table.grid(padding = (0, 0))
+    summary.add_column()
+    summary.add_row(
+        Text(
+            "✅ DKIM and DNSSEC" if dkim_and_dnssec_verified else "⏳ DKIM and DNSSEC",
+            style = body_style,
+        )
+    )
+    summary.add_row(Text("✅ Signed message", style = body_style))
+    summary.add_row(
+        Text(
+            "✅ CDN distribution" if cdn_distribution_detected else "⏳ CDN distribution",
+            style = body_style,
+        )
+    )
+    summary.add_row(
+        Text(
+            f"⏳ Duration {total_milliseconds} ms  Latency {latency_share:.0f}%",
+            style = body_style,
+        )
+    )
+
+    return Panel(
+        summary,
+        title = Text("Echo summary", style = accent_style),
+        title_align = "left",
+        border_style = accent_style,
+        box = ROUNDED,
+        expand = True,
+        width = _get_echo_panel_width(),
+        padding = (0, 1),
+    )
+
+
+def _print_echo_header() -> None:
+    """Render the top banner panel for the plain CLI path."""
+
+    print()
+    DEBUG_CONSOLE.print(_build_echo_header_panel())
+
+
+def _print_echo_footer_summary(
+    *,
+    total_seconds: float,
+    network_seconds: float,
+    dkim_and_dnssec_verified: bool,
+    cdn_distribution_detected: bool
+) -> None:
+    """Render the bottom summary panel for the plain CLI path."""
+
+    DEBUG_CONSOLE.print(
+        _build_echo_footer_panel(
+            total_seconds = total_seconds,
+            network_seconds = network_seconds,
+            dkim_and_dnssec_verified = dkim_and_dnssec_verified,
+            cdn_distribution_detected = cdn_distribution_detected,
+        )
+    )
+
+
+def _yaml_debug_string(payload: object) -> str:
+    """Render one payload to the shared YAML-like debug string."""
+
+    return yaml.dump(
+        _format_debug_value(payload),
+        sort_keys = False,
+        allow_unicode = False,
+        default_flow_style = False,
+    ).rstrip()
+
+
+def _format_labeled_lines(values: dict[str, object]) -> str:
+    """Render plain `key: value` lines for the Textual echo viewer."""
+
+    return "\n".join(f" - {key}: {value}" for key, value in values.items())
+
+
+def _build_echo_edge_lines(
+    transport_metadata: dict[str, object]
+) -> dict[str, str]:
+    """Collect edge and CDN hints for display."""
+
+    headers = _normalize_response_headers(transport_metadata)
+    if not headers:
+        return {"Transport headers": "unavailable in this runtime"}
+
+    edge_lines: dict[str, str] = {}
+    provider = _detect_edge_provider(headers)
+    pop_value = _detect_edge_pop(
+        headers,
+        provider = provider)
+
+    request_url = transport_metadata.get("request_url")
+    if isinstance(request_url, str) and request_url:
+        edge_lines["Request URL"] = request_url
+
+    http_status = transport_metadata.get("http_status")
+    http_reason = transport_metadata.get("http_reason")
+    if isinstance(http_status, int):
+        if isinstance(http_reason, str) and http_reason:
+            edge_lines["HTTP status"] = f"{http_status} {http_reason}"
+        else:
+            edge_lines["HTTP status"] = str(http_status)
+
+    edge_lines["Edge provider"] = (
+        provider if provider is not None else "no CDN fingerprint detected"
+    )
+    edge_lines["Edge PoP"] = pop_value if pop_value is not None else "unavailable"
+
+    for key, label in (
+        ("server", "Server header"),
+        ("via", "Via header"),
+        ("x-cache", "X-Cache"),
+        ("x-amz-cf-id", "CloudFront request ID"),
+        ("cf-ray", "Cloudflare Ray ID"),
+    ):
+        value = headers.get(key)
+        if value:
+            edge_lines[label] = value
+
+    return edge_lines
+
+
+def _build_echo_timing_lines(
+    *,
+    total_seconds: float,
+    network_seconds: float
+) -> dict[str, str]:
+    """Collect timing details for display."""
+
+    lines = {"Total duration": f"{max(0, round(total_seconds * 1000))} ms"}
+    if total_seconds > 0:
+        lines["Latency share"] = f"{(network_seconds / total_seconds) * 100:.0f}%"
+    else:
+        lines["Latency share"] = "0%"
+    return lines
+
+
+def _build_echo_textual_sections(
+    *,
+    domain: str,
+    debug: bool,
+    response_payload: str,
+    dns_diagnostics,
+    dns_link_context: tuple[str, str] | None,
+    verification_lines: dict[str, str],
+    total_seconds: float,
+    network_seconds: float,
+    transport_metadata: dict[str, object]
+) -> list[tuple[str, str]]:
+    """Build the section text shown in the Textual echo viewer."""
+
+    sections: list[tuple[str, str]] = []
+
+    if debug:
+        sections.append(
+            (
+                f"Outbound payload to https://pw.{domain}/inbox",
+                "See terminal output for live outbound request details.",
+            )
+        )
+        sections.append(("Inbound payload", _yaml_debug_string(parse_debug_payload(response_payload))))
+        sections.append((f"Verified echo response from {domain}", _format_labeled_lines(verification_lines)))
+        if dns_diagnostics is not None:
+            sections.append(("DNS verification diagnostics", _yaml_debug_string(asdict(dns_diagnostics))))
+        if dns_link_context is not None:
+            sections.append(
+                (
+                    "External DNS checks",
+                    _format_labeled_lines(_echo_dns_reference_links(*dns_link_context)),
+                )
+            )
+        sections.append(("Network timing", _format_labeled_lines(_build_echo_timing_lines(
+            total_seconds = total_seconds,
+            network_seconds = network_seconds,
+        ))))
+        sections.append(("Edge / CDN hints", _format_labeled_lines(_build_echo_edge_lines(transport_metadata))))
+    else:
+        sections.append(
+            (
+                "Verified response",
+                _format_echo_success_metrics(
+                    total_seconds = total_seconds,
+                    network_seconds = network_seconds,
+                ),
+            )
+        )
+
+    return sections
+
+
+class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
+    """TTY-only Textual viewer for the interactive echo result layout."""
+
+    CSS = """
+    Screen {
+        layout: vertical;
+    }
+
+    #body {
+        height: 1fr;
+    }
+
+    .section {
+        margin: 0 0 1 0;
+    }
+    """
+    BINDINGS = [("q", "quit", "Quit"), ("escape", "quit", "Quit")]
+
+    def __init__(self, *, header_panel: Panel, sections: list[tuple[str, str]], footer_panel: Panel) -> None:
+        """Store the renderables needed by the echo viewer."""
+
+        super().__init__()
+        self._header_panel = header_panel
+        self._sections = sections
+        self._footer_panel = footer_panel
+
+    def compose(self) -> ComposeResult:
+        """Compose the reactive echo layout."""
+
+        yield Static(self._header_panel, classes = "section")
+        with VerticalScroll(id = "body"):
+            for title, body in self._sections:
+                yield Static(f"{title}:\n{body}", classes = "section")
+        yield Static(self._footer_panel, classes = "section")
+
+
+def _should_use_textual_echo_view() -> bool:
+    """Return whether `pw echo` should use the interactive Textual viewer."""
+
+    return (
+        TEXTUAL_AVAILABLE
+        and sys.stdout.isatty()
+        and sys.stdin.isatty()
+    )
 
 
 def _extract_response_header(
@@ -235,11 +560,21 @@ def _print_echo_timing_details(
 
     print()
     print_section_title("Network timing")
-    print(f" - Total duration: {max(0, round(total_seconds * 1000))} ms")
+
+    timing_lines = {
+        "Total duration": f"{max(0, round(total_seconds * 1000))} ms",
+    }
     if total_seconds > 0:
-        print(f" - Latency share: {(network_seconds / total_seconds) * 100:.0f}%")
+        timing_lines["Latency share"] = (
+            f"{(network_seconds / total_seconds) * 100:.0f}%"
+        )
     else:
-        print(" - Latency share: 0%")
+        timing_lines["Latency share"] = "0%"
+
+    print_labeled_value_lines(
+        timing_lines,
+        prefix = " - ",
+    )
 
 
 def _print_echo_edge_details(
@@ -252,9 +587,13 @@ def _print_echo_edge_details(
 
     headers = _normalize_response_headers(transport_metadata)
     if not headers:
-        print(" - Transport headers unavailable in this runtime")
+        print_labeled_value_lines(
+            {"Transport headers": "unavailable in this runtime"},
+            prefix = " - ",
+        )
         return
 
+    edge_lines: dict[str, str] = {}
     provider = _detect_edge_provider(headers)
     pop_value = _detect_edge_pop(
         headers,
@@ -262,45 +601,50 @@ def _print_echo_edge_details(
 
     request_url = transport_metadata.get("request_url")
     if isinstance(request_url, str) and request_url:
-        print(f" - Request URL: {request_url}")
+        edge_lines["Request URL"] = request_url
 
     http_status = transport_metadata.get("http_status")
     http_reason = transport_metadata.get("http_reason")
     if isinstance(http_status, int):
         if isinstance(http_reason, str) and http_reason:
-            print(f" - HTTP status: {http_status} {http_reason}")
+            edge_lines["HTTP status"] = f"{http_status} {http_reason}"
         else:
-            print(f" - HTTP status: {http_status}")
+            edge_lines["HTTP status"] = str(http_status)
 
     if provider is not None:
-        print(f" - Edge provider: {provider}")
+        edge_lines["Edge provider"] = provider
     else:
-        print(" - Edge provider: no CDN fingerprint detected")
+        edge_lines["Edge provider"] = "no CDN fingerprint detected"
 
     if pop_value is not None:
-        print(f" - Edge PoP: {pop_value}")
+        edge_lines["Edge PoP"] = pop_value
     else:
-        print(" - Edge PoP: unavailable")
+        edge_lines["Edge PoP"] = "unavailable"
 
     server_value = headers.get("server")
     if server_value:
-        print(f" - Server header: {server_value}")
+        edge_lines["Server header"] = server_value
 
     via_value = headers.get("via")
     if via_value:
-        print(f" - Via header: {via_value}")
+        edge_lines["Via header"] = via_value
 
     x_cache_value = headers.get("x-cache")
     if x_cache_value:
-        print(f" - X-Cache: {x_cache_value}")
+        edge_lines["X-Cache"] = x_cache_value
 
     cloudfront_id = headers.get("x-amz-cf-id")
     if cloudfront_id:
-        print(f" - CloudFront request ID: {cloudfront_id}")
+        edge_lines["CloudFront request ID"] = cloudfront_id
 
     cf_ray_value = headers.get("cf-ray")
     if cf_ray_value:
-        print(f" - Cloudflare Ray ID: {cf_ray_value}")
+        edge_lines["Cloudflare Ray ID"] = cf_ray_value
+
+    print_labeled_value_lines(
+        edge_lines,
+        prefix = " - ",
+    )
 
 
 def _describe_echo_network_error(
@@ -340,6 +684,8 @@ def cmd_echo(
     timing: dict[str, float] = {}
     transport_metadata: dict[str, object] = {}
     started_at = time.perf_counter()
+
+    _print_echo_header()
 
     try:
         require_configured_keys()
@@ -420,8 +766,66 @@ def cmd_echo(
 
     total_seconds = time.perf_counter() - started_at
     network_seconds = timing.get("network_seconds", 0.0)
+    dns_queries = getattr(dns_diagnostics, "Queries", []) if dns_diagnostics is not None else []
+    dnssec_verified = bool(dns_queries) and all(
+        getattr(query, "AuthenticData", False) for query in dns_queries
+    )
+    cdn_detected = _detect_edge_provider(
+        _normalize_response_headers(transport_metadata)
+    ) is not None
+
+    verification_lines: dict[str, str] = {}
+    if verification is not None:
+        verification_lines["Schema validated"] = verification.schema
+        verification_lines["Required signed headers"] = "were present"
+        verification_lines["Canonical payload hash"] = "matched the signed content"
+        if verification.dns_lookup_used:
+            verification_lines["Signature verified"] = (
+                f"via DKIM lookup for selector {verification.selector} "
+                f"on {verification.from_value}"
+            )
+        else:
+            verification_lines["Signature verified"] = "with the provided public key"
+    else:
+        verification_lines["Schema validated"] = response.Schema
+        verification_lines["Required signed headers"] = "were present"
+        verification_lines["Canonical payload hash"] = "matched the signed content"
+        verification_lines["Signature verified"] = (
+            f"via DKIM lookup for selector {response.Selector} on {response.From}"
+        )
+    verification_lines["From matched expected domain"] = response.From
+    verification_lines["To matched expected sender"] = response.To
+    verification_lines["Subject matched expected echo subject"] = response.Subject
+    verification_lines["Correlation matched the request"] = response.Correlation
+
+    dkim_and_dnssec_verified = verification.dns_lookup_used and dnssec_verified
+    footer_panel = _build_echo_footer_panel(
+        total_seconds = total_seconds,
+        network_seconds = network_seconds,
+        dkim_and_dnssec_verified = dkim_and_dnssec_verified,
+        cdn_distribution_detected = cdn_detected)
+
+    if _should_use_textual_echo_view():
+        _EchoTextualApp(
+            header_panel = _build_echo_header_panel(),
+            sections = _build_echo_textual_sections(
+                domain = normalized_domain,
+                debug = debug,
+                response_payload = response_payload,
+                dns_diagnostics = dns_diagnostics,
+                dns_link_context = dns_link_context,
+                verification_lines = verification_lines,
+                total_seconds = total_seconds,
+                network_seconds = network_seconds,
+                transport_metadata = transport_metadata,
+            ),
+            footer_panel = footer_panel,
+        ).run()
+        return 0
 
     if not debug:
+        print()
+        DEBUG_CONSOLE.print(footer_panel)
         print(
             _format_echo_success_metrics(
                 total_seconds = total_seconds,
@@ -429,33 +833,11 @@ def cmd_echo(
         )
         return 0
 
-    print()
-    print_yaml_payload(parse_debug_payload(response_payload))
-    print()
     print_section_title(f"Verified echo response from {domain}")
-    if verification is not None:
-        print(f" - Schema validated: {verification.schema}")
-        print(" - Required signed headers were present")
-        print(" - Canonical payload hash matched the signed content")
-        if verification.dns_lookup_used:
-            print(
-                f" - Signature verified via DKIM lookup for selector "
-                f"{verification.selector} on {verification.from_value}"
-            )
-        else:
-            print(" - Signature verified with the provided public key")
-    else:
-        print(f" - Schema validated: {response.Schema}")
-        print(" - Required signed headers were present")
-        print(" - Canonical payload hash matched the signed content")
-        print(
-            f" - Signature verified via DKIM lookup for selector {response.Selector} "
-            f"on {response.From}"
-        )
-    print(f" - From matched expected domain: {response.From}")
-    print(f" - To matched expected sender: {response.To}")
-    print(f" - Subject matched expected echo subject: {response.Subject}")
-    print(f" - Correlation matched the request: {response.Correlation}")
+    print_labeled_value_lines(
+        verification_lines,
+        prefix = " - ",
+    )
     _print_echo_dns_diagnostics(dns_diagnostics)
     if dns_link_context is not None:
         _print_echo_dns_reference_links(*dns_link_context)
@@ -463,5 +845,7 @@ def cmd_echo(
         total_seconds = total_seconds,
         network_seconds = network_seconds)
     _print_echo_edge_details(transport_metadata)
+    print()
+    DEBUG_CONSOLE.print(footer_panel)
     print()
     return 0

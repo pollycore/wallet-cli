@@ -1,5 +1,6 @@
 # Lessons
 
+- For wallet-backed CLI sends, do not keep a separate CLI message-wrapper helper around `Msg(...)`; build the wallet sender in shared transport, then create the outbound `Msg` directly at the send boundary until the published `pollyweb` library exposes a dedicated outbound-builder API.
 - When `pw bind` receives a successful response, treat a bare UUID as the primary bind shape, but keep the legacy `Bind:<UUID>` parser path compatible so older hosts still persist the same bare UUID locally.
 - When `pw bind` updates `~/.pollyweb/binds.yaml`, record the change in `~/.pollyweb/binds.log` from the wallet code itself rather than relying on an OS-level file watcher, so bind churn can be traced back to CLI-owned writes.
 - When a `pw bind` response resolves to the same canonical domain/schema bind UUID already on disk, treat it as a true no-op: do not rewrite `~/.pollyweb/binds.yaml`, do not append a normal audit entry, and do not emit any change notification.
@@ -29,8 +30,10 @@
 - The current test and runtime surface needs `pollyweb>=1.0.78`; if repo code or tests import newer PollyWeb diagnostics/types, bump the version floor right away instead of relying on a locally upgraded venv.
 - When a user asks to update the CLI, check the `wallet-cli` source repo first instead of only refreshing the pipx-installed `pw` environment.
 - For `pw echo`, do not assume the synchronous reply `To` will always echo the target domain; if the target domain has a stored bind, treat that bind UUID as an equally valid echoed recipient.
-- For plain `pw echo` success output, keep the command quiet and print only `✅ Verified echo response`; reserve the echoed payload for `--debug` so the default path stays concise.
-- For plain `pw echo` success output, keep the command quiet and to one line, but include the total duration in milliseconds plus the network-latency percentage so users get timing without dumping payload details.
+- For `pw echo`, keep the top header minimal: it should explain what the command shows and how to use that information, without repeating all of the detailed status fields.
+- For interactive TTY runs, use a Textual viewer for successful `pw echo` output so the top and bottom boxes react to terminal width changes, but preserve the plain CLI path for non-interactive runs and tests.
+- After the header or Textual viewer, keep the plain `pw echo` success path concise and reserve the echoed payload for `--debug`.
+- For plain `pw echo` success output after the header, keep the verification result to one line and include the total duration in milliseconds plus the network-latency percentage so users get timing without dumping payload details.
 - For `pw echo --debug`, keep the latency metrics in their own `Network timing` section and print a separate `Edge / CDN hints` section with best-effort provider and PoP clues from transport headers, while falling back gracefully when the runtime cannot expose those headers.
 - For `pw echo`, translate `urllib.error.URLError` resolver failures into a human-readable PollyWeb inbox-host message instead of exposing raw `socket.gaierror(...)` text.
 - For `pw echo` transport failures, keep the default path user-friendly, but let `--debug` surface the raw underlying network exception so missing-domain troubleshooting still has the low-level clue when needed.

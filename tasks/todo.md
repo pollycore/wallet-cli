@@ -1,5 +1,22 @@
 # Task Plan
 
+- [x] Install `textual` and wire `pw echo` to use a reactive TTY-only viewer without breaking script output
+- [x] Keep non-interactive `pw echo` behavior stable, update docs/guidance, and verify with the repo test interpreter
+
+- [x] Inspect the current wallet-backed `pw msg` transport path and compare it with the written "use pollyweb" guidance
+- [x] Remove the CLI-side request-message wrapper so the shared transport owns the only remaining outbound `Msg(...)` call
+- [ ] Add regression coverage for the shared transport build path and verify with the repo test interpreter
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/transport.py` so wallet-backed sends no longer keep a separate `build_wallet_message()` wrapper; the shared transport now owns the only outbound `Msg(...)` construction site, while keeping wallet sender selection and debug rendering unchanged.
+- Added `/Users/jorgemf/Git/wallet-cli/tests/test_msg_command.py` coverage that locks in the shared transport behavior and proves `send_wallet_message()` still passes the expected normalized `Msg` into `Wallet.send(...)` without reintroducing the deleted wrapper helper.
+- Verification is next with `./.venv-tests/bin/python -m pytest -q tests/test_msg_command.py tests/test_test_command.py`.
+
+- [x] Review the written `pw echo` output contract and current render path for a new top header
+- [x] Add a boxed top header to `pw echo` without disturbing the existing verification/debug sections
+- [x] Update echo docs/guidance, add regression coverage, and verify with the repo test interpreter
+
 - [x] Trace the raw `pw-dev echo` resolver traceback to the shared wallet transport path
 - [x] Normalize low-level wallet transport connection failures into `URLError` so CLI commands can render graceful messages
 - [x] Add regression coverage for the custom HTTPS transport path and verify with the repo test interpreter plus a direct `./pw-dev` repro
@@ -10,6 +27,11 @@
 - [x] Add focused regression coverage and verify with `PYTHONPATH=$PWD/python ./.venv-tests/bin/python -m pytest -q tests/test_bind.py`
 
 # Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo.py` so `pw echo` now prints a boxed top header before the existing output, showing the installed CLI version, the `Echo@Domain` action, the requested target, and the active output/sender/signing mode without changing the downstream verification flow.
+- Updated `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` to lock in the new header on both concise and debug runs while preserving the existing payload, DNS, timing, and edge-hint assertions.
+- Updated `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the new `pw echo` header contract is documented for future work.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`14 passed`).
 
 - Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py` so `save_bind()` now returns early when the canonical domain/schema already maps to the same bind UUID, which avoids rewriting `~/.pollyweb/binds.yaml` and avoids appending a normal bind audit entry for a no-op bind response.
 - Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/bind.py` so unexpected bind-change OS notifications are suppressed during automated pytest runs by checking the active pytest environment marker, while still raising the user-facing error and appending the `ALERT` log entry.
