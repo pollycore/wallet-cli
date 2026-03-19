@@ -11,7 +11,11 @@ from urllib.parse import quote
 
 from pollyweb import Msg, MsgValidationError
 
-from pollyweb_cli.tools.debug import print_debug_payload, print_echo_response
+from pollyweb_cli.tools.debug import (
+    print_debug_payload,
+    print_echo_response,
+    print_labeled_value_lines,
+)
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.features.bind import (
     describe_bind_network_error,
@@ -103,12 +107,12 @@ def _print_echo_dns_reference_links(
 
     print()
     print("External DNS checks:")
-
-    for label, url in _echo_dns_reference_links(
-        domain,
-        selector).items():
-        print(f"{label}: {url}")
-
+    print_labeled_value_lines(
+        _echo_dns_reference_links(
+            domain,
+            selector),
+        prefix = " - ",
+    )
     print()
 
 def _to_echo_user_facing_error(

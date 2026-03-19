@@ -201,6 +201,22 @@ def print_yaml_payload(payload: object) -> None:
     DEBUG_CONSOLE.print(render_debug_yaml(yaml_payload), overflow="fold")
 
 
+def print_labeled_value_lines(
+    values: dict[str, object],
+    *,
+    prefix: str = ""
+) -> None:
+    """Render colorized single-line `key: value` entries without YAML wrapping."""
+
+    for key, value in values.items():
+        rendered = Text()
+        rendered.append(prefix, style=DEBUG_PUNCTUATION_STYLE)
+        rendered.append(str(key), style=DEBUG_KEY_STYLE)
+        rendered.append(":", style=DEBUG_PUNCTUATION_STYLE)
+        rendered.append(f" {value}", style=DEBUG_VALUE_STYLE)
+        DEBUG_CONSOLE.print(rendered, soft_wrap=True)
+
+
 def render_debug_yaml(yaml_payload: str) -> Text:
     """Apply syntax highlighting to YAML-like debug content."""
 
