@@ -217,6 +217,15 @@ def print_labeled_value_lines(
         DEBUG_CONSOLE.print(rendered, soft_wrap=True)
 
 
+def print_section_title(title: str) -> None:
+    """Render a colorized section title that ends with a colon."""
+
+    rendered = Text()
+    rendered.append(title, style=DEBUG_KEY_STYLE)
+    rendered.append(":", style=DEBUG_PUNCTUATION_STYLE)
+    DEBUG_CONSOLE.print(rendered)
+
+
 def render_debug_yaml(yaml_payload: str) -> Text:
     """Apply syntax highlighting to YAML-like debug content."""
 

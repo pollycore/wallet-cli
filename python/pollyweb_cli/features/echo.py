@@ -15,6 +15,7 @@ from pollyweb_cli.tools.debug import (
     print_debug_payload,
     print_echo_response,
     print_labeled_value_lines,
+    print_section_title,
 )
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.features.bind import (
@@ -106,7 +107,7 @@ def _print_echo_dns_reference_links(
     """Render click-through external DNS inspection links."""
 
     print()
-    print("External DNS checks:")
+    print_section_title("External DNS checks")
     print_labeled_value_lines(
         _echo_dns_reference_links(
             domain,
@@ -232,7 +233,7 @@ def _print_echo_timing_details(
     """Render the echo timing details as a dedicated debug section."""
 
     print()
-    print("Network timing:")
+    print_section_title("Network timing")
     print(f" - Total duration: {max(0, round(total_seconds * 1000))} ms")
     if total_seconds > 0:
         print(f" - Latency share: {(network_seconds / total_seconds) * 100:.0f}%")
@@ -246,7 +247,7 @@ def _print_echo_edge_details(
     """Render best-effort CDN and edge-routing hints from HTTP transport."""
 
     print()
-    print("Edge / CDN hints:")
+    print_section_title("Edge / CDN hints")
 
     headers = _normalize_response_headers(transport_metadata)
     if not headers:
@@ -431,7 +432,7 @@ def cmd_echo(
     _print_echo_dns_diagnostics(dns_diagnostics)
     if dns_link_context is not None:
         _print_echo_dns_reference_links(*dns_link_context)
-    print(f"Verified echo response from {domain}:")
+    print_section_title(f"Verified echo response from {domain}")
     if verification is not None:
         print(f" - Schema validated: {verification.schema}")
         print(" - Required signed headers were present")
@@ -459,4 +460,5 @@ def cmd_echo(
         total_seconds = total_seconds,
         network_seconds = network_seconds)
     _print_echo_edge_details(transport_metadata)
+    print()
     return 0
