@@ -20,12 +20,14 @@ from rich.text import Text
 
 try:
     from textual.app import App, ComposeResult
-    from textual.containers import VerticalScroll
-    from textual.widgets import Static
+    from textual.containers import Horizontal, VerticalScroll
+    from textual.widgets import Button, Static
 except ImportError:  # pragma: no cover - dependency is expected in runtime envs
     App = None
     ComposeResult = object
+    Horizontal = None
     VerticalScroll = None
+    Button = None
     Static = None
 
 from pollyweb_cli.tools.debug import (
@@ -561,28 +563,97 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         height: 1fr;
     }
 
+    #format-bar {
+        height: auto;
+        margin: 0 0 1 0;
+    }
+
+    .format-button {
+        margin: 0 1 0 0;
+    }
+
     .section {
         margin: 0 0 1 0;
     }
     """
-    BINDINGS = [("q", "quit", "Quit"), ("escape", "quit", "Quit")]
+    BINDINGS = [
+        ("q", "quit", "Quit"),
+        ("escape", "quit", "Quit"),
+        ("y", "show_yaml", "YAML"),
+        ("j", "show_json", "JSON"),
+    ]
 
-    def __init__(self, *, header_panel: Panel, sections: list[Group], footer_panel: Panel) -> None:
+    def __init__(
+        self,
+        *,
+        header_panel: Panel,
+        yaml_sections: list[Group],
+        json_sections: list[Group],
+        footer_panel: Panel,
+        initial_payload_format: str
+    ) -> None:
         """Store the renderables needed by the echo viewer."""
 
         super().__init__()
         self._header_panel = header_panel
-        self._sections = sections
+        self._yaml_sections = yaml_sections
+        self._json_sections = json_sections
         self._footer_panel = footer_panel
+        self._payload_format = initial_payload_format
+
+    def _current_sections(self) -> list[Group]:
+        """Return the current section list for the selected payload format."""
+
+        if self._payload_format == "json":
+            return self._json_sections
+
+        return self._yaml_sections
+
+    def action_show_yaml(self) -> None:
+        """Switch the interactive payload view to YAML."""
+
+        self._payload_format = "yaml"
+        self.refresh(recompose = True)
+
+    def action_show_json(self) -> None:
+        """Switch the interactive payload view to JSON."""
+
+        self._payload_format = "json"
+        self.refresh(recompose = True)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle clicks on the payload-format toggle buttons."""
+
+        if event.button.id == "toggle-yaml":
+            self.action_show_yaml()
+            return
+
+        if event.button.id == "toggle-json":
+            self.action_show_json()
 
     def compose(self) -> ComposeResult:
         """Compose the reactive echo layout."""
 
         yield Static(self._header_panel, classes = "section")
+        yield Horizontal(
+            Button(
+                "YAML",
+                id = "toggle-yaml",
+                variant = "primary" if self._payload_format == "yaml" else "default",
+                classes = "format-button",
+            ),
+            Button(
+                "JSON",
+                id = "toggle-json",
+                variant = "primary" if self._payload_format == "json" else "default",
+                classes = "format-button",
+            ),
+            id = "format-bar",
+        )
         yield VerticalScroll(
             *[
                 Static(renderable, classes = "section")
-                for renderable in self._sections
+                for renderable in self._current_sections()
             ],
             id = "body",
         )
@@ -950,9 +1021,21 @@ def _render_debug_echo_failure(
     if _should_use_textual_echo_view(debug = True):
         _EchoTextualApp(
             header_panel = _build_echo_header_panel(),
-            sections = _build_echo_error_textual_sections(
+            yaml_sections = _build_echo_error_textual_sections(
                 domain = domain,
-                debug_json = debug_json,
+                debug_json = False,
+                outbound_payload = outbound_payload,
+                dns_diagnostics = dns_diagnostics,
+                dns_link_context = dns_link_context,
+                error_lines = error_lines,
+                total_seconds = total_seconds,
+                network_seconds = network_seconds,
+                response_metadata = response_metadata,
+                transport_metadata = transport_metadata,
+            ),
+            json_sections = _build_echo_error_textual_sections(
+                domain = domain,
+                debug_json = True,
                 outbound_payload = outbound_payload,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
@@ -963,6 +1046,7 @@ def _render_debug_echo_failure(
                 transport_metadata = transport_metadata,
             ),
             footer_panel = footer_panel,
+            initial_payload_format = "json" if debug_json else "yaml",
         ).run()
         return 1
 
@@ -1229,10 +1313,24 @@ def cmd_echo(
     if _should_use_textual_echo_view(debug = debug):
         _EchoTextualApp(
             header_panel = _build_echo_header_panel(),
-            sections = _build_echo_textual_sections(
+            yaml_sections = _build_echo_textual_sections(
                 domain = normalized_domain,
                 debug = debug,
-                debug_json = json_output,
+                debug_json = False,
+                outbound_payload = outbound_payload,
+                response_payload = response_payload,
+                dns_diagnostics = dns_diagnostics,
+                dns_link_context = dns_link_context,
+                verification_lines = verification_lines,
+                total_seconds = total_seconds,
+                network_seconds = network_seconds,
+                response_metadata = response_metadata,
+                transport_metadata = transport_metadata,
+            ),
+            json_sections = _build_echo_textual_sections(
+                domain = normalized_domain,
+                debug = debug,
+                debug_json = True,
                 outbound_payload = outbound_payload,
                 response_payload = response_payload,
                 dns_diagnostics = dns_diagnostics,
@@ -1244,6 +1342,7 @@ def cmd_echo(
                 transport_metadata = transport_metadata,
             ),
             footer_panel = footer_panel,
+            initial_payload_format = "json" if json_output else "yaml",
         ).run()
         return 0
 

@@ -44,6 +44,7 @@
 - For shared `--json` output, add Rich syntax coloring only for interactive terminals; keep the compact JSON bytes unchanged for redirected/scripted output so `--json` stays automation-safe.
 - For interactive `pw echo --debug --json`, remember that the final Textual body uses its own payload renderables; if only the pre-app console helper gets JSON coloring, the app repaint will replace it with plain white JSON a moment later.
 - For human-facing interactive JSON renderables, syntax coloring alone is not enough; pretty-print nested JSON with indentation so the structure survives terminal wrapping.
+- For interactive `pw echo --debug`, treat YAML-vs-JSON as a view concern inside the Textual app: build both section variants up front and toggle between them locally instead of forcing the user to close the viewer and rerun the command.
 - For `pw echo` transport failures, keep the default path user-friendly, but let `--debug` surface the raw underlying network exception so missing-domain troubleshooting still has the low-level clue when needed.
 - For `pw echo`, validate the raw synchronous response shape before pretty-printing it: reject any top-level fields outside `Header`, `Body`, `Hash`, and `Signature` so misplaced server properties are caught immediately.
 - For `pw echo --debug`, collect and print the PollyWeb branch `DS` lookup and DKIM `TXT` lookup details, including the queried DNS names, returned record text, and DNSSEC AD-flag state, and print those diagnostics even when signature verification fails after the response is received.

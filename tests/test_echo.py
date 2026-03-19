@@ -387,10 +387,16 @@ def test_echo_textual_app_keeps_rich_static_sections():
     try:
         app = echo_feature._EchoTextualApp(
             header_panel = echo_feature._build_echo_header_panel(),
-            sections = [
+            yaml_sections = [
                 Group(
                     echo_feature._render_section_title("Verified response"),
                     Text("copy me", style = echo_feature.DEBUG_VALUE_STYLE),
+                )
+            ],
+            json_sections = [
+                Group(
+                    echo_feature._render_section_title("Verified response"),
+                    Text("copy json", style = echo_feature.DEBUG_VALUE_STYLE),
                 )
             ],
             footer_panel = echo_feature._build_echo_footer_panel(
@@ -399,6 +405,7 @@ def test_echo_textual_app_keeps_rich_static_sections():
                 dkim_and_dnssec_verified = True,
                 cdn_distribution_detected = True,
             ),
+            initial_payload_format = "yaml",
         )
 
         composed = list(app.compose())
@@ -406,10 +413,45 @@ def test_echo_textual_app_keeps_rich_static_sections():
         echo_feature.Static = original_static
         echo_feature.VerticalScroll = original_vertical_scroll
 
-    assert len(composed) == 3
+    assert len(composed) == 4
     assert len(created_static_widgets) == 3
     assert created_static_widgets[1].renderable.__class__.__name__ == "Group"
-    assert len(composed[1].children) == 1
+    assert len(composed[2].children) == 1
+
+
+def test_echo_textual_app_toggle_switches_payload_sections():
+    app = echo_feature._EchoTextualApp(
+        header_panel = echo_feature._build_echo_header_panel(),
+        yaml_sections = [
+            Group(
+                echo_feature._render_section_title("YAML section"),
+                Text("yaml body", style = echo_feature.DEBUG_VALUE_STYLE),
+            )
+        ],
+        json_sections = [
+            Group(
+                echo_feature._render_section_title("JSON section"),
+                Text("json body", style = echo_feature.DEBUG_VALUE_STYLE),
+            )
+        ],
+        footer_panel = echo_feature._build_echo_footer_panel(
+            total_seconds = 0.2,
+            network_seconds = 0.1,
+            dkim_and_dnssec_verified = True,
+            cdn_distribution_detected = True,
+        ),
+        initial_payload_format = "yaml",
+    )
+
+    assert app._current_sections()[0].renderables[0].plain == "YAML section:"
+
+    app.action_show_json()
+
+    assert app._current_sections()[0].renderables[0].plain == "JSON section:"
+
+    app.action_show_yaml()
+
+    assert app._current_sections()[0].renderables[0].plain == "YAML section:"
 
 
 def test_echo_json_textual_renderable_uses_syntax_highlighting():
