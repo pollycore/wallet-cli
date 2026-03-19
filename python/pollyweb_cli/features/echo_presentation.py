@@ -125,24 +125,21 @@ def _build_echo_footer_panel(
 
     summary = Table.grid(expand = True)
     summary.add_column(ratio = 1)
-    summary.add_column(width = 1)
     summary.add_column(ratio = 1)
     summary.add_row(
         Text(
             "✅ DKIM and DNSSEC" if dkim_and_dnssec_verified else "⏳ DKIM and DNSSEC",
             style = body_style,
         ),
-        Text("│", style = accent_style),
         Text(
-            f" {'✅ CDN distribution' if cdn_distribution_detected else '⏳ CDN distribution'}",
+            "✅ CDN distribution" if cdn_distribution_detected else "⏳ CDN distribution",
             style = body_style,
         ),
     )
     summary.add_row(
         Text("✅ Signed message", style = body_style),
-        Text("│", style = accent_style),
         Text(
-            f" ⏳ Time {total_milliseconds} ms  Network {latency_share:.0f}%",
+            f"⏳ Time {total_milliseconds} ms  Network {latency_share:.0f}%",
             style = body_style,
         ),
     )
@@ -176,18 +173,15 @@ def _build_echo_error_footer_panel(
 
     summary = Table.grid(expand = True)
     summary.add_column(ratio = 1)
-    summary.add_column(width = 1)
     summary.add_column(ratio = 1)
     summary.add_row(
         Text("❌ Echo request failed", style = body_style),
-        Text("│", style = accent_style),
         Text("⏳ Verification incomplete", style = body_style),
     )
     summary.add_row(
         Text("ℹ️ Review the error summary above", style = body_style),
-        Text("│", style = accent_style),
         Text(
-            f" ⏳ Time {total_milliseconds} ms  Network {latency_share:.0f}%",
+            f"⏳ Time {total_milliseconds} ms  Network {latency_share:.0f}%",
             style = body_style,
         ),
     )
@@ -265,6 +259,26 @@ def _json_debug_copy_text(payload: object) -> str:
         sort_keys = False,
         ensure_ascii = False,
         indent = 2,
+    )
+
+
+def _raw_json_debug_text(payload: object) -> str:
+    """Render one payload as compact raw JSON text."""
+
+    return json.dumps(
+        payload,
+        sort_keys = False,
+        ensure_ascii = False,
+        separators = (",", ":"),
+    )
+
+
+def _raw_json_debug_renderable(payload: object) -> Text:
+    """Render one payload as compact raw JSON text."""
+
+    return Text(
+        _raw_json_debug_text(payload),
+        style = DEBUG_VALUE_STYLE,
     )
 
 
@@ -376,7 +390,7 @@ def _build_echo_textual_sections(
     *,
     domain: str,
     debug: bool,
-    debug_json: bool,
+    payload_format: str,
     outbound_payload: object | None,
     response_payload: str,
     dns_diagnostics,
@@ -392,8 +406,15 @@ def _build_echo_textual_sections(
     sections: list[_EchoTextualSection] = []
 
     if debug:
-        payload_renderer = _json_debug_renderable if debug_json else _yaml_debug_renderable
-        payload_copy_renderer = _json_debug_copy_text if debug_json else build_yaml_payload
+        if payload_format == "json":
+            payload_renderer = _json_debug_renderable
+            payload_copy_renderer = _json_debug_copy_text
+        elif payload_format == "raw":
+            payload_renderer = _raw_json_debug_renderable
+            payload_copy_renderer = _raw_json_debug_text
+        else:
+            payload_renderer = _yaml_debug_renderable
+            payload_copy_renderer = build_yaml_payload
         outbound_payload_value = {} if outbound_payload is None else outbound_payload
         inbound_payload_value = parse_debug_payload(response_payload)
         sections.append(
@@ -470,7 +491,7 @@ def _build_echo_textual_sections(
 def _build_echo_error_textual_sections(
     *,
     domain: str,
-    debug_json: bool,
+    payload_format: str,
     outbound_payload: object | None,
     dns_diagnostics,
     dns_link_context: tuple[str, str] | None,
@@ -482,8 +503,15 @@ def _build_echo_error_textual_sections(
 ) -> list[_EchoTextualSection]:
     """Build the error sections shown in the Textual echo viewer."""
 
-    payload_renderer = _json_debug_renderable if debug_json else _yaml_debug_renderable
-    payload_copy_renderer = _json_debug_copy_text if debug_json else build_yaml_payload
+    if payload_format == "json":
+        payload_renderer = _json_debug_renderable
+        payload_copy_renderer = _json_debug_copy_text
+    elif payload_format == "raw":
+        payload_renderer = _raw_json_debug_renderable
+        payload_copy_renderer = _raw_json_debug_text
+    else:
+        payload_renderer = _yaml_debug_renderable
+        payload_copy_renderer = build_yaml_payload
     outbound_payload_value = {} if outbound_payload is None else outbound_payload
     sections: list[_EchoTextualSection] = [
         _EchoTextualSection(
@@ -623,6 +651,7 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         ("escape", "quit", "Quit"),
         ("y", "show_yaml", "YAML"),
         ("j", "show_json", "JSON"),
+        ("r", "show_raw", "Raw"),
     ]
 
     def __init__(
@@ -631,6 +660,7 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         header_panel: Panel,
         yaml_sections: list[_EchoTextualSection],
         json_sections: list[_EchoTextualSection],
+        raw_sections: list[_EchoTextualSection],
         footer_panel: Panel,
         initial_payload_format: str
     ) -> None:
@@ -640,9 +670,11 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         self._header_panel = header_panel
         self._yaml_sections = yaml_sections
         self._json_sections = json_sections
+        self._raw_sections = raw_sections
         self._footer_panel = footer_panel
         self._payload_format = initial_payload_format
         self._copied_section: tuple[str, int] | None = None
+        self._copied_reset_timer = None
 
     def _current_sections(self) -> list[_EchoTextualSection]:
         """Return the current section list for the selected payload format."""
@@ -650,21 +682,50 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
         if self._payload_format == "json":
             return self._json_sections
 
+        if self._payload_format == "raw":
+            return self._raw_sections
+
         return self._yaml_sections
 
     def action_show_yaml(self) -> None:
         """Switch the interactive payload view to YAML."""
 
         self._payload_format = "yaml"
-        self._copied_section = None
+        self._clear_copied_feedback()
         self.refresh(recompose = True)
 
     def action_show_json(self) -> None:
         """Switch the interactive payload view to JSON."""
 
         self._payload_format = "json"
-        self._copied_section = None
+        self._clear_copied_feedback()
         self.refresh(recompose = True)
+
+    def action_show_raw(self) -> None:
+        """Switch the interactive payload view to raw JSON."""
+
+        self._payload_format = "raw"
+        self._clear_copied_feedback()
+        self.refresh(recompose = True)
+
+    def _clear_copied_feedback(self) -> None:
+        """Clear any active copy feedback and stop its pending reset timer."""
+
+        self._copied_section = None
+        if self._copied_reset_timer is not None:
+            self._copied_reset_timer.stop()
+            self._copied_reset_timer = None
+
+    def _reset_copied_feedback(
+        self,
+        copied_section: tuple[str, int]
+    ) -> None:
+        """Restore the copy link label after the transient copied state."""
+
+        self._copied_reset_timer = None
+        if self._copied_section == copied_section:
+            self._copied_section = None
+            self.refresh(recompose = True)
 
     def open_url(
         self,
@@ -682,12 +743,22 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
             self.action_show_json()
             return
 
+        if url == "action://show-raw":
+            self.action_show_raw()
+            return
+
         if url.startswith("action://copy/"):
             copy_index = int(url.removeprefix("action://copy/"))
             section = self._current_sections()[copy_index]
             if section.copy_text is not None:
                 self.copy_to_clipboard(section.copy_text)
-                self._copied_section = (self._payload_format, copy_index)
+                copied_section = (self._payload_format, copy_index)
+                self._clear_copied_feedback()
+                self._copied_section = copied_section
+                self._copied_reset_timer = self.set_timer(
+                    1.0,
+                    lambda: self._reset_copied_feedback(copied_section),
+                )
                 self.refresh(recompose = True)
             return
 
@@ -717,10 +788,18 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
                     else "control-link"
                 ),
             ),
+            Link(
+                "Raw",
+                url = "action://show-raw",
+                id = "toggle-raw",
+                classes = (
+                    "control-link is-active"
+                    if self._payload_format == "raw"
+                    else "control-link"
+                ),
+            ),
             id = "header-controls",
         )
-        header_controls.border_title = "View"
-
         yield Horizontal(
             Static(self._header_panel, id = "header-panel"),
             header_controls,
@@ -743,7 +822,11 @@ class _EchoTextualApp(App[None] if TEXTUAL_AVAILABLE else object):
                                             if self._copied_section == (self._payload_format, index)
                                             else "Copy"
                                         ),
-                                        url = f"action://copy/{index}",
+                                        url = (
+                                            None
+                                            if self._copied_section == (self._payload_format, index)
+                                            else f"action://copy/{index}"
+                                        ),
                                         id = f"copy-{index}",
                                         classes = (
                                             "copy-link is-active"
@@ -1034,7 +1117,7 @@ def _render_debug_echo_failure(
             header_panel = _build_echo_header_panel(),
             yaml_sections = _build_echo_error_textual_sections(
                 domain = domain,
-                debug_json = False,
+                payload_format = "yaml",
                 outbound_payload = outbound_payload,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,
@@ -1046,7 +1129,19 @@ def _render_debug_echo_failure(
             ),
             json_sections = _build_echo_error_textual_sections(
                 domain = domain,
-                debug_json = True,
+                payload_format = "json",
+                outbound_payload = outbound_payload,
+                dns_diagnostics = dns_diagnostics,
+                dns_link_context = dns_link_context,
+                error_lines = error_lines,
+                total_seconds = total_seconds,
+                network_seconds = network_seconds,
+                response_metadata = response_metadata,
+                transport_metadata = transport_metadata,
+            ),
+            raw_sections = _build_echo_error_textual_sections(
+                domain = domain,
+                payload_format = "raw",
                 outbound_payload = outbound_payload,
                 dns_diagnostics = dns_diagnostics,
                 dns_link_context = dns_link_context,

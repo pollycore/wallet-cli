@@ -43,6 +43,7 @@ from pollyweb_cli.features.echo_presentation import (
     _render_debug_echo_failure,
     _render_section_title,
     _render_labeled_lines,
+    _raw_json_debug_renderable,
     _should_use_textual_echo_view,
     _yaml_debug_renderable,
 )
@@ -89,10 +90,18 @@ class _EchoTextualApp(_echo_presentation._EchoTextualApp):
                     else "control-link"
                 ),
             ),
+            Link(
+                "Raw",
+                url = "action://show-raw",
+                id = "toggle-raw",
+                classes = (
+                    "control-link is-active"
+                    if self._payload_format == "raw"
+                    else "control-link"
+                ),
+            ),
             id = "header-controls",
         )
-        header_controls.border_title = "View"
-
         yield Horizontal(
             Static(self._header_panel, id = "header-panel"),
             header_controls,
@@ -466,7 +475,7 @@ def cmd_echo(
             yaml_sections = _build_echo_textual_sections(
                 domain = normalized_domain,
                 debug = debug,
-                debug_json = False,
+                payload_format = "yaml",
                 outbound_payload = outbound_payload,
                 response_payload = response_payload,
                 dns_diagnostics = dns_diagnostics,
@@ -480,7 +489,21 @@ def cmd_echo(
             json_sections = _build_echo_textual_sections(
                 domain = normalized_domain,
                 debug = debug,
-                debug_json = True,
+                payload_format = "json",
+                outbound_payload = outbound_payload,
+                response_payload = response_payload,
+                dns_diagnostics = dns_diagnostics,
+                dns_link_context = dns_link_context,
+                verification_lines = verification_lines,
+                total_seconds = total_seconds,
+                network_seconds = network_seconds,
+                response_metadata = response_metadata,
+                transport_metadata = transport_metadata,
+            ),
+            raw_sections = _build_echo_textual_sections(
+                domain = normalized_domain,
+                debug = debug,
+                payload_format = "raw",
                 outbound_payload = outbound_payload,
                 response_payload = response_payload,
                 dns_diagnostics = dns_diagnostics,

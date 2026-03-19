@@ -408,6 +408,13 @@ def test_echo_textual_app_keeps_rich_static_sections():
                     copy_text = "copy json",
                 )
             ],
+            raw_sections = [
+                echo_feature._EchoTextualSection(
+                    title = "Verified response",
+                    body = Text("copy raw", style = echo_feature.DEBUG_VALUE_STYLE),
+                    copy_text = "copy raw",
+                )
+            ],
             footer_panel = echo_feature._build_echo_footer_panel(
                 total_seconds = 0.2,
                 network_seconds = 0.1,
@@ -449,6 +456,12 @@ def test_echo_textual_app_toggle_switches_payload_sections():
                 body = Text("json body", style = echo_feature.DEBUG_VALUE_STYLE),
             )
         ],
+        raw_sections = [
+            echo_feature._EchoTextualSection(
+                title = "Raw section",
+                body = Text("raw body", style = echo_feature.DEBUG_VALUE_STYLE),
+            )
+        ],
         footer_panel = echo_feature._build_echo_footer_panel(
             total_seconds = 0.2,
             network_seconds = 0.1,
@@ -478,6 +491,13 @@ def test_echo_textual_app_routes_link_actions_to_toggles_and_copy():
                 copy_text = "json copy",
             )
         ],
+        raw_sections = [
+            echo_feature._EchoTextualSection(
+                title = "Raw section",
+                body = Text("raw body", style = echo_feature.DEBUG_VALUE_STYLE),
+                copy_text = "raw copy",
+            )
+        ],
         footer_panel = echo_feature._build_echo_footer_panel(
             total_seconds = 0.2,
             network_seconds = 0.1,
@@ -487,16 +507,40 @@ def test_echo_textual_app_routes_link_actions_to_toggles_and_copy():
         initial_payload_format = "yaml",
     )
     copied = []
+    timer_callbacks = []
+
+    class FakeTimer:
+        """Capture one-shot timer resets without requiring a live app loop."""
+
+        def __init__(self):
+            self.stopped = False
+
+        def stop(self):
+            self.stopped = True
+
     app.copy_to_clipboard = copied.append
+    app.set_timer = lambda _delay, callback, **_kwargs: (timer_callbacks.append(callback), FakeTimer())[1]
 
     app.open_url("action://show-json")
     assert app._current_sections()[0].title == "JSON section"
 
     app.open_url("action://copy/0")
     assert copied == ["json copy"]
+    assert app._copied_section == ("json", 0)
+    assert len(timer_callbacks) == 1
+
+    timer_callbacks.pop()()
+    assert app._copied_section is None
 
     app.open_url("action://show-yaml")
     assert app._current_sections()[0].title == "YAML section"
+
+    app.open_url("action://show-raw")
+    assert app._current_sections()[0].title == "Raw section"
+
+    app.open_url("action://copy/0")
+    assert copied == ["json copy", "raw copy"]
+    assert app._copied_section == ("raw", 0)
 
     app.action_show_json()
 
@@ -511,7 +555,7 @@ def test_echo_textual_sections_mark_payload_blocks_as_copyable():
     sections = echo_feature._build_echo_textual_sections(
         domain = "vault.example.com",
         debug = True,
-        debug_json = True,
+        payload_format = "json",
         outbound_payload = {"Header": {"Subject": "Echo@Domain"}},
         response_payload = '{"Header":{"Subject":"Echo@Domain"},"Body":{"Echo":"ok"}}',
         dns_diagnostics = None,
@@ -538,6 +582,12 @@ def test_echo_json_textual_renderable_uses_pretty_indentation():
     renderable = echo_feature._json_debug_renderable({"outer": {"inner": True}})
 
     assert renderable.code == '{\n  "outer": {\n    "inner": true\n  }\n}'
+
+
+def test_echo_raw_json_textual_renderable_uses_compact_json():
+    renderable = echo_feature._raw_json_debug_renderable({"outer": {"inner": True}})
+
+    assert renderable.plain == '{"outer":{"inner":true}}'
 
 
 def test_echo_debug_prints_outbound_and_inbound_payloads_for_dom_alias(

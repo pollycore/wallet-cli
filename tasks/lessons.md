@@ -56,6 +56,7 @@
 - For `pw echo --debug`, label the Google DNS click-through URL as a test link for the verified `pw.<domain>` branch so the terminal output makes that resolver check obvious too.
 - For `pw echo --debug`, include a labeled Google DNS A-record test URL for the verified `pw.<domain>` branch so users can jump straight to the `type=A` resolver view.
 - For the interactive `pw echo --debug` Textual viewer, keep the scroll body on Rich/Textual renderables such as `Static(Group(...))`; converting the sections into a plain `TextArea` strips the color styling that the debug UI depends on.
+- When refactoring `pw echo` into separate logic and presentation files, keep `pollyweb_cli.features.echo` exporting the old helper names and Textual widget hook points; the tests monkeypatch those module globals directly, so the split still needs a compatibility facade in `echo.py`.
 - When `pw echo` reply validation migrates into `pollyweb`, move both the strict top-level wire-field check and the expected header checks into the published library API, then keep `wallet-cli` focused on calling `Msg.parse()` / `Msg.verify_details()` and translating failures into concise CLI wording.
 - For `pw msg`, render successful synchronous responses as YAML by default using the same formatter family as `--debug`, and reserve raw response output for an explicit `--json` flag.
 - When `pw msg` combines `--debug` with `--json`, keep the final response raw for scripts but render the debug payloads as raw JSON instead of the default YAML-style formatter.

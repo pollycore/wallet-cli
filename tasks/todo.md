@@ -1,5 +1,9 @@
 # Task Plan
 
+- [x] Split `pw echo` presentation helpers into a dedicated module while keeping command logic in `echo.py`
+- [x] Preserve the existing test-facing helper surface and update imports without changing behavior
+- [x] Verify the affected echo/debug suites with the repo test interpreter
+
 - [ ] Add copy metadata to interactive echo payload sections so each block can expose its own clipboard action
 - [ ] Render per-section copy buttons next to payload block titles in the Textual echo viewer
 - [ ] Add focused regression coverage and verify with the repo test interpreter

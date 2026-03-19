@@ -54,6 +54,7 @@
 - Plain `pw echo` should stay concise on success and print only the verification line with total duration and network-latency percentage.
 - Only `pw echo --debug` should show the top header and bottom summary box, and only interactive `--debug` TTY runs should switch to the Textual viewer so those boxes react to terminal resize.
 - The interactive `pw echo --debug` Textual body should keep Rich/Textual renderables such as `Static(Group(...))`; replacing that body with a plain `TextArea` strips the debug colors from the payload and verification sections.
+- When splitting `python/pollyweb_cli/features/echo.py`, keep `echo.py` as the command and compatibility facade while moving rendering code into a sibling presentation module; preserve the helper names and Textual widget hook points exported from `pollyweb_cli.features.echo` so focused tests and nearby imports do not need to know about the internal file split.
 - The CLI reports its installed release via `pw version`; do not reintroduce a top-level `pw --version` flag without an explicit product change.
 - The CLI self-update preflight should upgrade automatically when PyPI has a newer release; do not ask for confirmation or persist declined versions unless the product requirement changes.
 - The CLI runtime itself must always come from a published PyPI release; if `pollyweb-cli` is running from an editable checkout, local path, direct URL, or dev version, replace it with the latest published release before executing the requested command.
