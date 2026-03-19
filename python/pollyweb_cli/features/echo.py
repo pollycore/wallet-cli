@@ -12,10 +12,11 @@ from urllib.parse import quote
 from pollyweb import Msg, MsgValidationError
 
 from pollyweb_cli.tools.debug import (
+    parse_debug_payload,
     print_debug_payload,
-    print_echo_response,
     print_labeled_value_lines,
     print_section_title,
+    print_yaml_payload,
 )
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.features.bind import (
@@ -428,7 +429,9 @@ def cmd_echo(
         )
         return 0
 
-    print_echo_response(response_payload)
+    print()
+    print_yaml_payload(parse_debug_payload(response_payload))
+    print()
     _print_echo_dns_diagnostics(dns_diagnostics)
     if dns_link_context is not None:
         _print_echo_dns_reference_links(*dns_link_context)
