@@ -994,6 +994,75 @@ def test_echo_interactive_viewer_hides_transport_debug_payloads_while_sending(
     }
 
 
+def test_echo_non_debug_shows_spinner_while_sending(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+    events: list[str] = []
+
+    class FakeStatus:
+        """Capture the non-debug spinner lifecycle."""
+
+        def __init__(self, message: str):
+            self.message = message
+
+        def __enter__(self):
+            events.append(f"enter:{self.message}")
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            events.append("exit")
+            return False
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message),
+    )
+    monkeypatch.setattr(
+        echo_feature,
+        "_resolve_echo_command",
+        lambda _domain, **_kwargs: (
+            events.append("resolve"),
+            echo_feature._EchoCommandSuccess(
+                normalized_domain = "vault.example.com",
+                response_payload = "{}",
+                parsed_response_payload = {},
+                outbound_payload = None,
+                verification_lines = {},
+                dns_diagnostics = None,
+                dns_link_context = None,
+                response_metadata = None,
+                transport_metadata = {},
+                total_seconds = 0.42,
+                network_seconds = 0.1,
+                footer_panel = None,
+            ),
+        )[-1],
+    )
+
+    exit_code = cli.main(["echo", "vault.example.com"])
+
+    assert exit_code == 0
+    assert events == [
+        "enter:Sending message...",
+        "resolve",
+        "exit",
+    ]
+    captured = capsys.readouterr()
+    assert captured.out == "✅ Verified echo response (420 ms, 24% latency)\n"
+    assert captured.err == ""
+
+
 def test_echo_json_textual_renderable_uses_syntax_highlighting():
     renderable = echo_feature._json_debug_renderable({"ok": True})
 

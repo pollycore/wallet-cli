@@ -8,7 +8,7 @@ pw echo vault.example.com
 
 This sends an `Echo@Domain` message to the target domain, prefers the shared `pollyweb` synchronous-response parser when the published library exposes it, otherwise validates the current published `Request`/`Response`/`Meta` envelope shape locally and verifies the nested `Response` signature using the domain's DKIM key. It also checks that the response `From`, `Subject`, and `Correlation` headers match the expected echo flow. The response `To` must match either the normalized target domain or the stored bind UUID for that domain from `~/.pollyweb/binds.yaml`.
 
-Plain `pw echo` stays concise and prints only the final verification line with total duration and latency percentage.
+Plain `pw echo` keeps the send phase behind a short terminal `Sending message...` spinner, then stays concise and prints only the final verification line with total duration and latency percentage.
 
 Use `--json` to print the raw synchronous response instead of the default concise verification line. On an interactive terminal, those JSON payloads now keep the same raw structure but add JSON syntax colors; redirected or scripted output stays plain compact JSON. When you combine `--debug --json`, the debug payload sections switch from the default YAML-style formatting to raw JSON while keeping the same verification, DNS, timing, and summary sections.
 
