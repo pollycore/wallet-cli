@@ -905,6 +905,95 @@ def test_echo_interactive_viewer_shows_sending_spinner_before_opening(
     ]
 
 
+def test_echo_interactive_viewer_hides_transport_debug_payloads_while_sending(
+    monkeypatch, tmp_path
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+    observed: dict[str, object] = {}
+
+    class FakeEchoTextualApp:
+        """Avoid launching Textual while capturing the command setup."""
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def run(self):
+            return None
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature,
+        "_should_use_textual_echo_view",
+        lambda *, debug: debug,
+    )
+    monkeypatch.setattr(echo_feature, "_EchoTextualApp", FakeEchoTextualApp)
+    monkeypatch.setattr(
+        echo_feature.DEBUG_CONSOLE,
+        "status",
+        lambda _message: type(
+            "FakeStatus",
+            (),
+            {
+                "__enter__": lambda self: self,
+                "__exit__": lambda self, exc_type, exc, tb: False,
+            },
+        )(),
+    )
+
+    def fake_resolve_echo_command(
+        _domain,
+        *,
+        debug,
+        transport_debug,
+        json_output,
+        **_kwargs
+    ):
+        observed["debug"] = debug
+        observed["transport_debug"] = transport_debug
+        observed["json_output"] = json_output
+        return echo_feature._EchoCommandFailure(
+            normalized_domain = "vault.example.com",
+            error_lines = {"Status": "failed", "Error": "boom"},
+            outbound_payload = None,
+            response_payload = None,
+            parsed_response_payload = None,
+            verification_lines = {},
+            dns_diagnostics = None,
+            dns_link_context = None,
+            response_metadata = None,
+            transport_metadata = {},
+            total_seconds = 0.0,
+            network_seconds = 0.0,
+            footer_panel = echo_feature._build_echo_error_footer_panel(
+                total_seconds = 0.0,
+                network_seconds = 0.0,
+            ),
+        )
+
+    monkeypatch.setattr(
+        echo_feature,
+        "_resolve_echo_command",
+        fake_resolve_echo_command,
+    )
+
+    exit_code = cli.main(["echo", "--debug", "vault.example.com"])
+
+    assert exit_code == 1
+    assert observed == {
+        "debug": True,
+        "transport_debug": False,
+        "json_output": False,
+    }
+
+
 def test_echo_json_textual_renderable_uses_syntax_highlighting():
     renderable = echo_feature._json_debug_renderable({"ok": True})
 

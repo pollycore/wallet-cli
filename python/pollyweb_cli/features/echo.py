@@ -286,6 +286,7 @@ def _resolve_echo_command(
     domain: str,
     *,
     debug: bool,
+    transport_debug: bool,
     json_output: bool,
     config_dir,
     binds_path: Path,
@@ -315,7 +316,7 @@ def _resolve_echo_command(
             subject = ECHO_SUBJECT,
             body = {},
             key_pair = key_pair,
-            debug = debug,
+            debug = transport_debug,
             debug_json = json_output,
             binds_path = binds_path,
             anonymous = anonymous,
@@ -895,6 +896,7 @@ def cmd_echo(
             resolved = _resolve_echo_command(
                 domain,
                 debug = debug,
+                transport_debug = False,
                 json_output = json_output,
                 config_dir = config_dir,
                 binds_path = binds_path,
@@ -929,6 +931,7 @@ def cmd_echo(
     resolved = _resolve_echo_command(
         domain,
         debug = debug,
+        transport_debug = debug,
         json_output = json_output,
         config_dir = config_dir,
         binds_path = binds_path,
