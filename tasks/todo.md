@@ -1,5 +1,16 @@
 # Task Plan
 
+- [x] Inspect the current `pw echo --debug` timing metadata flow and confirm where wrapped `Meta.ColdMs` is available
+- [x] Add `Meta.ColdMs` to the shared echo timing calculations and `Network timing` rendering path
+- [x] Add focused regression coverage, verify with the repo test interpreter, and record the maintenance note
+
+# Review
+
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo_response.py` so wrapped sync metadata coercion now preserves `ColdMs` alongside the other supported echo timing hints.
+- Updated `/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/echo_sections.py` so `pw echo --debug` adds a `Cold start` line to `Network timing` whenever merged response metadata includes `ColdMs`.
+- Extended `/Users/jorgemf/Git/wallet-cli/tests/test_echo.py` to lock in wrapped `Meta.ColdMs` rendering, and updated `/Users/jorgemf/Git/wallet-cli/docs/commands/echo.md`, `/Users/jorgemf/Git/wallet-cli/AGENTS.md`, and `/Users/jorgemf/Git/wallet-cli/tasks/lessons.md` so the new timing hint stays documented.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_echo.py` (`41 passed`).
+
 - [x] Inspect the current `pw echo` feature boundaries and define smaller sub-feature modules that preserve the existing `echo.py` facade
 - [x] Move `pw echo` parsing, metadata, rendering, and Textual viewer internals into sibling modules while keeping test-facing exports stable
 - [x] Verify the refactor with focused echo tests in the repo virtualenv and record any new maintenance lesson

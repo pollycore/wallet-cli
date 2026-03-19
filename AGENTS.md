@@ -55,6 +55,7 @@
 - `pw echo --debug` should also label the Google DNS URL as an explicit test link for the verified `pw.<domain>` branch so users can open the exact resolver view directly.
 - `pw echo --debug` should also include and label a Google DNS A-record test URL for the verified `pw.<domain>` branch so users can open the direct `type=A` resolver view.
 - `pw echo --debug` should keep timing details in a dedicated `Network timing` section instead of burying them in the verification bullet list, and it should also print a separate `Edge / CDN hints` section with best-effort transport clues such as the detected CDN provider, response headers, and PoP when headers like CloudFront's `X-Amz-Cf-Pop` are available.
+- `pw echo --debug` should treat wrapped sync `Meta.ColdMs` the same way as the other message-reported timing hints and include that cold-start value in the `Network timing` calculations/output when present.
 - `pw bind` expects a bare UUID bind value in successful responses and stores that UUID in `~/.pollyweb/binds.yaml`; keep the legacy `Bind:<UUID>` parser path compatible so older hosts still work.
 - Persist bind domains in canonical form and normalize lookup input the same way, so `.dom` and `.pollyweb.org` refer to the same stored bind.
 - `pw bind` should append wallet-managed bind-change audit entries to `~/.pollyweb/binds.log` whenever it writes `~/.pollyweb/binds.yaml`, including the canonical domain plus the previous and new bind UUIDs for replacements.

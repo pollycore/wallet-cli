@@ -200,6 +200,10 @@ def _build_echo_timing_lines(
         if isinstance(latency_ms, int):
             lines["Remote latency"] = f"{latency_ms} ms"
 
+        cold_ms = response_metadata.get("ColdMs")
+        if isinstance(cold_ms, int):
+            lines["Cold start"] = f"{cold_ms} ms"
+
         total_ms = response_metadata.get("TotalMs")
         if isinstance(total_ms, int):
             lines["Message total"] = f"{total_ms} ms"

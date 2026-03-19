@@ -30,6 +30,7 @@ def _coerce_echo_response_metadata(
 
         for key in (
             "LatencyMs",
+            "ColdMs",
             "TotalMs",
             "HandlerMs",
             "TotalExecutionMs",

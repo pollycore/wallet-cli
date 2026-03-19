@@ -1467,6 +1467,7 @@ def test_echo_debug_prints_wrapped_sync_meta_timing_details(
         {
             "Meta": {
                 "LatencyMs": 12,
+                "ColdMs": 18,
             },
             "Request": {
                 "Body": {},
@@ -1526,6 +1527,7 @@ def test_echo_debug_prints_wrapped_sync_meta_timing_details(
     assert " - Latency share: 40% (40 ms)" in captured.out
     assert " - Client overhead: 60 ms" in captured.out
     assert " - Remote latency: 12 ms" in captured.out
+    assert " - Cold start: 18 ms" in captured.out
     assert " - Message total: 90 ms" in captured.out
     assert " - Message handler: 0 ms" in captured.out
     assert " - Total execution: 8 ms" in captured.out
