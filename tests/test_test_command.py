@@ -137,6 +137,186 @@ def test_test_json_flag_keeps_success_output_concise(
     assert_passed_output(captured.out.strip(), test_path.stem)
 
 
+def test_test_shows_spinner_while_sending(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    lifecycle: list[str] = []
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    class FakeStatus:
+        """Capture the status lifecycle around one fixture send."""
+
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the status message for lifecycle assertions."""
+
+            self.message = message
+
+        def __enter__(self):
+            """Record when the spinner starts."""
+
+            lifecycle.append(f"enter:{self.message}")
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """Record when the spinner stops."""
+
+            lifecycle.append(f"exit:{self.message}")
+            return False
+
+    monkeypatch.setattr(
+        test_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message))
+
+    def fake_send_wallet_message(**kwargs):
+        lifecycle.append("send")
+        return (
+            '{"Header":{"From":"any-hoster.pollyweb.org","To":"any-hoster.pollyweb.org","Subject":"Echo@Domain"}}',
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    assert lifecycle == [
+        "enter:Testing message...",
+        "send",
+        "exit:Testing message...",
+    ]
+    captured = capsys.readouterr()
+    assert_passed_output(captured.out.strip(), test_path.stem)
+
+
+def test_test_without_path_shows_one_spinner_per_fixture(
+    monkeypatch, tmp_path, capsys
+):
+    tests_dir = tmp_path / "pw-tests"
+    lifecycle: list[str] = []
+
+    tests_dir.mkdir()
+    (tests_dir / "a-first.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+    (tests_dir / "b-second.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    class FakeStatus:
+        """Capture one status context per fixture send."""
+
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the spinner message for assertions."""
+
+            self.message = message
+
+        def __enter__(self):
+            """Record spinner start for one fixture."""
+
+            lifecycle.append(f"enter:{self.message}")
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """Record spinner stop for one fixture."""
+
+            lifecycle.append(f"exit:{self.message}")
+            return False
+
+    monkeypatch.setattr(
+        test_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message))
+
+    def fake_send_wallet_message(**kwargs):
+        lifecycle.append(f"send:{kwargs['subject']}")
+        return (
+            json.dumps({"Header": {"Subject": kwargs["subject"]}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    def fake_load_message_test_fixture(
+        path,
+        binds_path,
+        public_key_path
+    ):
+        return {
+            "Outbound": {
+                "To": "any-hoster.dom",
+                "Subject": path.name,
+            }
+        }
+
+    monkeypatch.setattr(
+        test_feature,
+        "load_message_test_fixture",
+        fake_load_message_test_fixture)
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    exit_code = cli.main(["test"])
+
+    assert exit_code == 0
+    assert lifecycle == [
+        "enter:Testing message...",
+        "send:a-first.yaml",
+        "exit:Testing message...",
+        "enter:Testing message...",
+        "send:b-second.yaml",
+        "exit:Testing message...",
+    ]
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert len(lines) == 2
+    assert_passed_output(lines[0], "a-first")
+    assert_passed_output(lines[1], "b-second")
+
+
 def test_extract_test_total_seconds_prefers_wrapped_response_meta_total_ms():
     payload = json.dumps(
         {

@@ -24,7 +24,10 @@ from pollyweb_cli.features.msg import (
     describe_message_network_error,
     parse_message_request,
 )
-from pollyweb_cli.tools.debug import parse_debug_payload
+from pollyweb_cli.tools.debug import (
+    DEBUG_CONSOLE,
+    parse_debug_payload,
+)
 from pollyweb_cli.tools.transport import send_wallet_message
 
 
@@ -527,19 +530,20 @@ def run_message_test_fixture(
         request, _ = parse_message_request(
             [json.dumps(fixture["Outbound"])])
 
-        response_payload, _, _ = send_wallet_message(
-            domain = str(request["To"]),
-            subject = str(request["Subject"]),
-            body = dict(request["Body"]),
-            key_pair = key_pair,
-            debug = debug,
-            debug_json = json_output,
-            from_value = request.get("From"),
-            schema_value = request.get("Schema"),
-            anonymous = anonymous,
-            unsigned = unsigned,
-            timing = timing,
-        )
+        with DEBUG_CONSOLE.status("Testing message..."):
+            response_payload, _, _ = send_wallet_message(
+                domain = str(request["To"]),
+                subject = str(request["Subject"]),
+                body = dict(request["Body"]),
+                key_pair = key_pair,
+                debug = debug,
+                debug_json = json_output,
+                from_value = request.get("From"),
+                schema_value = request.get("Schema"),
+                anonymous = anonymous,
+                unsigned = unsigned,
+                timing = timing,
+            )
     except FileNotFoundError:
         if fixture_path.suffix in {".yaml", ".yml", ".json"}:
             raise UserFacingError(
