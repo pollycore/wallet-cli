@@ -1417,6 +1417,95 @@ def test_test_accepts_integer_wildcard_in_inbound_expectation(
     assert_passed_output(captured.out.strip(), test_path.stem)
 
 
+def test_test_accepts_array_template_items_alongside_exact_items(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.pollyweb.org\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  Response:\n"
+            "    Domains:\n"
+            "      - Domain: any-streamer.pollyweb.org\n"
+            "      - Domain: '<str>'\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            json.dumps(
+                {
+                    "Response": {
+                        "Domains": [
+                            {"Domain": "any-subscriber.pollyweb.org"},
+                            {"Domain": "any-streamer.pollyweb.org"},
+                            {"Domain": "any-publisher.pollyweb.org"},
+                        ]
+                    }
+                }
+            ),
+            None,
+            "any-hoster.pollyweb.org",
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert_passed_output(captured.out.strip(), test_path.stem)
+
+
+def test_test_rejects_array_items_that_miss_the_existing_template(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.pollyweb.org\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  Response:\n"
+            "    Domains:\n"
+            "      - Domain: any-streamer.pollyweb.org\n"
+            "      - Domain: '<str>'\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            json.dumps(
+                {
+                    "Response": {
+                        "Domains": [
+                            {"Domain": "any-streamer.pollyweb.org"},
+                            {"Domain": ""},
+                        ]
+                    }
+                }
+            ),
+            None,
+            "any-hoster.pollyweb.org",
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Expected response.Response.Domains[1].Domain to be a non-empty string" in captured.err
+
+
 @pytest.mark.parametrize(
     ("response_payload", "expected_message"),
     [

@@ -354,6 +354,110 @@ def assert_expected_subset(
 ) -> None:
     """Assert that a response contains the expected fixture subset."""
 
+    def contains_array_template_placeholder(value: Any) -> bool:
+        """Return whether a list item includes a repeatable wildcard template."""
+
+        if isinstance(value, dict):
+            return any(
+                contains_array_template_placeholder(nested_value)
+                for nested_value in value.values()
+            )
+
+        if isinstance(value, list):
+            return any(
+                contains_array_template_placeholder(item)
+                for item in value
+            )
+
+        return value in {
+            UUID_WILDCARD,
+            STRING_WILDCARD,
+            INTEGER_WILDCARD,
+        }
+
+    def match_expected_list(
+        actual_list: list[Any],
+        expected_list: list[Any],
+        list_location: str
+    ) -> None:
+        """Assert that a response list matches fixed items and an optional template."""
+
+        template_items = [
+            (index, item)
+            for index, item in enumerate(expected_list)
+            if contains_array_template_placeholder(item)
+        ]
+        fixed_items = [
+            (index, item)
+            for index, item in enumerate(expected_list)
+            if not contains_array_template_placeholder(item)
+        ]
+
+        if not template_items:
+            if len(actual_list) != len(expected_list):
+                raise UserFacingError(
+                    f"Expected {list_location} to contain {len(expected_list)} items, "
+                    f"but got {len(actual_list)}."
+                ) from None
+
+            for index, expected_item in enumerate(expected_list):
+                assert_expected_subset(
+                    actual_list[index],
+                    expected_item,
+                    f"{list_location}[{index}]")
+            return
+
+        unmatched_actual_indexes = list(range(len(actual_list)))
+
+        for expected_index, expected_item in fixed_items:
+            matched_index: int | None = None
+
+            for actual_index in unmatched_actual_indexes:
+                try:
+                    assert_expected_subset(
+                        actual_list[actual_index],
+                        expected_item,
+                        f"{list_location}[{expected_index}]")
+                except UserFacingError:
+                    continue
+
+                matched_index = actual_index
+                break
+
+            if matched_index is None:
+                if not actual_list:
+                    raise UserFacingError(
+                        f"Expected {list_location}[{expected_index}] to exist in the response."
+                    ) from None
+
+                assert_expected_subset(
+                    actual_list[0],
+                    expected_item,
+                    f"{list_location}[{expected_index}]")
+
+            unmatched_actual_indexes.remove(matched_index)
+
+        for actual_index in unmatched_actual_indexes:
+            template_matched = False
+
+            for expected_index, template_item in template_items:
+                try:
+                    assert_expected_subset(
+                        actual_list[actual_index],
+                        template_item,
+                        f"{list_location}[{expected_index}]")
+                except UserFacingError:
+                    continue
+
+                template_matched = True
+                break
+
+            if not template_matched:
+                assert_expected_subset(
+                    actual_list[actual_index],
+                    template_items[0][1],
+                    f"{list_location}[{template_items[0][0]}]")
+
     def is_empty_value(value: Any) -> bool:
         """Return whether a fixture value should count as empty."""
 
@@ -388,6 +492,15 @@ def assert_expected_subset(
                 actual[key],
                 expected_value,
                 f"{location}.{key}")
+        return
+
+    if isinstance(expected, list):
+        if not isinstance(actual, list):
+            raise UserFacingError(
+                f"Expected {location} to be an array, but got {actual!r}."
+            ) from None
+
+        match_expected_list(actual, expected, location)
         return
 
     # Allow fixtures to require "some valid UUID here" without pinning an
