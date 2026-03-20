@@ -1,5 +1,6 @@
 # Lessons
 
+- For wrapped `pw test` fixtures, support a top-level numeric `Wait` field next to `Outbound` and `Inbound`; validate it during fixture load and apply the delay immediately before transport so direct runs and recursive `pw-tests` sweeps behave the same way.
 - For non-debug `pw test` / `pw tests` fixture sweeps, keep discovery order deterministic but execute same-parent targets sharing a leading numeric prefix like `03-` in parallel as one batch; that applies to sibling YAML files as well as sibling subfolders, while final success lines should still print in sorted path order and `--debug` should stay sequential.
 - For the shared `pw test` parallel status renderer, treat resolved success and failure leaf rows as one-render snapshots: show them once in the tree, then retire them so the renderer thread can shut down cleanly before the next test batch starts.
 - For `pw test` parallel progress, keep the view hierarchical: render active folder groups, nested file groups, and leaf fixtures in one shared status tree so mixed folder-plus-file parallel runs stay understandable while pass lines still print immediately on completion.
