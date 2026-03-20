@@ -1132,9 +1132,15 @@ def run_test_target(
         group_label = get_parallel_test_spinner_group_name(target_group)
         group_labels = (*active_parallel_labels, group_label)
         group_child_lines_by_name: dict[str, list[str]] = {}
-        with test_parallel_status(
+        parallel_group_scope = test_parallel_status(
             *group_labels
-        ):
+        )
+        if active_parallel_labels:
+            parallel_group_scope = test_parallel_status_scope(
+                *group_labels
+            )
+
+        with parallel_group_scope as group_status_token:
             with ThreadPoolExecutor(max_workers = len(target_group)) as executor:
                 future_results: dict[Future[list[str]], dict[str, Path | str]] = {
                     executor.submit(
@@ -1159,6 +1165,15 @@ def run_test_target(
                     try:
                         future_output_lines = future.result()
                     except Exception as exc:
+                        if active_parallel_labels:
+                            PARALLEL_TEST_STATUS_RENDERER.resolve(
+                                group_status_token,
+                                (
+                                    *active_parallel_labels,
+                                    f"❌ Failed: {group_label}",
+                                ),
+                            )
+
                         failure_name = getattr(
                             exc,
                             "parallel_failure_display_name",
@@ -1187,6 +1202,17 @@ def run_test_target(
             group_label,
             group_child_lines,
         )
+
+        if active_parallel_labels:
+            PARALLEL_TEST_STATUS_RENDERER.resolve(
+                group_status_token,
+                (
+                    *active_parallel_labels,
+                    group_summary_lines[0],
+                    *group_summary_lines[1:],
+                ),
+            )
+
         if emit_output_line is not None:
             if active_parallel_labels:
                 output_lines.extend(group_summary_lines)
@@ -1544,7 +1570,6 @@ def run_message_test_fixture(
                 parallel_status_token,
                 (*active_parallel_labels, output_line),
             )
-            PARALLEL_TEST_STATUS_RENDERER.close(parallel_status_token)
             parallel_status_token = None
         return output_line
     except Exception as exc:
@@ -1553,7 +1578,6 @@ def run_message_test_fixture(
                 parallel_status_token,
                 (*active_parallel_labels, f"❌ Failed: {fixture_name}"),
             )
-            PARALLEL_TEST_STATUS_RENDERER.close(parallel_status_token)
             parallel_status_token = None
             setattr(exc, "parallel_failure_already_reported", True)
         raise

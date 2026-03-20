@@ -1696,19 +1696,34 @@ def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_
     second_dir = tests_dir / "01-beta"
     status_messages: list[str] = []
     release_slow = threading.Event()
-    both_started = threading.Event()
+    parallel_ready = threading.Event()
+    nested_group_rendered = threading.Event()
     started_subjects: list[str] = []
     started_lock = threading.Lock()
     first_dir.mkdir(parents = True)
     second_dir.mkdir(parents = True)
-    (first_dir / "10-fast.yaml").write_text(
+    (first_dir / "10-fast-a.yaml").write_text(
         (
             "Outbound:\n"
             "  To: any-hoster.dom\n"
             "  Subject: Echo@Domain\n"
         ),
         encoding = "utf-8")
-    (second_dir / "10-slow.yaml").write_text(
+    (first_dir / "10-fast-b.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+    (second_dir / "10-slow-a.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+    (second_dir / "10-slow-b.yaml").write_text(
         (
             "Outbound:\n"
             "  To: any-hoster.dom\n"
@@ -1736,11 +1751,16 @@ def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_
         subject = kwargs["subject"]
         with started_lock:
             started_subjects.append(subject)
-            if len(started_subjects) == 2:
-                both_started.set()
+            if {
+                "10-fast-a.yaml",
+                "10-fast-b.yaml",
+                "10-slow-a.yaml",
+                "10-slow-b.yaml",
+            }.issubset(set(started_subjects)):
+                parallel_ready.set()
 
-        if subject == "10-slow.yaml":
-            assert both_started.wait(timeout = 1)
+        if subject.startswith("10-slow"):
+            assert parallel_ready.wait(timeout = 1)
             assert release_slow.wait(timeout = 5)
 
         return (
@@ -1792,6 +1812,11 @@ def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_
             """Record later tree updates."""
 
             status_messages.append(message)
+            if (
+                "✅ Passed: files 01-alpha/10-*" in message
+                and "files 01-beta/10-*" in message
+            ):
+                nested_group_rendered.set()
 
     monkeypatch.setattr(
         test_feature.DEBUG_CONSOLE,
@@ -1803,7 +1828,14 @@ def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_
         daemon = True)
     cli_thread.start()
 
-    assert both_started.wait(timeout = 1)
+    assert parallel_ready.wait(timeout = 1)
+    assert nested_group_rendered.wait(timeout = 1)
+    assert any(
+        "✅ Passed: files 01-alpha/10-*" in message
+        and "  ✅ Passed: 01-alpha/10-fast-a" in message
+        and "  ✅ Passed: 01-alpha/10-fast-b" in message
+        for message in status_messages
+    )
 
     release_slow.set()
     cli_thread.join(timeout = 2)
