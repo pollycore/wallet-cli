@@ -73,7 +73,7 @@ TIMESTAMP_WILDCARD = "<timestamp>"
 DEFAULT_TESTS_DIR = "pw-tests"
 PARALLEL_FIXTURE_PREFIX_PATTERN = re.compile(r"^(\d+)-")
 PARALLEL_STATUS_ROOT_LABEL = ""
-PARALLEL_TEST_SPINNER_FRAMES = (".", "o", "O", "o")
+PARALLEL_TEST_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 ACTIVE_TEST_SPINNER_COUNT: ContextVar[int] = ContextVar(
     "active_test_spinner_count",
     default = 0,
@@ -136,7 +136,7 @@ def format_test_group_success_message(
 def should_print_grouped_test_results() -> bool:
     """Return whether grouped success summaries should print after rendering."""
 
-    return not DEBUG_CONSOLE.is_terminal
+    return True
 
 
 def build_test_group_success_lines(
@@ -187,7 +187,7 @@ class ParallelTestLiveDisplay:
             console = DEBUG_CONSOLE,
             auto_refresh = False,
             refresh_per_second = 12.5,
-            transient = False,
+            transient = True,
         )
 
     def __enter__(self):
