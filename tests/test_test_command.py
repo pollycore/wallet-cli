@@ -138,6 +138,24 @@ def test_build_parallel_test_render_paths_skips_empty_group_sentinel_rows():
     ]
 
 
+def test_build_parallel_test_render_paths_keeps_resolved_rows_in_completion_order():
+    assert test_feature.build_parallel_test_render_paths(
+        {
+            1: ("", "03-first"),
+        },
+        {
+            2: ("", "✅ Passed: 03-second (10 ms, 50% latency)"),
+            3: ("", "❌ Failed: 03-third"),
+        },
+        resolved_order = (3, 2),
+        spinner_frame = "x",
+    ) == [
+        ("", "❌ Failed: 03-third"),
+        ("", "✅ Passed: 03-second (10 ms, 50% latency)"),
+        ("", "x Testing message: 03-first"),
+    ]
+
+
 def test_normalize_parallel_test_status_message_pads_shorter_follow_up_lines():
     normalized = test_feature.normalize_parallel_test_status_message(
         "✅ Passed: short",
@@ -1429,6 +1447,135 @@ def test_test_parallel_folder_failure_reports_nested_fixture_path(
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "❌ Failed: 01-alpha/10-drop" in captured.out
+
+
+def test_test_parallel_group_failure_stays_out_of_stderr_and_in_completion_order(
+    monkeypatch, tmp_path, capsys
+):
+    tests_dir = tmp_path / "pw-tests"
+    first_path = tests_dir / "21-first.yaml"
+    second_path = tests_dir / "21-second.yaml"
+    first_started = threading.Event()
+    second_started = threading.Event()
+    lifecycle: list[str] = []
+
+    tests_dir.mkdir()
+    for path in (first_path, second_path):
+        path.write_text(
+            (
+                "Outbound:\n"
+                "  To: any-hoster.dom\n"
+                "  Subject: Echo@Domain\n"
+            ),
+            encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    class FakeStatus:
+        """Capture the final live-status snapshots for one parallel group."""
+
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the first rendered message for assertions."""
+
+            self.message = message
+            lifecycle.append(message)
+
+        def __enter__(self):
+            """Start the fake status context."""
+
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """Close the fake status context without suppressing errors."""
+
+            return False
+
+        def update(
+            self,
+            message: str
+        ):
+            """Record each rebuilt live-status snapshot."""
+
+            lifecycle.append(message)
+
+    monkeypatch.setattr(
+        test_feature,
+        "open_parallel_test_status",
+        lambda message: FakeStatus(message))
+
+    def fake_load_message_test_fixture(
+        path,
+        binds_path,
+        public_key_path
+    ):
+        return {
+            "Outbound": {
+                "To": "any-hoster.dom",
+                "Subject": path.name,
+            }
+        }
+
+    def fake_send_wallet_message(**kwargs):
+        subject = kwargs["subject"]
+        if subject == "21-first.yaml":
+            first_started.set()
+            assert second_started.wait(timeout = 1)
+            time.sleep(0.02)
+            raise urllib.error.HTTPError(
+                "https://pw.any-hoster.pollyweb.org/inbox",
+                400,
+                "Bad Request",
+                hdrs = None,
+                fp = None)
+
+        second_started.set()
+        assert first_started.wait(timeout = 1)
+        return (
+            json.dumps({"Header": {"Subject": subject}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "load_message_test_fixture",
+        fake_load_message_test_fixture)
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    cli_thread = threading.Thread(
+        target = lambda: cli.main(["tests"]),
+        daemon = True)
+    cli_thread.start()
+
+    assert first_started.wait(timeout = 1)
+    assert second_started.wait(timeout = 1)
+    cli_thread.join(timeout = 2)
+    assert not cli_thread.is_alive()
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out.splitlines() == ["Error: HTTP 400 Bad Request."]
+    final_snapshot = next(
+        snapshot
+        for snapshot in reversed(lifecycle)
+        if "❌ Failed: 21-first" in snapshot and "✅ Passed: 21-second" in snapshot
+    )
+    final_lines = [line.rstrip() for line in final_snapshot.splitlines()]
+    assert final_lines[0].startswith("✅ Passed: 21-second (")
+    assert final_lines[-1] == "❌ Failed: 21-first"
 
 
 def test_test_debug_keeps_same_folder_numeric_prefix_group_sequential(

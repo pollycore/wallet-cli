@@ -305,6 +305,7 @@ class ParallelTestStatusRenderer:
         self._lock = Lock()
         self._active_paths: dict[int, tuple[str, ...]] = {}
         self._resolved_paths: dict[int, tuple[str, ...]] = {}
+        self._resolved_order: list[int] = []
         self._resolved_rendered_events: dict[int, Event] = {}
         self._token_counter = count(1)
         self._change_event = Event()
@@ -406,6 +407,8 @@ class ParallelTestStatusRenderer:
         with self._lock:
             self._active_paths.pop(token, None)
             self._resolved_paths[token] = path
+            if token not in self._resolved_order:
+                self._resolved_order.append(token)
             self._resolved_rendered_events[token] = Event()
             self._change_event.set()
 
@@ -422,6 +425,8 @@ class ParallelTestStatusRenderer:
 
         with self._lock:
             self._resolved_paths.pop(token, None)
+            if token in self._resolved_order:
+                self._resolved_order.remove(token)
             self._resolved_rendered_events.pop(token, None)
             render_thread = self._render_thread
             self._change_event.set()
@@ -454,6 +459,7 @@ class ParallelTestStatusRenderer:
                     build_parallel_test_render_paths(
                         active_paths,
                         resolved_paths,
+                        resolved_order = tuple(self._resolved_order),
                         spinner_frame = PARALLEL_TEST_SPINNER_FRAMES[
                             spinner_frame_index % len(PARALLEL_TEST_SPINNER_FRAMES)
                         ],
@@ -491,6 +497,7 @@ class ParallelTestStatusRenderer:
 
             with self._lock:
                 self._resolved_paths.clear()
+                self._resolved_order.clear()
                 self._resolved_rendered_events.clear()
                 if current_thread() is self._render_thread:
                     self._render_thread = None
@@ -519,26 +526,53 @@ def build_parallel_test_render_paths(
     active_paths: dict[int, tuple[str, ...]],
     resolved_paths: dict[int, tuple[str, ...]],
     *,
+    resolved_order: tuple[int, ...] = (),
     spinner_frame: str = PARALLEL_TEST_SPINNER_FRAMES[0],
 ) -> list[tuple[str, ...]]:
-    """Return renderer paths in stable token order across state transitions."""
+    """Return renderer paths with settled rows kept in completion order."""
+
+    if not resolved_order:
+        render_paths: list[tuple[str, ...]] = []
+        for token in sorted(set(active_paths) | set(resolved_paths)):
+            path = resolved_paths.get(token)
+            if path is None:
+                path = active_paths.get(token)
+                if path is not None and path:
+                    last_label = path[-1]
+                    if not last_label or _is_group_label(last_label):
+                        render_paths.append(path)
+                        continue
+                    path = (
+                        *path[:-1],
+                        f"{spinner_frame} {format_test_spinner_message(last_label)}",
+                    )
+            if path is not None:
+                render_paths.append(path)
+        return render_paths
 
     render_paths: list[tuple[str, ...]] = []
-    for token in sorted(set(active_paths) | set(resolved_paths)):
+    ordered_resolved_tokens = list(resolved_order)
+
+    for token in sorted(resolved_paths):
+        if token not in resolved_order:
+            ordered_resolved_tokens.append(token)
+
+    for token in ordered_resolved_tokens:
         path = resolved_paths.get(token)
-        if path is None:
-            path = active_paths.get(token)
-            if path is not None and path:
-                last_label = path[-1]
-                if not last_label or _is_group_label(last_label):
-                    render_paths.append(path)
-                    continue
+        if path is not None:
+            render_paths.append(path)
+
+    for token in sorted(active_paths):
+        path = active_paths[token]
+        if path and path[-1]:
+            last_label = path[-1]
+            if not _is_group_label(last_label):
                 path = (
                     *path[:-1],
                     f"{spinner_frame} {format_test_spinner_message(last_label)}",
                 )
-        if path is not None:
-            render_paths.append(path)
+        render_paths.append(path)
+
     return render_paths
 
 
@@ -1400,6 +1434,8 @@ def run_test_target(
                             False,
                         ):
                             print(f"❌ Failed: {failure_name}")
+                        setattr(exc, "parallel_failure_already_reported", True)
+                        setattr(exc, "parallel_failure_display_name", failure_name)
                         raise
 
                     group_child_lines_by_name[str(target_run["name"])] = future_output_lines
