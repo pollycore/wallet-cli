@@ -1,5 +1,6 @@
 # Lessons
 
+- For `pw test` timeout failures, label them as client-side timeouts and print both the configured client timeout budget and the measured send duration; if no reply arrived, say server timing is unavailable, and keep any fixture `Wait` time separate so users do not mistake pre-send delay for the transport timeout.
 - For `pw test` parallel fixture rows, do not `pop()` the active status path before replacing it with the final `✅ Passed` or `❌ Failed` label; resolve the row first and wait for the renderer to paint that final snapshot before retiring it, or the spinner can disappear with no immediate replacement.
 - For interactive grouped `pw test` runs, treat the live parallel status tree as the success UI; once that tree has rendered the settled pass/fail hierarchy, do not also print a second final-result block underneath it, or users will see duplicated summaries such as `parallel messages` plus the same groups again.
 - For wrapped `pw test` fixture delays, start the per-fixture `Testing message...` spinner before honoring `Wait`; the pause is part of the live fixture run and should be visible in the UI instead of looking like the command stalled before progress began.

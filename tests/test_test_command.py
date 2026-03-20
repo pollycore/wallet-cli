@@ -2884,6 +2884,84 @@ def test_test_reports_dns_failures_without_http_code(
     assert f"❌ Failed: {test_path.stem}" in captured.out
 
 
+def test_test_reports_client_timeout_details_for_url_error(
+    monkeypatch, tmp_path, capsys
+):
+    """Timeout failures should say they were client-side and include timing."""
+
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Wait: 2\n"
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    def raise_timeout(**kwargs):
+        kwargs["timing"]["network_seconds"] = 100.2
+        kwargs["timing"]["client_timeout_seconds"] = 100.0
+        raise urllib.error.URLError(TimeoutError("The read operation timed out"))
+
+    monkeypatch.setattr(test_feature, "send_wallet_message", raise_timeout)
+    monkeypatch.setattr(test_feature.time, "sleep", lambda seconds: None)
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert (
+        "Client timeout after 100.0s while waiting for a response from "
+        "vault.example.com."
+    ) in captured.err
+    assert "Send elapsed: 100.2s." in captured.err
+    assert "Server timing unavailable because no response was received." in captured.err
+    assert "Fixture wait before send: 2.0s." in captured.err
+    assert f"❌ Failed: {test_path.stem}" in captured.out
+
+
+def test_test_reports_client_timeout_details_for_raw_timeout_error(
+    monkeypatch, tmp_path, capsys
+):
+    """Raw timeout exceptions from wallet transport should use the same wording."""
+
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    def raise_timeout(**kwargs):
+        kwargs["timing"]["network_seconds"] = 100.0
+        kwargs["timing"]["client_timeout_seconds"] = 100.0
+        raise TimeoutError("The read operation timed out")
+
+    monkeypatch.setattr(test_feature, "send_wallet_message", raise_timeout)
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert (
+        "Client timeout after 100.0s while waiting for a response from "
+        "vault.example.com."
+    ) in captured.err
+    assert "Send elapsed: 100.0s." in captured.err
+    assert "Fixture wait before send:" not in captured.err
+    assert "The command failed unexpectedly" not in captured.err
+    assert f"❌ Failed: {test_path.stem}" in captured.out
+
+
 def test_test_reports_raw_dns_failures_from_wallet_send(
     monkeypatch, tmp_path, capsys
 ):

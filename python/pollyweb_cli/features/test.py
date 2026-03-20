@@ -39,6 +39,7 @@ from pollyweb_cli.tools.debug import (
 )
 from pollyweb_cli.tools.transport import send_wallet_message
 from pollyweb_cli.tools.transport import rewrite_backend_validation_error
+from pollyweb_cli.tools.transport import DEFAULT_SEND_TIMEOUT_SECONDS
 
 
 def describe_http_test_error(exc: urllib.error.HTTPError) -> str:
@@ -64,6 +65,57 @@ def describe_http_test_error(exc: urllib.error.HTTPError) -> str:
             )
 
     return message
+
+
+def is_timeout_reason(
+    reason: object
+) -> bool:
+    """Return whether one transport failure reason represents a timeout."""
+
+    if isinstance(reason, TimeoutError):
+        return True
+
+    if isinstance(reason, socket.timeout):
+        return True
+
+    if isinstance(reason, str):
+        return "timed out" in reason.lower()
+
+    return "timed out" in str(reason).lower()
+
+
+def format_timeout_seconds(
+    value: float
+) -> str:
+    """Render one timeout-related duration with one decimal place."""
+
+    return f"{max(0.0, value):.1f}s"
+
+
+def describe_test_timeout_error(
+    domain: str,
+    *,
+    elapsed_seconds: float,
+    client_timeout_seconds: float,
+    wait_seconds: float
+) -> str:
+    """Build a user-facing timeout message for `pw test` transport failures."""
+
+    timeout_summary = (
+        f"Client timeout after {format_timeout_seconds(client_timeout_seconds)} "
+        f"while waiting for a response from {domain}."
+    )
+    detail_parts = [
+        f"Send elapsed: {format_timeout_seconds(elapsed_seconds)}.",
+        "Server timing unavailable because no response was received.",
+    ]
+
+    if wait_seconds > 0:
+        detail_parts.append(
+            f"Fixture wait before send: {format_timeout_seconds(wait_seconds)}."
+        )
+
+    return f"{timeout_summary} {' '.join(detail_parts)}"
 
 PLACEHOLDER_PATTERN = re.compile(r"^\{BindOf\(([^)]+)\)\}$")
 PUBLIC_KEY_PLACEHOLDER = "<PublicKey>"
@@ -1600,9 +1652,26 @@ def run_message_test_fixture(
                 parallel_status_token,
                 (*active_parallel_labels, f"❌ Failed: {fixture_name}"),
             )
-        reason = describe_message_network_error(
-            str(request["To"]),
-            exc.reason)
+        elapsed_seconds = timing.get(
+            "network_seconds",
+            max(0.0, time.perf_counter() - started_at - wait_seconds),
+        )
+        if is_timeout_reason(exc.reason):
+            reason = describe_test_timeout_error(
+                str(request["To"]),
+                elapsed_seconds = elapsed_seconds,
+                client_timeout_seconds = float(
+                    timing.get(
+                        "client_timeout_seconds",
+                        DEFAULT_SEND_TIMEOUT_SECONDS,
+                    )
+                ),
+                wait_seconds = wait_seconds,
+            )
+        else:
+            reason = describe_message_network_error(
+                str(request["To"]),
+                exc.reason)
         error = UserFacingError(reason)
         if parallel_status_token is not None:
             setattr(error, "parallel_failure_already_reported", True)
@@ -1613,9 +1682,26 @@ def run_message_test_fixture(
                 parallel_status_token,
                 (*active_parallel_labels, f"❌ Failed: {fixture_name}"),
             )
-        reason = describe_message_network_error(
-            str(request["To"]),
-            exc)
+        elapsed_seconds = timing.get(
+            "network_seconds",
+            max(0.0, time.perf_counter() - started_at - wait_seconds),
+        )
+        if is_timeout_reason(exc):
+            reason = describe_test_timeout_error(
+                str(request["To"]),
+                elapsed_seconds = elapsed_seconds,
+                client_timeout_seconds = float(
+                    timing.get(
+                        "client_timeout_seconds",
+                        DEFAULT_SEND_TIMEOUT_SECONDS,
+                    )
+                ),
+                wait_seconds = wait_seconds,
+            )
+        else:
+            reason = describe_message_network_error(
+                str(request["To"]),
+                exc)
         error = UserFacingError(reason)
         if parallel_status_token is not None:
             setattr(error, "parallel_failure_already_reported", True)

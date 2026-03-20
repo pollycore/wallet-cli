@@ -469,6 +469,9 @@ def send_wallet_message(
 
     with WALLET_SEND_LOCK:
         try:
+            if timing is not None:
+                timing["client_timeout_seconds"] = DEFAULT_SEND_TIMEOUT_SECONDS
+
             if transport_metadata is not None:
                 pollyweb_transport._HTTPS_CONNECTION_POOL.post = MethodType(
                     capture_pool_post,
@@ -507,6 +510,13 @@ def send_wallet_message(
                             build_debug_http_error_payload(error_body))
                     except Exception:
                         pass
+                raise
+            except Exception:
+                send_finished_at = time.perf_counter()
+
+                if timing is not None:
+                    timing["network_seconds"] = send_finished_at - send_started_at
+
                 raise
 
             if timing is not None:
