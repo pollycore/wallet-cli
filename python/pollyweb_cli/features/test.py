@@ -73,7 +73,7 @@ TIMESTAMP_WILDCARD = "<timestamp>"
 DEFAULT_TESTS_DIR = "pw-tests"
 PARALLEL_FIXTURE_PREFIX_PATTERN = re.compile(r"^(\d+)-")
 PARALLEL_STATUS_ROOT_LABEL = ""
-PARALLEL_TEST_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
+PARALLEL_TEST_SPINNER_FRAMES = (".", "o", "O", "o")
 ACTIVE_TEST_SPINNER_COUNT: ContextVar[int] = ContextVar(
     "active_test_spinner_count",
     default = 0,
