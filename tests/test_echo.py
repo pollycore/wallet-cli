@@ -2078,7 +2078,7 @@ def test_echo_debug_shows_in_app_summary_for_request_validation_errors(
     assert "Echo summary" in captured.out
     assert "❌ Echo request failed" in captured.out
     assert "Review the error summary above" in captured.out
-    assert "ⓘ Review the error summary above" not in captured.out
+    assert "ℹ️ Review the error summary above" not in captured.out
     assert "Traceback" not in captured.out
     assert captured.err == ""
 
