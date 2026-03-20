@@ -1506,6 +1506,54 @@ def test_test_rejects_array_items_that_miss_the_existing_template(
     assert "Expected response.Response.Domains[1].Domain to be a non-empty string" in captured.err
 
 
+def test_test_reports_missing_fixed_array_item_without_comparing_first_item(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.pollyweb.org\n"
+            "  Subject: Echo@Domain\n"
+            "Inbound:\n"
+            "  Response:\n"
+            "    Domains:\n"
+            "      - Domain: any-subscriber.pollyweb.org\n"
+            "      - Domain: any-hoster.pollyweb.org\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            json.dumps(
+                {
+                    "Response": {
+                        "Domains": [
+                            {"Domain": "any-subscriber.pollyweb.org"},
+                            {"Domain": "any-streamer.pollyweb.org"},
+                        ]
+                    }
+                }
+            ),
+            None,
+            "any-hoster.pollyweb.org",
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert (
+        "Expected item {'Domain': 'any-hoster.pollyweb.org'} "
+        "was not found in response.Response.Domains."
+    ) in captured.err
+    assert "but got 'any-subscriber.pollyweb.org'" not in captured.err
+
+
 @pytest.mark.parametrize(
     ("response_payload", "expected_message"),
     [

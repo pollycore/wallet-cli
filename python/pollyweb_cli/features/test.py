@@ -401,10 +401,32 @@ def assert_expected_subset(
                 ) from None
 
             for index, expected_item in enumerate(expected_list):
-                assert_expected_subset(
-                    actual_list[index],
-                    expected_item,
-                    f"{list_location}[{index}]")
+                try:
+                    assert_expected_subset(
+                        actual_list[index],
+                        expected_item,
+                        f"{list_location}[{index}]")
+                except UserFacingError as exc:
+                    item_found_elsewhere = False
+
+                    for candidate_item in actual_list:
+                        try:
+                            assert_expected_subset(
+                                candidate_item,
+                                expected_item,
+                                f"{list_location}[{index}]")
+                        except UserFacingError:
+                            continue
+
+                        item_found_elsewhere = True
+                        break
+
+                    if not item_found_elsewhere:
+                        raise UserFacingError(
+                            f"Expected item {expected_item!r} was not found in {list_location}."
+                        ) from None
+
+                    raise exc
             return
 
         unmatched_actual_indexes = list(range(len(actual_list)))
@@ -430,10 +452,9 @@ def assert_expected_subset(
                         f"Expected {list_location}[{expected_index}] to exist in the response."
                     ) from None
 
-                assert_expected_subset(
-                    actual_list[0],
-                    expected_item,
-                    f"{list_location}[{expected_index}]")
+                raise UserFacingError(
+                    f"Expected item {expected_item!r} was not found in {list_location}."
+                ) from None
 
             unmatched_actual_indexes.remove(matched_index)
 
