@@ -86,6 +86,35 @@ def format_test_success_message(
     )
 
 
+def get_test_fixture_display_name(
+    fixture_path: Path
+) -> str:
+    """Build the user-facing fixture name for concise test output."""
+
+    current_dir = Path.cwd()
+    tests_dir = current_dir / DEFAULT_TESTS_DIR
+
+    try:
+        relative_path = fixture_path.relative_to(tests_dir)
+    except ValueError:
+        relative_path = None
+
+    if relative_path is not None:
+        display_path = relative_path
+    else:
+        try:
+            workspace_relative_path = fixture_path.relative_to(current_dir)
+        except ValueError:
+            display_path = Path(fixture_path.stem)
+        else:
+            if len(workspace_relative_path.parts) > 1:
+                display_path = workspace_relative_path
+            else:
+                display_path = Path(fixture_path.stem)
+
+    return display_path.with_suffix("").as_posix()
+
+
 def extract_test_response_total_seconds(
     response_payload: str
 ) -> float | None:
@@ -454,9 +483,11 @@ def cmd_test(
     fixture_paths = get_test_fixture_paths(test_path)
 
     for fixture_path in fixture_paths:
+        fixture_name = get_test_fixture_display_name(fixture_path)
         try:
             run_message_test_fixture(
                 fixture_path,
+                fixture_name = fixture_name,
                 debug = debug,
                 json_output = json_output,
                 config_dir = config_dir,
@@ -466,7 +497,7 @@ def cmd_test(
                 require_configured_keys = require_configured_keys,
                 load_signing_key_pair = load_signing_key_pair)
         except Exception:
-            print(f"❌ Failed: {fixture_path.stem}")
+            print(f"❌ Failed: {fixture_name}")
             raise
 
     return 0
@@ -505,6 +536,7 @@ def get_test_fixture_paths(
 def run_message_test_fixture(
     fixture_path: Path,
     *,
+    fixture_name: str,
     debug: bool,
     json_output: bool,
     config_dir: Path,
@@ -569,7 +601,7 @@ def run_message_test_fixture(
     if isinstance(expected_inbound, dict):
         actual_response = normalize_test_response(
             response_payload,
-            fixture_path.stem)
+            fixture_name)
 
         assert_expected_subset(
             actual_response,
@@ -586,7 +618,7 @@ def run_message_test_fixture(
         network_seconds = timing.get("network_seconds", 0.0))
     print(
         format_test_success_message(
-            fixture_path.stem,
+            fixture_name,
             total_seconds = total_seconds,
             network_seconds = network_seconds)
     )

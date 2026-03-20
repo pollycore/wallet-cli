@@ -65,12 +65,12 @@ def _materialize_inbound_wildcards(
 
 def assert_passed_output(
     line: str,
-    fixture_stem: str
+    fixture_name: str
 ):
     """Assert that a `pw test` success line includes timing details."""
 
     assert re.fullmatch(
-        rf"✅ Passed: {re.escape(fixture_stem)} \(\d+ ms, \d+% latency\)",
+        rf"✅ Passed: {re.escape(fixture_name)} \(\d+ ms, \d+% latency\)",
         line,
     )
 
@@ -882,8 +882,43 @@ def test_test_without_path_runs_nested_pw_tests_yaml_files_in_sorted_order(
     lines = captured.out.splitlines()
     assert len(lines) == 3
     assert_passed_output(lines[0], "b-second")
-    assert_passed_output(lines[1], "a-first")
-    assert_passed_output(lines[2], "c-third")
+    assert_passed_output(lines[1], "nested/a-first")
+    assert_passed_output(lines[2], "nested/deeper/c-third")
+
+
+def test_get_test_fixture_display_name_includes_nested_subfolders(monkeypatch, tmp_path):
+    tests_dir = tmp_path / "pw-tests"
+    nested_path = tests_dir / "nested" / "deeper" / "fixture.yaml"
+
+    nested_path.parent.mkdir(parents = True)
+    monkeypatch.chdir(tmp_path)
+
+    assert test_feature.get_test_fixture_display_name(nested_path) == (
+        "nested/deeper/fixture"
+    )
+
+
+def test_get_test_fixture_display_name_keeps_explicit_non_nested_path_short(
+    monkeypatch, tmp_path
+):
+    fixture_path = tmp_path / "fixture.yaml"
+
+    monkeypatch.chdir(tmp_path)
+
+    assert test_feature.get_test_fixture_display_name(fixture_path) == "fixture"
+
+
+def test_get_test_fixture_display_name_includes_parent_for_explicit_subfolder_path(
+    monkeypatch, tmp_path
+):
+    fixture_path = tmp_path / "nested" / "fixture.yaml"
+
+    fixture_path.parent.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    assert test_feature.get_test_fixture_display_name(fixture_path) == (
+        "nested/fixture"
+    )
 
 
 def test_test_without_path_reports_missing_pw_tests_directory(
