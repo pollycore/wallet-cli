@@ -160,6 +160,12 @@ def test_build_parallel_test_status_message_bubbles_success_to_groups():
     )
 
 
+def test_format_test_group_success_message_uses_group_label():
+    assert test_feature.format_test_group_success_message("files 02-*") == (
+        "✅ Passed: files 02-*"
+    )
+
+
 def test_parallel_status_renderer_keeps_console_writes_off_worker_threads(
     monkeypatch
 ):
@@ -1357,7 +1363,10 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
 
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
-    assert lines == ["✅ Passed: 04-third (0 ms, 0% latency)"]
+    assert lines == [
+        "✅ Passed: files 03-*",
+        "✅ Passed: 04-third (0 ms, 0% latency)",
+    ]
     assert {
         entry
         for entry in lifecycle
@@ -1612,7 +1621,10 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
 
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
-    assert lines == ["✅ Passed: 04-gamma/c (0 ms, 0% latency)"]
+    assert lines == [
+        "✅ Passed: folders 03-*",
+        "✅ Passed: 04-gamma/c (0 ms, 0% latency)",
+    ]
     assert {
         entry
         for entry in lifecycle

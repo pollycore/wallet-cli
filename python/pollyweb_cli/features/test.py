@@ -122,6 +122,14 @@ def format_test_group_spinner_message(
     return f"Testing message group: {group_name}"
 
 
+def format_test_group_success_message(
+    group_name: str
+) -> str:
+    """Build the durable success line shown after one parallel group finishes."""
+
+    return f"✅ Passed: {group_name}"
+
+
 @dataclass
 class _ParallelStatusNode:
     """Represent one branch in the hierarchical parallel test status view."""
@@ -1097,6 +1105,13 @@ def run_test_target(
                         continue
 
                     output_lines.extend(future_output_lines)
+
+        group_success_line = format_test_group_success_message(group_label)
+        if emit_output_line is not None:
+            emit_output_line(group_success_line)
+            continue
+
+        output_lines.append(group_success_line)
 
     return output_lines
 
