@@ -127,7 +127,7 @@ def format_test_group_success_message(
 ) -> str:
     """Build the durable success line shown after one parallel group finishes."""
 
-    return f"✅ Passed: {group_name}"
+    return f"✔️ Passed: {group_name}"
 
 
 def build_test_group_success_lines(
@@ -384,7 +384,7 @@ def build_parallel_test_status_message(
     ) -> str | None:
         """Return the terminal status prefix encoded in one label."""
 
-        if label.startswith("✅ Passed:"):
+        if label.startswith("✅ Passed:") or label.startswith("✔️ Passed:"):
             return "passed"
         if label.startswith("❌ Failed:"):
             return "failed"
@@ -412,7 +412,7 @@ def build_parallel_test_status_message(
         if node.label == "Testing messages in parallel":
             if child_summaries and len(child_statuses) == len(child_summaries):
                 if all(status == "passed" for status in child_statuses):
-                    return "✅ Passed: parallel messages", "passed"
+                    return "✔️ Passed: parallel messages", "passed"
 
                 return "❌ Failed: parallel messages", "failed"
 
@@ -420,7 +420,7 @@ def build_parallel_test_status_message(
 
         if child_summaries and len(child_statuses) == len(child_summaries):
             if all(status == "passed" for status in child_statuses):
-                return f"✅ Passed: {node.label}", "passed"
+                return f"✔️ Passed: {node.label}", "passed"
 
             return f"❌ Failed: {node.label}", "failed"
 
@@ -1259,7 +1259,10 @@ def run_test_target(
                     group_child_lines_by_name[str(target_run["name"])] = future_output_lines
 
             # Compute summary while the spinner scope is still active so we
-            # can resolve the spinner and print before it clears the line.
+            # can resolve the spinner before it exits.  Resolving here ensures
+            # the spinner's final frame already shows "✔️ Passed: <group>"
+            # instead of the neutral label, so there is no visual flicker from
+            # neutral → blank → passed when the transient live display clears.
             group_child_lines: list[str] = []
             for target_run in target_group:
                 group_child_lines.extend(
@@ -1285,22 +1288,13 @@ def run_test_target(
                 ),
             )
 
-            # For top-level non-nested groups, print the summary while the
-            # spinner is still active.  Rich's transient live display clears
-            # only the spinner line on exit; text printed via DEBUG_CONSOLE
-            # is permanently interleaved above the spinner's live region and
-            # stays on screen after the spinner clears, so the "Passed" line
-            # replaces the spinner atomically with no visible gap.
-            if not active_parallel_labels and emit_output_line is not None:
-                for output_line in group_summary_lines:
-                    DEBUG_CONSOLE.print(output_line)
-
         if emit_output_line is not None:
             if active_parallel_labels:
                 output_lines.extend(group_summary_lines)
                 continue
 
-            # Non-nested: already printed above while the spinner was active.
+            for output_line in group_summary_lines:
+                emit_output_line(output_line)
             continue
 
         output_lines.extend(group_summary_lines)

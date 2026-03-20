@@ -151,7 +151,7 @@ def test_build_parallel_test_status_message_bubbles_success_to_groups():
     )
 
     assert message == (
-        "✅ Passed: files 02-*\n"
+        "✔️ Passed: files 02-*\n"
         "✅ Passed: 2-PublicKeyA (435 ms, 99% latency)\n"
         "✅ Passed: 2-PublicKeyB (930 ms, 53% latency)"
     )
@@ -159,7 +159,7 @@ def test_build_parallel_test_status_message_bubbles_success_to_groups():
 
 def test_format_test_group_success_message_uses_group_label():
     assert test_feature.format_test_group_success_message("files 02-*") == (
-        "✅ Passed: files 02-*"
+        "✔️ Passed: files 02-*"
     )
 
 
@@ -171,7 +171,7 @@ def test_build_test_group_success_lines_keeps_child_results_visible():
             "✅ Passed: 2-PublicKeyB (930 ms, 53% latency)",
         ],
     ) == [
-        "✅ Passed: files 02-*",
+        "✔️ Passed: files 02-*",
         "  ✅ Passed: 2-PublicKeyA (435 ms, 99% latency)",
         "  ✅ Passed: 2-PublicKeyB (930 ms, 53% latency)",
     ]
@@ -1375,7 +1375,7 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
     assert lines == [
-        "✅ Passed: files 03-*",
+        "✔️ Passed: files 03-*",
         "  ✅ Passed: 03-first (0 ms, 0% latency)",
         "  ✅ Passed: 03-second (0 ms, 0% latency)",
         "✅ Passed: 04-third (0 ms, 0% latency)",
@@ -1673,7 +1673,7 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
     assert lines == [
-        "✅ Passed: folders 03-*",
+        "✔️ Passed: folders 03-*",
         "  ✅ Passed: 03-alpha/child/a (0 ms, 0% latency)",
         "  ✅ Passed: 03-beta/b (0 ms, 0% latency)",
         "✅ Passed: 04-gamma/c (0 ms, 0% latency)",
@@ -1813,7 +1813,7 @@ def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_
 
             status_messages.append(message)
             if (
-                "✅ Passed: files 01-alpha/10-*" in message
+                "✔️ Passed: files 01-alpha/10-*" in message
                 and "files 01-beta/10-*" in message
             ):
                 nested_group_rendered.set()
@@ -1831,7 +1831,7 @@ def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_
     assert parallel_ready.wait(timeout = 1)
     assert nested_group_rendered.wait(timeout = 1)
     assert any(
-        "✅ Passed: files 01-alpha/10-*" in message
+        "✔️ Passed: files 01-alpha/10-*" in message
         and "  ✅ Passed: 01-alpha/10-fast-a" in message
         and "  ✅ Passed: 01-alpha/10-fast-b" in message
         for message in status_messages
