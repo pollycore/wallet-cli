@@ -304,7 +304,7 @@ def test_preflight_shows_transient_upgrade_status_and_final_notice(monkeypatch, 
     assert recorded["stdout"] is cli.subprocess.DEVNULL
     assert recorded["stderr"] is cli.subprocess.DEVNULL
     assert captured.err.replace("\x1b[2K", "").strip() == (
-        "ℹ️ Upgraded from v0.1.61 to v0.1.62"
+        "ⓘ Upgraded from v0.1.61 to v0.1.62"
     )
 
 def test_install_upgrade_retries_once_before_failing(monkeypatch):

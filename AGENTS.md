@@ -80,7 +80,7 @@
 - For local development in this repo, prefer the editable-install `pw-dev` entry point instead of `pw`; `pw-dev` is the intentional shortcut for running checkout code without the published-runtime upgrade preflight.
 - From the repo root, keep a checked-in `./pw-dev` launcher available so local development does not depend on remembering the venv entry-point path.
 - When the installed `pw` runtime is at fault, patch and publish `/Users/jorgemf/Git/wallet-cli`; `/Users/jorgemf/Git/pollyweb-pypi` is the library package repo, not the CLI source tree.
-- Automatic self-upgrades should suppress pip's normal install output, show a transient spinner line reading `Upgrading from v<old> to v<new>`, and then leave the concise notice `ℹ️ Upgraded from v<old> to v<new>`.
+- Automatic self-upgrades should suppress pip's normal install output, show a transient spinner line reading `Upgrading from v<old> to v<new>`, and then leave the concise notice `ⓘ Upgraded from v<old> to v<new>`.
 - Automatic self-upgrades should retry a failed pip install once before surfacing a notice, and when the CLI is not running inside a virtualenv, fall back to `python -m pip install --user ...` to avoid common permission failures.
 - In this repo, run tests through the project virtualenv such as `./.venv-tests/bin/python -m pytest`; the plain `pytest` on some machines resolves to a different interpreter and can hide or invent dependency failures.
 - The current tested PollyWeb floor in this repo is `pollyweb>=1.0.78`; when a newer published `pollyweb` release is required and the suite passes on it, bump the dependency floor immediately instead of relying on a locally upgraded environment.
