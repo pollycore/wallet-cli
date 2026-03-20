@@ -171,10 +171,17 @@ class ParallelTestStatusRenderer:
     ) -> int:
         """Register one active hierarchical path and refresh the status."""
 
+        previous_render_thread: Thread | None = None
+
         with self._lock:
+            if not self._active_paths and not self._resolved_paths:
+                previous_render_thread = self._render_thread
             token = next(self._token_counter)
             self._active_paths[token] = path
-            if self._render_thread is None or not self._render_thread.is_alive():
+            if (
+                self._render_thread is None
+                or not self._render_thread.is_alive()
+            ):
                 self._render_started_event.clear()
                 self._render_thread = Thread(
                     target = self._run_render_loop,
@@ -183,6 +190,25 @@ class ParallelTestStatusRenderer:
                 )
                 self._render_thread.start()
             self._change_event.set()
+
+        if (
+            previous_render_thread is not None
+            and previous_render_thread.is_alive()
+            and previous_render_thread is not current_thread()
+        ):
+            previous_render_thread.join(timeout = 1)
+
+            with self._lock:
+                if self._render_thread is previous_render_thread:
+                    self._render_started_event.clear()
+                    self._render_thread = Thread(
+                        target = self._run_render_loop,
+                        name = "pw-test-status",
+                        daemon = True,
+                    )
+                    self._render_thread.start()
+                    self._change_event.set()
+
         self._render_started_event.wait(timeout = 0.2)
         return token
 
@@ -193,14 +219,25 @@ class ParallelTestStatusRenderer:
         """Remove one active hierarchical path and refresh the status."""
 
         render_thread: Thread | None = None
+        rendered_event: Event | None = None
 
         with self._lock:
             self._active_paths.pop(token, None)
-            self._resolved_rendered_events.pop(token, None)
+            rendered_event = self._resolved_rendered_events.get(token)
             if token not in self._resolved_paths:
                 self._change_event.set()
-            if not self._active_paths:
+            elif not self._active_paths:
                 render_thread = self._render_thread
+
+        if rendered_event is not None:
+            rendered_event.wait(timeout = 1)
+
+        with self._lock:
+            self._resolved_paths.pop(token, None)
+            self._resolved_rendered_events.pop(token, None)
+            if not self._active_paths and not self._resolved_paths:
+                render_thread = self._render_thread
+            self._change_event.set()
 
         if (
             render_thread is not None
@@ -208,6 +245,10 @@ class ParallelTestStatusRenderer:
             and render_thread is not current_thread()
         ):
             render_thread.join(timeout = 1)
+
+            with self._lock:
+                if render_thread is self._render_thread and not render_thread.is_alive():
+                    self._render_thread = None
 
     def resolve(
         self,
@@ -281,7 +322,6 @@ class ParallelTestStatusRenderer:
                             rendered_event = self._resolved_rendered_events.get(token)
                             if rendered_event is not None:
                                 rendered_event.set()
-                            self._resolved_paths.pop(token, None)
 
                 self._change_event.wait(timeout = 0.05)
                 self._change_event.clear()
@@ -300,6 +340,13 @@ class ParallelTestStatusRenderer:
 PARALLEL_TEST_STATUS_RENDERER = ParallelTestStatusRenderer()
 
 
+def reset_parallel_test_status_renderer() -> None:
+    """Start one fresh shared renderer for each top-level `pw test` command."""
+
+    global PARALLEL_TEST_STATUS_RENDERER
+    PARALLEL_TEST_STATUS_RENDERER = ParallelTestStatusRenderer()
+
+
 def build_parallel_test_status_message(
     active_paths: list[tuple[str, ...]]
 ) -> str:
@@ -308,12 +355,29 @@ def build_parallel_test_status_message(
     root = _ParallelStatusNode(label = "Testing messages in parallel")
 
     for path in active_paths:
-        current = root
-        for label in path:
-            current = current.children.setdefault(
-                label,
-                _ParallelStatusNode(label = label),
+        node_stack: list[_ParallelStatusNode] = [root]
+        last_unindented_depth = 0
+
+        for raw_label in path:
+            stripped_label = raw_label.lstrip(" ")
+            indent_width = len(raw_label) - len(stripped_label)
+            indent_levels = indent_width // 2
+
+            if indent_levels > 0:
+                depth = last_unindented_depth + indent_levels
+            else:
+                depth = len(node_stack)
+                last_unindented_depth = depth
+
+            while len(node_stack) > depth:
+                node_stack.pop()
+
+            parent = node_stack[-1]
+            current = parent.children.setdefault(
+                stripped_label,
+                _ParallelStatusNode(label = stripped_label),
             )
+            node_stack.append(current)
 
     def node_status(
         label: str
@@ -1034,6 +1098,10 @@ def cmd_test(
 ) -> int:
     """Send one or more wrapped test fixtures and verify expected responses."""
 
+    # Reset the shared parallel renderer per command so each `pw test` run
+    # owns a fresh status thread and current console monkeypatches/TTY state.
+    reset_parallel_test_status_renderer()
+
     test_target_path = resolve_test_target_path(test_path)
 
     run_test_target(
@@ -1140,6 +1208,8 @@ def run_test_target(
                 *group_labels
             )
 
+        group_summary_lines: list[str] = []
+
         with parallel_group_scope as group_status_token:
             with ThreadPoolExecutor(max_workers = len(target_group)) as executor:
                 future_results: dict[Future[list[str]], dict[str, Path | str]] = {
@@ -1165,14 +1235,13 @@ def run_test_target(
                     try:
                         future_output_lines = future.result()
                     except Exception as exc:
-                        if active_parallel_labels:
-                            PARALLEL_TEST_STATUS_RENDERER.resolve(
-                                group_status_token,
-                                (
-                                    *active_parallel_labels,
-                                    f"❌ Failed: {group_label}",
-                                ),
-                            )
+                        PARALLEL_TEST_STATUS_RENDERER.resolve(
+                            group_status_token,
+                            (
+                                *active_parallel_labels,
+                                f"❌ Failed: {group_label}",
+                            ),
+                        )
 
                         failure_name = getattr(
                             exc,
@@ -1189,21 +1258,24 @@ def run_test_target(
 
                     group_child_lines_by_name[str(target_run["name"])] = future_output_lines
 
-        group_child_lines: list[str] = []
-        for target_run in target_group:
-            group_child_lines.extend(
-                group_child_lines_by_name.get(
-                    str(target_run["name"]),
-                    [],
+            # Compute summary while the spinner scope is still active so we
+            # can resolve the spinner and print before it clears the line.
+            group_child_lines: list[str] = []
+            for target_run in target_group:
+                group_child_lines.extend(
+                    group_child_lines_by_name.get(
+                        str(target_run["name"]),
+                        [],
+                    )
                 )
+
+            group_summary_lines = build_test_group_success_lines(
+                group_label,
+                group_child_lines,
             )
 
-        group_summary_lines = build_test_group_success_lines(
-            group_label,
-            group_child_lines,
-        )
-
-        if active_parallel_labels:
+            # Always resolve so the spinner's final frame shows the result
+            # for both nested and top-level groups.
             PARALLEL_TEST_STATUS_RENDERER.resolve(
                 group_status_token,
                 (
@@ -1213,13 +1285,22 @@ def run_test_target(
                 ),
             )
 
+            # For top-level non-nested groups, print the summary while the
+            # spinner is still active.  Rich's transient live display clears
+            # only the spinner line on exit; text printed via DEBUG_CONSOLE
+            # is permanently interleaved above the spinner's live region and
+            # stays on screen after the spinner clears, so the "Passed" line
+            # replaces the spinner atomically with no visible gap.
+            if not active_parallel_labels and emit_output_line is not None:
+                for output_line in group_summary_lines:
+                    DEBUG_CONSOLE.print(output_line)
+
         if emit_output_line is not None:
             if active_parallel_labels:
                 output_lines.extend(group_summary_lines)
                 continue
 
-            for output_line in group_summary_lines:
-                emit_output_line(output_line)
+            # Non-nested: already printed above while the spinner was active.
             continue
 
         output_lines.extend(group_summary_lines)
