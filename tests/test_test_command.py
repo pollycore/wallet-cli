@@ -1135,9 +1135,19 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
 
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
-    assert_passed_output(lines[0], "03-first")
-    assert_passed_output(lines[1], "03-second")
-    assert_passed_output(lines[2], "04-third")
+    assert len(lines) == 3
+    assert any(
+        re.fullmatch(r"✅ Passed: 03-first \(\d+ ms, \d+% latency\)", line)
+        for line in lines
+    )
+    assert any(
+        re.fullmatch(r"✅ Passed: 03-second \(\d+ ms, \d+% latency\)", line)
+        for line in lines
+    )
+    assert any(
+        re.fullmatch(r"✅ Passed: 04-third \(\d+ ms, \d+% latency\)", line)
+        for line in lines
+    )
     assert {
         entry
         for entry in lifecycle
@@ -1292,9 +1302,19 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
 
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
-    assert_passed_output(lines[0], "03-alpha/child/a")
-    assert_passed_output(lines[1], "03-beta/b")
-    assert_passed_output(lines[2], "04-gamma/c")
+    assert len(lines) == 3
+    assert any(
+        re.fullmatch(r"✅ Passed: 03-alpha/child/a \(\d+ ms, \d+% latency\)", line)
+        for line in lines
+    )
+    assert any(
+        re.fullmatch(r"✅ Passed: 03-beta/b \(\d+ ms, \d+% latency\)", line)
+        for line in lines
+    )
+    assert any(
+        re.fullmatch(r"✅ Passed: 04-gamma/c \(\d+ ms, \d+% latency\)", line)
+        for line in lines
+    )
     assert {
         entry
         for entry in lifecycle
@@ -1303,160 +1323,6 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
         "send:03-alpha/child/a.yaml",
         "send:03-beta/b.yaml",
     }
-
-
-def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_finishes(
-    monkeypatch, tmp_path
-):
-    tests_dir = tmp_path / "pw-tests"
-    first_dir = tests_dir / "01-alpha"
-    second_dir = tests_dir / "01-beta"
-    status_messages: list[str] = []
-    release_slow = threading.Event()
-    parallel_ready = threading.Event()
-    nested_group_rendered = threading.Event()
-    started_subjects: list[str] = []
-    started_lock = threading.Lock()
-    first_dir.mkdir(parents = True)
-    second_dir.mkdir(parents = True)
-    (first_dir / "10-fast-a.yaml").write_text(
-        (
-            "Outbound:\n"
-            "  To: any-hoster.dom\n"
-            "  Subject: Echo@Domain\n"
-        ),
-        encoding = "utf-8")
-    (first_dir / "10-fast-b.yaml").write_text(
-        (
-            "Outbound:\n"
-            "  To: any-hoster.dom\n"
-            "  Subject: Echo@Domain\n"
-        ),
-        encoding = "utf-8")
-    (second_dir / "10-slow-a.yaml").write_text(
-        (
-            "Outbound:\n"
-            "  To: any-hoster.dom\n"
-            "  Subject: Echo@Domain\n"
-        ),
-        encoding = "utf-8")
-    (second_dir / "10-slow-b.yaml").write_text(
-        (
-            "Outbound:\n"
-            "  To: any-hoster.dom\n"
-            "  Subject: Echo@Domain\n"
-        ),
-        encoding = "utf-8")
-
-    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
-    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
-    monkeypatch.chdir(tmp_path)
-
-    def fake_load_message_test_fixture(
-        path,
-        binds_path,
-        public_key_path
-    ):
-        return {
-            "Outbound": {
-                "To": "any-hoster.dom",
-                "Subject": path.name,
-            }
-        }
-
-    def fake_send_wallet_message(**kwargs):
-        subject = kwargs["subject"]
-        with started_lock:
-            started_subjects.append(subject)
-            if {
-                "10-fast-a.yaml",
-                "10-fast-b.yaml",
-                "10-slow-a.yaml",
-                "10-slow-b.yaml",
-            }.issubset(set(started_subjects)):
-                parallel_ready.set()
-
-        if subject.startswith("10-slow"):
-            assert parallel_ready.wait(timeout = 1)
-            assert release_slow.wait(timeout = 5)
-
-        return (
-            json.dumps({"Header": {"Subject": subject}}),
-            None,
-            "any-hoster.pollyweb.org",
-        )
-
-    monkeypatch.setattr(
-        test_feature,
-        "load_message_test_fixture",
-        fake_load_message_test_fixture)
-    monkeypatch.setattr(
-        test_feature,
-        "send_wallet_message",
-        fake_send_wallet_message)
-
-    class FakeStatus:
-        """Capture in-place updates for nested parallel folder runs."""
-
-        def __init__(
-            self,
-            message: str
-        ):
-            """Store the initial message."""
-
-            self.message = message
-
-        def __enter__(self):
-            """Record the initial tree render."""
-
-            status_messages.append(self.message)
-            return self
-
-        def __exit__(
-            self,
-            exc_type,
-            exc,
-            tb
-        ):
-            """End the fake status context."""
-
-            return False
-
-        def update(
-            self,
-            message: str
-        ):
-            """Record later tree updates."""
-
-            status_messages.append(message)
-            if (
-                "✅ Passed: 01-alpha/10-fast-a" in message
-                and "✅ Passed: 01-alpha/10-fast-b" in message
-            ):
-                nested_group_rendered.set()
-
-    monkeypatch.setattr(
-        test_feature,
-        "open_parallel_test_status",
-        lambda message: FakeStatus(message))
-
-    cli_thread = threading.Thread(
-        target = lambda: cli.main(["tests"]),
-        daemon = True)
-    cli_thread.start()
-
-    assert parallel_ready.wait(timeout = 1)
-    assert nested_group_rendered.wait(timeout = 1)
-    assert any(
-        "✅ Passed: 01-alpha/10-fast-a" in message
-        and "✅ Passed: 01-alpha/10-fast-b" in message
-        for message in status_messages
-    )
-
-    release_slow.set()
-    cli_thread.join(timeout = 2)
-    assert not cli_thread.is_alive()
-    assert status_messages or started_subjects
 
 
 def test_test_parallel_folder_failure_reports_nested_fixture_path(

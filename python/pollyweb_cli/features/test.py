@@ -141,12 +141,9 @@ def build_test_group_success_lines(
     group_name: str,
     child_lines: list[str]
 ) -> list[str]:
-    """Build the durable multiline summary shown after one parallel group finishes."""
+    """Build the durable summary shown after one parallel group finishes."""
 
-    return [
-        format_test_group_success_message(group_name),
-        *[f"  {line}" for line in child_lines],
-    ]
+    return list(child_lines)
 
 
 def build_parallel_group_resolution_path(
@@ -441,10 +438,20 @@ def build_parallel_test_render_paths(
     return render_paths
 
 
+def _is_group_label(label: str) -> bool:
+    """Return whether one status label refers to a group rather than a fixture."""
+
+    return (
+        label.startswith("files ")
+        or label.startswith("folders ")
+        or label.startswith("✔️ Passed:")
+    )
+
+
 def build_parallel_test_status_message(
     active_paths: list[tuple[str, ...]]
 ) -> str:
-    """Render the hierarchical status text for active parallel test work."""
+    """Render the flat status text for active parallel test work."""
 
     root = _ParallelStatusNode(label = "Testing messages in parallel")
 
@@ -473,76 +480,19 @@ def build_parallel_test_status_message(
             )
             node_stack.append(current)
 
-    def node_status(
-        label: str
-    ) -> str | None:
-        """Return the terminal status prefix encoded in one label."""
-
-        if label.startswith("✅ Passed:") or label.startswith("✔️ Passed:"):
-            return "passed"
-        if label.startswith("❌ Failed:"):
-            return "failed"
-        return None
-
-    def summarize_node(
-        node: _ParallelStatusNode
-    ) -> tuple[str, str | None]:
-        """Return the rendered label and aggregate terminal status."""
-
-        child_summaries = [
-            summarize_node(child)
-            for child in node.children.values()
-        ]
-        child_statuses = [
-            status
-            for _, status in child_summaries
-            if status is not None
-        ]
-
-        own_status = node_status(node.label)
-        if own_status is not None:
-            return node.label, own_status
-
-        if child_summaries and len(child_statuses) == len(child_summaries):
-            if all(status == "passed" for status in child_statuses):
-                return f"✔️ Passed: {node.label}", "passed"
-
-            return f"❌ Failed: {node.label}", "failed"
-
-        return node.label, None
-
-    display_root = root
-    display_depth = 0
-
-    if len(root.children) == 1:
-        display_root = next(iter(root.children.values()))
-        display_depth = 0
-
     lines: list[str] = []
-
-    if display_root is not root:
-        root_label, _ = summarize_node(display_root)
-        lines.append(root_label)
 
     def append_children(
         node: _ParallelStatusNode,
-        *,
-        depth: int
     ) -> None:
-        """Append one node subtree with indentation."""
+        """Append all non-group labels from one node subtree."""
 
         for child in node.children.values():
-            child_label, _ = summarize_node(child)
-            lines.append(f"{'  ' * depth}{child_label}")
-            append_children(
-                child,
-                depth = depth + 1,
-            )
+            if not _is_group_label(child.label):
+                lines.append(child.label)
+            append_children(child)
 
-    append_children(
-        display_root,
-        depth = display_depth,
-    )
+    append_children(root)
     return "\n".join(lines)
 
 
@@ -1285,20 +1235,10 @@ def run_test_target(
             )
             continue
 
-        group_label = get_parallel_test_spinner_group_name(target_group)
-        group_labels = (*active_parallel_labels, group_label)
         group_child_lines_by_name: dict[str, list[str]] = {}
-        parallel_group_scope = test_parallel_status(
-            *group_labels
-        )
-        if active_parallel_labels:
-            parallel_group_scope = test_parallel_status_scope(
-                *group_labels
-            )
-
         group_summary_lines: list[str] = []
 
-        with parallel_group_scope as group_status_token:
+        with nullcontext():
             with ThreadPoolExecutor(max_workers = len(target_group)) as executor:
                 future_results: dict[Future[list[str]], dict[str, Path | str]] = {
                     executor.submit(
@@ -1313,7 +1253,7 @@ def run_test_target(
                         require_configured_keys = require_configured_keys,
                         load_signing_key_pair = load_signing_key_pair,
                         emit_output_line = emit_output_line,
-                        active_parallel_labels = group_labels,
+                        active_parallel_labels = active_parallel_labels,
                     ): target_run
                     for target_run in target_group
                 }
@@ -1323,14 +1263,6 @@ def run_test_target(
                     try:
                         future_output_lines = future.result()
                     except Exception as exc:
-                        PARALLEL_TEST_STATUS_RENDERER.resolve(
-                            group_status_token,
-                            (
-                                *active_parallel_labels,
-                                f"❌ Failed: {group_label}",
-                            ),
-                        )
-
                         failure_name = getattr(
                             exc,
                             "parallel_failure_display_name",
@@ -1346,11 +1278,6 @@ def run_test_target(
 
                     group_child_lines_by_name[str(target_run["name"])] = future_output_lines
 
-            # Compute summary while the spinner scope is still active so we
-            # can resolve the spinner before it exits.  Resolving here ensures
-            # the spinner's final frame already shows "✔️ Passed: <group>"
-            # instead of the neutral label, so there is no visual flicker from
-            # neutral → blank → passed when the transient live display clears.
             group_child_lines: list[str] = []
             for target_run in target_group:
                 group_child_lines.extend(
@@ -1361,18 +1288,8 @@ def run_test_target(
                 )
 
             group_summary_lines = build_test_group_success_lines(
-                group_label,
+                "",
                 group_child_lines,
-            )
-
-            # Always resolve so the spinner's final frame shows the result
-            # for both nested and top-level groups.
-            PARALLEL_TEST_STATUS_RENDERER.resolve(
-                group_status_token,
-                build_parallel_group_resolution_path(
-                    active_parallel_labels,
-                    group_summary_lines,
-                ),
             )
 
         if emit_output_line is not None:
