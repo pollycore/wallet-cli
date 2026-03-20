@@ -103,6 +103,14 @@ def format_test_spinner_message(
     return f"Testing message: {fixture_name}"
 
 
+def format_test_group_spinner_message(
+    group_name: str
+) -> str:
+    """Build the shared spinner label for one parallel test group."""
+
+    return f"Testing message group: {group_name}"
+
+
 def get_test_fixture_display_name(
     fixture_path: Path
 ) -> str:
@@ -758,29 +766,33 @@ def run_test_target(
             )
             continue
 
-        with ThreadPoolExecutor(max_workers = len(target_group)) as executor:
-            future_results = [
-                (
-                    target_run,
-                    executor.submit(
-                        run_message_test_fixture_subprocess,
-                        target_run["path"],
-                        target_name = target_run["name"],
-                        debug = debug,
-                        json_output = json_output,
-                        unsigned = unsigned,
-                        anonymous = anonymous,
-                    ),
-                )
-                for target_run in target_group
-            ]
+        with DEBUG_CONSOLE.status(
+            format_test_group_spinner_message(
+                get_parallel_test_group_name(target_group))
+        ):
+            with ThreadPoolExecutor(max_workers = len(target_group)) as executor:
+                future_results = [
+                    (
+                        target_run,
+                        executor.submit(
+                            run_message_test_fixture_subprocess,
+                            target_run["path"],
+                            target_name = target_run["name"],
+                            debug = debug,
+                            json_output = json_output,
+                            unsigned = unsigned,
+                            anonymous = anonymous,
+                        ),
+                    )
+                    for target_run in target_group
+                ]
 
-            for target_run, future in future_results:
-                try:
-                    output_lines.extend(future.result())
-                except Exception:
-                    print(f"❌ Failed: {target_run['name']}")
-                    raise
+                for target_run, future in future_results:
+                    try:
+                        output_lines.extend(future.result())
+                    except Exception:
+                        print(f"❌ Failed: {target_run['name']}")
+                        raise
 
     return output_lines
 
@@ -977,6 +989,24 @@ def group_parallel_test_targets(
         grouped_runs.append(current_group)
 
     return grouped_runs
+
+
+def get_parallel_test_group_name(
+    target_group: list[dict[str, Path | str]]
+) -> str:
+    """Return the shared user-facing label for one parallel target group."""
+
+    first_target_name = str(target_group[0]["name"])
+    first_target_path = Path(first_target_name)
+    match = PARALLEL_FIXTURE_PREFIX_PATTERN.match(first_target_path.name)
+    if match is None:
+        return first_target_name
+
+    grouped_name = Path(f"{match.group(1)}-*")
+    if len(first_target_path.parts) > 1:
+        grouped_name = Path(*first_target_path.parts[:-1]) / grouped_name
+
+    return grouped_name.as_posix()
 
 
 def get_test_fixture_paths(

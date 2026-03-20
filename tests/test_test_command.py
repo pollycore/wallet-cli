@@ -97,6 +97,18 @@ def assert_spinner_output(
 
     assert lifecycle == expected_lifecycle
 
+
+def assert_group_spinner_output(
+    lifecycle: list[str],
+    group_name: str,
+    send_labels: list[str]
+):
+    """Assert that one parallel group uses a single shared spinner label."""
+
+    spinner_message = test_feature.format_test_group_spinner_message(group_name)
+    expected_lifecycle = [f"enter:{spinner_message}", *send_labels, f"exit:{spinner_message}"]
+    assert lifecycle[:len(expected_lifecycle)] == expected_lifecycle
+
 def test_test_loads_wrapped_fixture_and_verifies_inbound(
     monkeypatch, tmp_path, capsys
 ):
@@ -990,6 +1002,7 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
     third_path = tests_dir / "04-third.yaml"
     started_subjects: list[str] = []
     completed_subjects: list[str] = []
+    lifecycle: list[str] = []
     release_group = threading.Event()
     parallel_ready = threading.Event()
     started_lock = threading.Lock()
@@ -1007,6 +1020,39 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
     monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
     monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
     monkeypatch.chdir(tmp_path)
+
+    class FakeStatus:
+        """Capture the shared spinner lifecycle for one parallel batch."""
+
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the spinner message for assertions."""
+
+            self.message = message
+
+        def __enter__(self):
+            """Record the start of the group spinner."""
+
+            lifecycle.append(f"enter:{self.message}")
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """Record the end of the group spinner."""
+
+            lifecycle.append(f"exit:{self.message}")
+            return False
+
+    monkeypatch.setattr(
+        test_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message))
 
     def fake_load_message_test_fixture(
         path,
@@ -1032,6 +1078,7 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
         subject = fixture_path.name
         with started_lock:
             started_subjects.append(subject)
+            lifecycle.append(f"send:{subject}")
             if {
                 "03-first.yaml",
                 "03-second.yaml",
@@ -1100,6 +1147,10 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
     assert_passed_output(lines[0], "03-first")
     assert_passed_output(lines[1], "03-second")
     assert_passed_output(lines[2], "04-third")
+    assert_group_spinner_output(
+        lifecycle,
+        "03-*",
+        ["send:03-first.yaml", "send:03-second.yaml"])
 
 
 def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
@@ -1111,6 +1162,7 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
     third_dir = tests_dir / "04-gamma"
     started_targets: list[str] = []
     completed_targets: list[str] = []
+    lifecycle: list[str] = []
     release_group = threading.Event()
     parallel_ready = threading.Event()
     started_lock = threading.Lock()
@@ -1144,6 +1196,39 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
     monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
     monkeypatch.chdir(tmp_path)
 
+    class FakeStatus:
+        """Capture the shared spinner lifecycle for one directory batch."""
+
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the spinner message for assertions."""
+
+            self.message = message
+
+        def __enter__(self):
+            """Record the start of the group spinner."""
+
+            lifecycle.append(f"enter:{self.message}")
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """Record the end of the group spinner."""
+
+            lifecycle.append(f"exit:{self.message}")
+            return False
+
+    monkeypatch.setattr(
+        test_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message))
+
     def fake_run_message_test_fixture_subprocess(
         fixture_path,
         *,
@@ -1156,6 +1241,7 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
         subject = fixture_path.name
         with started_lock:
             started_targets.append(subject)
+            lifecycle.append(f"send:{subject}")
             if {"03-alpha", "03-beta"}.issubset(set(started_targets)):
                 parallel_ready.set()
 
@@ -1227,6 +1313,10 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
     assert_passed_output(lines[0], "03-alpha/done")
     assert_passed_output(lines[1], "03-beta/done")
     assert_passed_output(lines[2], "04-gamma/c")
+    assert_group_spinner_output(
+        lifecycle,
+        "03-*",
+        ["send:03-alpha", "send:03-beta"])
 
 
 def test_test_debug_keeps_same_folder_numeric_prefix_group_sequential(
