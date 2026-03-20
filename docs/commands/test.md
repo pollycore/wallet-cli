@@ -33,6 +33,8 @@ Use `--anonymous` to ignore any stored bind and force `From: Anonymous`. Use `--
 
 This makes wrapped fixtures useful for end-to-end checks where you want one file to describe both the request and the expected response.
 
+If the target PollyWeb inbox host has no DNS entry, `pw test` reports that directly as `No DNS entry found for domain <domain>.` and includes an MXToolbox A-record lookup link for `pw.<domain>` so you can confirm the missing record outside the CLI.
+
 On success, `pw test` prints one short line per passing fixture in the form `✅ Passed: <filename-without-extension> (<total-ms> ms, <latency>% latency)`. The default `pw-tests` directory sweep uses the same format, so each passing fixture shows its short file name plus timing without printing the received message. When the synchronous response is wrapped and includes `Response.Meta.TotalMs`, `pw test` uses that server-reported total as a timing hint for the displayed total duration and latency share.
 
 Use `--json` to keep `pw test` compatible with the shared wallet send flags and to switch `--debug` payload rendering from the default YAML-style output to raw JSON. On an interactive terminal, those JSON payloads keep the same raw structure but add JSON syntax colors; redirected or scripted output stays plain compact JSON. Successful runs still stay concise and print only the one-line `✅ Passed: ...` status with timing.

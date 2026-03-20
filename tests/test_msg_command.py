@@ -620,7 +620,8 @@ def test_msg_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
 
     assert exit_code == 1
     captured = capsys.readouterr()
+    assert "No DNS entry found for domain any-domain.pollyweb.org." in captured.err
     assert (
-        "Could not resolve PollyWeb inbox host pw.any-domain.pollyweb.org"
-        in captured.err
-    )
+        "https://mxtoolbox.com/SuperTool.aspx?action="
+        "a%3Apw.any-domain.pollyweb.org&run=toolpage"
+    ) in captured.err

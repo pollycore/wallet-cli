@@ -1695,5 +1695,44 @@ def test_test_reports_dns_failures_without_http_code(
 
     assert exit_code == 1
     captured = capsys.readouterr()
-    assert "Could not resolve PollyWeb inbox host pw.vault.example.com" in captured.err
+    assert "No DNS entry found for domain vault.example.com." in captured.err
+    assert (
+        "https://mxtoolbox.com/SuperTool.aspx?action="
+        "a%3Apw.vault.example.com&run=toolpage"
+    ) in captured.err
+    assert f"❌ Failed: {test_path.stem}" in captured.out
+
+
+def test_test_reports_raw_dns_failures_from_wallet_send(
+    monkeypatch, tmp_path, capsys
+):
+    """Keep leaked resolver failures on the same user-facing path."""
+
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    def raise_dns_error(**kwargs):
+        raise socket.gaierror(8, "Name or service not known")
+
+    monkeypatch.setattr(test_feature, "send_wallet_message", raise_dns_error)
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "No DNS entry found for domain vault.example.com." in captured.err
+    assert (
+        "https://mxtoolbox.com/SuperTool.aspx?action="
+        "a%3Apw.vault.example.com&run=toolpage"
+    ) in captured.err
+    assert "The command failed unexpectedly" not in captured.err
     assert f"❌ Failed: {test_path.stem}" in captured.out

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import runpy
 import socket
+from urllib.parse import quote
 import urllib.error
 
 from pollyweb import normalize_domain_name
@@ -217,8 +218,17 @@ def describe_message_network_error(
 ) -> str:
     """Convert a transport failure into a human-readable message."""
 
+    normalized_domain = normalize_domain_name(domain)
+
     if isinstance(reason, socket.gaierror):
-        return f"Could not resolve PollyWeb inbox host pw.{domain}"
+        lookup_url = (
+            "https://mxtoolbox.com/SuperTool.aspx?action="
+            f"{quote(f'a:pw.{normalized_domain}')}&run=toolpage"
+        )
+        return (
+            f"No DNS entry found for domain {normalized_domain}. "
+            f"See {lookup_url}"
+        )
 
     if isinstance(reason, str):
         return reason

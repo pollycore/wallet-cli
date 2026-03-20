@@ -702,12 +702,14 @@ def run_message_test_fixture(
             describe_http_test_error(exc)
         ) from None
     except urllib.error.URLError as exc:
-        if isinstance(exc.reason, socket.gaierror):
-            host = describe_message_network_error(str(request["To"]), exc.reason)
-            raise UserFacingError(host) from None
         reason = describe_message_network_error(
             str(request["To"]),
             exc.reason)
+        raise UserFacingError(reason) from None
+    except OSError as exc:
+        reason = describe_message_network_error(
+            str(request["To"]),
+            exc)
         raise UserFacingError(reason) from None
 
     expected_inbound = fixture.get("Inbound")
