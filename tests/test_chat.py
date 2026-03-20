@@ -33,7 +33,13 @@ def test_chat_builds_expected_event_endpoints():
     assert chat_feature.build_events_domain("any-notifier.pollyweb.org") == (
         "events.any-notifier.pollyweb.org"
     )
+    assert chat_feature.build_events_domain("any-notifier.dom") == (
+        "events.any-notifier.pollyweb.org"
+    )
     assert chat_feature.build_websocket_url("any-notifier.pollyweb.org") == (
+        "wss://events.any-notifier.pollyweb.org/event/realtime"
+    )
+    assert chat_feature.build_websocket_url("any-notifier.dom") == (
         "wss://events.any-notifier.pollyweb.org/event/realtime"
     )
     assert chat_feature.build_wallet_channel("wallet-uuid") == "/default/wallet-uuid"
@@ -136,6 +142,29 @@ def test_chat_debug_prints_connection_details(monkeypatch, tmp_path, capsys):
     assert "ConnectHeaders:" in captured.out
     assert "SubscribeHeaders:" in captured.out
 
+def test_chat_debug_normalizes_dom_notifier_domain(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    config_dir.mkdir()
+    config_path = config_dir / "config.yaml"
+    config_path.write_text(
+        f"Helpers:\n  Notifier: any-notifier.pollyweb.org\nWallet: {VALID_WALLET_ID}\n",
+        encoding = "utf-8")
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(
+        cli,
+        "load_signing_key_pair",
+        lambda: cli.KeyPair())
+    monkeypatch.setattr(chat_feature, "AppSyncConnection", FakeChatConnection)
+
+    exit_code = cli.main(["chat", "any-notifier.dom", "--debug"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "WebSocketUrl: wss://events.any-notifier.pollyweb.org/event/realtime" in captured.out
+    assert "host: events.any-notifier.pollyweb.org" in captured.out
+
 def test_chat_domain_argument_overrides_config_notifier(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     config_dir.mkdir()
@@ -191,6 +220,23 @@ def test_chat_builds_signed_auth_token():
     assert message.to_dict()["Body"]["Wallet"] == VALID_WALLET_ID
     assert message.verify(key_pair.PublicKey) is True
 
+def test_chat_normalizes_dom_in_signed_auth_token():
+    key_pair = cli.KeyPair()
+
+    token = chat_feature.build_auth_token(
+        key_pair,
+        "any-notifier.dom",
+        VALID_WALLET_ID)
+
+    padded = token + "=" * (-len(token) % 4)
+    payload = json.loads(
+        __import__("base64").urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+    message = Msg.load(payload)
+
+    assert message.To == "any-notifier.pollyweb.org"
+    assert message.to_dict()["Body"]["Wallet"] == VALID_WALLET_ID
+    assert message.verify(key_pair.PublicKey) is True
+
 def test_chat_builds_unsigned_auth_token():
     key_pair = cli.KeyPair()
 
@@ -207,6 +253,24 @@ def test_chat_builds_unsigned_auth_token():
     assert payload["Header"]["Subject"] == "Connect@Notifier"
     assert payload["Header"]["To"] == "any-notifier.pollyweb.org"
     assert payload["Header"]["From"] == "Anonymous"
+    assert payload["Body"]["Wallet"] == VALID_WALLET_ID
+    assert "Hash" not in payload
+    assert "Signature" not in payload
+
+def test_chat_normalizes_dom_in_unsigned_auth_token():
+    key_pair = cli.KeyPair()
+
+    token = chat_feature.build_auth_token(
+        key_pair,
+        "any-notifier.dom",
+        VALID_WALLET_ID,
+        unsigned = True)
+
+    padded = token + "=" * (-len(token) % 4)
+    payload = json.loads(
+        __import__("base64").urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+
+    assert payload["Header"]["To"] == "any-notifier.pollyweb.org"
     assert payload["Body"]["Wallet"] == VALID_WALLET_ID
     assert "Hash" not in payload
     assert "Signature" not in payload
@@ -320,4 +384,3 @@ def test_chat_requires_wallet_in_config(tmp_path):
 
     with pytest.raises(cli.UserFacingError):
         chat_feature.load_wallet_id(config_path)
-

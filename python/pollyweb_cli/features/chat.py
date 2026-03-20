@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import secrets
 
-from pollyweb import KeyPair, Msg, Wallet
+from pollyweb import KeyPair, Msg, Wallet, normalize_domain_name
 import yaml
 from websocket import WebSocket
 from websocket import WebSocketConnectionClosedException
@@ -200,7 +200,8 @@ class AppSyncConnection:
 def build_events_domain(notifier_domain: str) -> str:
     """Translate a notifier domain into its AppSync Events domain."""
 
-    return f"events.{notifier_domain}"
+    normalized_domain = normalize_domain_name(notifier_domain)
+    return f"events.{normalized_domain}"
 
 
 def build_websocket_url(notifier_domain: str) -> str:
@@ -319,8 +320,9 @@ def build_auth_token(
 ) -> str:
     """Build a signed wallet auth token for notifier chat connections."""
 
+    normalized_domain = normalize_domain_name(notifier_domain)
     message = Msg(
-        To = notifier_domain,
+        To = normalized_domain,
         From = "Anonymous",
         Subject = CONNECT_SUBJECT,
         Body = {"Wallet": wallet_id},
