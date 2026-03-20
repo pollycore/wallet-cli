@@ -144,6 +144,108 @@ def test_build_parallel_test_status_message_renders_folder_and_file_hierarchy():
         "      01-beta/10-slow"
     )
 
+
+def test_parallel_status_renderer_keeps_console_writes_off_worker_threads(
+    monkeypatch
+):
+    renderer = test_feature.ParallelTestStatusRenderer()
+    worker_thread_ids: list[int] = []
+    status_thread_ids: list[int] = []
+    lifecycle: list[str] = []
+
+    class FakeStatus:
+        """Capture which thread owns the terminal status lifecycle."""
+
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the initial message for inspection."""
+
+            self.message = message
+
+        def __enter__(self):
+            """Record the thread that opens the shared status."""
+
+            status_thread_ids.append(threading.get_ident())
+            lifecycle.append(f"enter:{self.message}")
+            return self
+
+        def update(
+            self,
+            message: str
+        ):
+            """Record the thread that updates the shared status."""
+
+            status_thread_ids.append(threading.get_ident())
+            lifecycle.append(f"update:{message}")
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """Record the thread that closes the shared status."""
+
+            status_thread_ids.append(threading.get_ident())
+            lifecycle.append("exit")
+            return False
+
+    monkeypatch.setattr(
+        test_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message))
+
+    def worker(
+        path: tuple[str, ...],
+        release_event: threading.Event
+    ):
+        """Push one worker-owned path until the test releases it."""
+
+        worker_thread_ids.append(threading.get_ident())
+        token = renderer.push(path)
+        assert release_event.wait(timeout = 5)
+        renderer.pop(token)
+
+    release_first = threading.Event()
+    release_second = threading.Event()
+    first_worker = threading.Thread(
+        target = worker,
+        args = (("folders 01-*", "files 01-alpha/10-*", "01-alpha/10-fast"), release_first),
+        daemon = True,
+    )
+    second_worker = threading.Thread(
+        target = worker,
+        args = (("folders 01-*", "files 01-beta/10-*", "01-beta/10-slow"), release_second),
+        daemon = True,
+    )
+    first_worker.start()
+    second_worker.start()
+
+    deadline = time.time() + 1
+    while time.time() < deadline:
+        if any(entry.startswith("update:") for entry in lifecycle):
+            break
+        time.sleep(0.01)
+
+    release_first.set()
+    release_second.set()
+    first_worker.join(timeout = 2)
+    second_worker.join(timeout = 2)
+
+    deadline = time.time() + 1
+    while time.time() < deadline:
+        if renderer._render_thread is None:
+            break
+        time.sleep(0.01)
+
+    assert lifecycle[0].startswith("enter:Testing messages in parallel")
+    assert any(entry.startswith("update:") for entry in lifecycle)
+    assert lifecycle[-1] == "exit"
+    assert status_thread_ids
+    assert set(status_thread_ids).isdisjoint(worker_thread_ids)
+
 def test_test_loads_wrapped_fixture_and_verifies_inbound(
     monkeypatch, tmp_path, capsys
 ):
@@ -1911,6 +2013,40 @@ def test_test_without_path_reports_missing_pw_tests_directory(
     assert exit_code == 1
     captured = capsys.readouterr()
     assert f"No test path was provided and {tmp_path / 'pw-tests'} does not exist." in captured.err
+
+
+def test_resolve_test_target_path_accepts_extensionless_pw_tests_fixture(
+    monkeypatch, tmp_path
+):
+    tests_dir = tmp_path / "pw-tests" / "4-events"
+    fixture_path = tests_dir / "32-Subscribe@Streamer.yaml"
+
+    tests_dir.mkdir(parents = True)
+    fixture_path.write_text(
+        "Outbound:\n  To: any-hoster.dom\n  Subject: Echo@Domain\n",
+        encoding = "utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    assert test_feature.resolve_test_target_path(
+        "4-events/32-Subscribe@Streamer"
+    ) == fixture_path
+
+
+def test_test_reports_missing_fixture_instead_of_missing_keys_for_extensionless_target(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["test", "4-events/32-Subscribe@Streamer"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Test file not found: 4-events/32-Subscribe@Streamer" in captured.err
+    assert "Missing PollyWeb keys" not in captured.err
 
 
 @pytest.mark.parametrize(

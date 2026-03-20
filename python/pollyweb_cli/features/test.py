@@ -13,7 +13,7 @@ from pathlib import Path
 import re
 import socket
 from concurrent.futures import Future, ThreadPoolExecutor
-from threading import Lock
+from threading import Event, Lock, Thread, current_thread
 import time
 import urllib.error
 from typing import Any
@@ -138,9 +138,9 @@ class ParallelTestStatusRenderer:
 
         self._lock = Lock()
         self._active_paths: dict[int, tuple[str, ...]] = {}
-        self._status_context = None
-        self._status_handle = None
         self._token_counter = count(1)
+        self._change_event = Event()
+        self._render_thread: Thread | None = None
 
     def push(
         self,
@@ -151,7 +151,14 @@ class ParallelTestStatusRenderer:
         with self._lock:
             token = next(self._token_counter)
             self._active_paths[token] = path
-            self._refresh_locked()
+            if self._render_thread is None or not self._render_thread.is_alive():
+                self._render_thread = Thread(
+                    target = self._run_render_loop,
+                    name = "pw-test-status",
+                    daemon = True,
+                )
+                self._render_thread.start()
+            self._change_event.set()
             return token
 
     def pop(
@@ -162,29 +169,42 @@ class ParallelTestStatusRenderer:
 
         with self._lock:
             self._active_paths.pop(token, None)
-            self._refresh_locked()
+            self._change_event.set()
 
-    def _refresh_locked(self) -> None:
-        """Open, update, or close the shared Rich status."""
+    def _run_render_loop(self) -> None:
+        """Render status updates from one dedicated thread."""
 
-        if not self._active_paths:
-            if self._status_context is not None:
-                self._status_context.__exit__(None, None, None)
-                self._status_context = None
-                self._status_handle = None
-            return
+        status_context = None
+        status_handle = None
+        last_message: str | None = None
 
-        message = build_parallel_test_status_message(
-            list(self._active_paths.values())
-        )
+        try:
+            while True:
+                with self._lock:
+                    active_paths = list(self._active_paths.values())
 
-        if self._status_context is None:
-            self._status_context = DEBUG_CONSOLE.status(message)
-            self._status_handle = self._status_context.__enter__()
-            return
+                if not active_paths:
+                    break
 
-        if hasattr(self._status_handle, "update"):
-            self._status_handle.update(message)
+                message = build_parallel_test_status_message(active_paths)
+                if message != last_message:
+                    if status_context is None:
+                        status_context = DEBUG_CONSOLE.status(message)
+                        status_handle = status_context.__enter__()
+                    elif hasattr(status_handle, "update"):
+                        status_handle.update(message)
+
+                    last_message = message
+
+                self._change_event.wait(timeout = 0.05)
+                self._change_event.clear()
+        finally:
+            if status_context is not None:
+                status_context.__exit__(None, None, None)
+
+            with self._lock:
+                if current_thread() is self._render_thread:
+                    self._render_thread = None
 
 
 PARALLEL_TEST_STATUS_RENDERER = ParallelTestStatusRenderer()
@@ -1033,7 +1053,20 @@ def resolve_test_target_path(
         if fixture_path.exists():
             return fixture_path
 
+        if fixture_path.suffix == "":
+            fixture_yaml_path = fixture_path.with_suffix(".yaml")
+            if fixture_yaml_path.exists():
+                return fixture_yaml_path
+
         fallback_fixture_path = Path.cwd() / DEFAULT_TESTS_DIR / test_path
+        if fallback_fixture_path.exists():
+            return fallback_fixture_path
+
+        if fallback_fixture_path.suffix == "":
+            fallback_fixture_yaml_path = fallback_fixture_path.with_suffix(".yaml")
+            if fallback_fixture_yaml_path.exists():
+                return fallback_fixture_yaml_path
+
         if fallback_fixture_path.is_dir():
             return fallback_fixture_path
 
@@ -1211,6 +1244,12 @@ def run_message_test_fixture(
             raise UserFacingError(
                 f"Test file not found: {fixture_path}"
             ) from None
+
+        if not fixture_path.exists():
+            raise UserFacingError(
+                f"Test file not found: {fixture_path}"
+            ) from None
+
         raise UserFacingError(
             f"Missing PollyWeb keys in {config_dir}. Run `pw config` first."
         ) from None
