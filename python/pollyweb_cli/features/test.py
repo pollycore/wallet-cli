@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
+from concurrent.futures import as_completed
 import json
 from datetime import datetime
 import os
 from pathlib import Path
 import re
 import socket
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 import subprocess
 import sys
 import time
@@ -721,7 +722,7 @@ def cmd_test(
 
     test_target_path = resolve_test_target_path(test_path)
 
-    for output_line in run_test_target(
+    run_test_target(
         test_target_path,
         debug = debug,
         json_output = json_output,
@@ -730,8 +731,8 @@ def cmd_test(
         unsigned = unsigned,
         anonymous = anonymous,
         require_configured_keys = require_configured_keys,
-        load_signing_key_pair = load_signing_key_pair):
-        print(output_line)
+        load_signing_key_pair = load_signing_key_pair,
+        emit_output_line = print)
 
     return 0
 
@@ -746,26 +747,29 @@ def run_test_target(
     unsigned: bool,
     anonymous: bool,
     require_configured_keys,
-    load_signing_key_pair
+    load_signing_key_pair,
+    emit_output_line = None
 ) -> list[str]:
     """Run one file or directory test target and return its output lines."""
 
     if not test_target_path.is_dir():
         fixture_name = get_test_fixture_display_name(test_target_path)
         try:
-            return [
-                run_message_test_fixture(
-                    test_target_path,
-                    fixture_name = fixture_name,
-                    debug = debug,
-                    json_output = json_output,
-                    config_dir = config_dir,
-                    binds_path = binds_path,
-                    unsigned = unsigned,
-                    anonymous = anonymous,
-                    require_configured_keys = require_configured_keys,
-                    load_signing_key_pair = load_signing_key_pair)
-            ]
+            output_line = run_message_test_fixture(
+                test_target_path,
+                fixture_name = fixture_name,
+                debug = debug,
+                json_output = json_output,
+                config_dir = config_dir,
+                binds_path = binds_path,
+                unsigned = unsigned,
+                anonymous = anonymous,
+                require_configured_keys = require_configured_keys,
+                load_signing_key_pair = load_signing_key_pair)
+            if emit_output_line is not None:
+                emit_output_line(output_line)
+                return []
+            return [output_line]
         except Exception:
             print(f"❌ Failed: {fixture_name}")
             raise
@@ -788,7 +792,8 @@ def run_test_target(
                     unsigned = unsigned,
                     anonymous = anonymous,
                     require_configured_keys = require_configured_keys,
-                    load_signing_key_pair = load_signing_key_pair)
+                    load_signing_key_pair = load_signing_key_pair,
+                    emit_output_line = emit_output_line)
             )
             continue
 
@@ -797,28 +802,33 @@ def run_test_target(
                 get_parallel_test_group_name(target_group))
         ):
             with ThreadPoolExecutor(max_workers = len(target_group)) as executor:
-                future_results = [
-                    (
-                        target_run,
-                        executor.submit(
-                            run_message_test_fixture_subprocess,
-                            target_run["path"],
-                            target_name = target_run["name"],
-                            debug = debug,
-                            json_output = json_output,
-                            unsigned = unsigned,
-                            anonymous = anonymous,
-                        ),
-                    )
+                future_results: dict[Future[list[str]], dict[str, Path | str]] = {
+                    executor.submit(
+                        run_message_test_fixture_subprocess,
+                        target_run["path"],
+                        target_name = target_run["name"],
+                        debug = debug,
+                        json_output = json_output,
+                        unsigned = unsigned,
+                        anonymous = anonymous,
+                    ): target_run
                     for target_run in target_group
-                ]
+                }
 
-                for target_run, future in future_results:
+                for future in as_completed(future_results):
+                    target_run = future_results[future]
                     try:
-                        output_lines.extend(future.result())
+                        future_output_lines = future.result()
                     except Exception:
                         print(f"❌ Failed: {target_run['name']}")
                         raise
+
+                    if emit_output_line is not None:
+                        for output_line in future_output_lines:
+                            emit_output_line(output_line)
+                        continue
+
+                    output_lines.extend(future_output_lines)
 
     return output_lines
 

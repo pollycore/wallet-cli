@@ -3,6 +3,7 @@ from __future__ import annotations
 import builtins
 import json
 import threading
+import time
 import re
 import socket
 import stat
@@ -1151,6 +1152,126 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
         lifecycle,
         "03-*",
         ["send:03-first.yaml", "send:03-second.yaml"])
+
+
+def test_test_parallel_group_prints_completed_success_before_group_finishes(
+    monkeypatch, tmp_path
+):
+    tests_dir = tmp_path / "pw-tests"
+    first_path = tests_dir / "03-fast.yaml"
+    second_path = tests_dir / "03-slow.yaml"
+    started_subjects: list[str] = []
+    printed_lines: list[str] = []
+    release_slow = threading.Event()
+    both_started = threading.Event()
+    started_lock = threading.Lock()
+    original_print = builtins.print
+
+    tests_dir.mkdir()
+    for path in (first_path, second_path):
+        path.write_text(
+            (
+                "Outbound:\n"
+                "  To: any-hoster.dom\n"
+                "  Subject: Echo@Domain\n"
+            ),
+            encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    class FakeStatus:
+        """Suppress terminal spinner rendering while keeping lifecycle valid."""
+
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the status message for compatibility."""
+
+            self.message = message
+
+        def __enter__(self):
+            """Enter the fake spinner context."""
+
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """Exit the fake spinner context."""
+
+            return False
+
+    monkeypatch.setattr(
+        test_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message))
+
+    def fake_run_message_test_fixture_subprocess(
+        fixture_path,
+        *,
+        target_name,
+        debug,
+        json_output,
+        unsigned,
+        anonymous
+    ):
+        subject = fixture_path.name
+        with started_lock:
+            started_subjects.append(subject)
+            if len(started_subjects) == 2:
+                both_started.set()
+
+        if subject == "03-slow.yaml":
+            assert both_started.wait(timeout = 1)
+            release_slow.wait(timeout = 1)
+
+        return [
+            test_feature.format_test_success_message(
+                target_name,
+                total_seconds = 0.0,
+                network_seconds = 0.0,
+            )
+        ]
+
+    monkeypatch.setattr(
+        test_feature,
+        "run_message_test_fixture_subprocess",
+        fake_run_message_test_fixture_subprocess)
+
+    def fake_print(*args, **kwargs):
+        line = " ".join(str(arg) for arg in args)
+        printed_lines.append(line)
+
+    monkeypatch.setattr(builtins, "print", fake_print)
+
+    cli_thread = threading.Thread(
+        target = lambda: cli.main(["tests"]),
+        daemon = True)
+    cli_thread.start()
+
+    assert both_started.wait(timeout = 1)
+
+    deadline = time.time() + 1
+    while time.time() < deadline:
+        if any("03-fast" in line for line in printed_lines):
+            break
+        time.sleep(0.01)
+
+    assert any("03-fast" in line for line in printed_lines)
+    assert not any("03-slow" in line for line in printed_lines)
+
+    release_slow.set()
+    cli_thread.join(timeout = 2)
+    assert not cli_thread.is_alive()
+    assert any("03-slow" in line for line in printed_lines)
+
+    monkeypatch.setattr(builtins, "print", original_print)
 
 
 def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
