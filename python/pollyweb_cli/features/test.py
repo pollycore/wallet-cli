@@ -486,8 +486,10 @@ class ParallelTestStatusRenderer:
                             if rendered_event is not None:
                                 rendered_event.set()
 
-                if active_paths:
-                    spinner_frame_index += 1
+                if not active_paths:
+                    break
+
+                spinner_frame_index += 1
 
                 self._change_event.wait(timeout = 0.05)
                 self._change_event.clear()
@@ -1298,6 +1300,9 @@ def cmd_test(
             emit_output_line = print)
     except UserFacingError as exc:
         if getattr(exc, "parallel_failure_already_reported", False):
+            render_thread = PARALLEL_TEST_STATUS_RENDERER._render_thread
+            if render_thread is not None and render_thread.is_alive():
+                render_thread.join(timeout = 2)
             print(
                 format_parallel_test_error_message(
                     str(exc)
