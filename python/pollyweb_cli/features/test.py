@@ -125,39 +125,6 @@ def format_test_group_spinner_message(
     return f"Testing message group: {group_name}"
 
 
-def format_test_group_success_message(
-    group_name: str
-) -> str:
-    """Build the durable success line shown after one parallel group finishes."""
-
-    return f"✔️ Passed: {group_name}"
-
-
-def build_test_group_success_lines(
-    group_name: str,
-    child_lines: list[str]
-) -> list[str]:
-    """Build the durable summary shown after one parallel group finishes."""
-
-    return list(child_lines)
-
-
-def build_parallel_group_resolution_path(
-    parent_labels: tuple[str, ...],
-    group_summary_lines: list[str]
-) -> tuple[str, ...]:
-    """Build one renderer path for a resolved group without double indentation."""
-
-    if not group_summary_lines:
-        return parent_labels
-
-    return (
-        *parent_labels,
-        group_summary_lines[0],
-        *[line.lstrip() for line in group_summary_lines[1:]],
-    )
-
-
 @dataclass
 class _ParallelStatusNode:
     """Represent one branch in the hierarchical parallel test status view."""
@@ -1311,10 +1278,7 @@ def run_test_target(
                     )
                 )
 
-            group_summary_lines = build_test_group_success_lines(
-                "",
-                group_child_lines,
-            )
+            group_summary_lines = list(group_child_lines)
 
         if emit_output_line is not None:
             if active_parallel_labels:

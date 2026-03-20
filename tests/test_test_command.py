@@ -109,13 +109,6 @@ def assert_group_spinner_output(
     expected_lifecycle = [f"enter:{spinner_message}", *send_labels, f"exit:{spinner_message}"]
     assert lifecycle[:len(expected_lifecycle)] == expected_lifecycle
 
-
-def test_format_test_group_success_message_uses_group_label():
-    assert test_feature.format_test_group_success_message("files 02-*") == (
-        "✔️ Passed: files 02-*"
-    )
-
-
 def test_build_parallel_test_render_paths_prefixes_active_fixture_rows():
     assert test_feature.build_parallel_test_render_paths(
         {
