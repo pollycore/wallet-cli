@@ -126,7 +126,7 @@ def test_build_parallel_test_render_paths_prefixes_active_fixture_rows():
         },
         spinner_frame = "x",
     ) == [
-        ("", "x 03-first"),
+        ("", "x Testing message: 03-first"),
         ("", "✅ Passed: 03-second (10 ms, 50% latency)"),
     ]
 
@@ -141,7 +141,7 @@ def test_build_parallel_test_render_paths_skips_empty_group_sentinel_rows():
         spinner_frame = "x",
     ) == [
         ("",),
-        ("", "x 03-first"),
+        ("", "x Testing message: 03-first"),
     ]
 
 

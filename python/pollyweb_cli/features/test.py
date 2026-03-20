@@ -451,7 +451,7 @@ def build_parallel_test_render_paths(
                     continue
                 path = (
                     *path[:-1],
-                    f"{spinner_frame} {last_label}",
+                    f"{spinner_frame} {format_test_spinner_message(last_label)}",
                 )
         if path is not None:
             render_paths.append(path)
