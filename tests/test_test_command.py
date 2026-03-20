@@ -1391,32 +1391,83 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
 
 
 def test_test_parallel_group_prints_completed_success_before_group_finishes(
-    monkeypatch, tmp_path
+    monkeypatch
 ):
-    tests_dir = tmp_path / "pw-tests"
-    first_path = tests_dir / "03-fast.yaml"
-    second_path = tests_dir / "03-slow.yaml"
-    started_subjects: list[str] = []
+    renderer = test_feature.ParallelTestStatusRenderer()
     status_messages: list[str] = []
-    release_slow = threading.Event()
-    both_started = threading.Event()
-    started_lock = threading.Lock()
-    tests_dir.mkdir()
-    for path in (first_path, second_path):
-        path.write_text(
-            (
-                "Outbound:\n"
-                "  To: any-hoster.dom\n"
-                "  Subject: Echo@Domain\n"
-            ),
-            encoding = "utf-8")
-
-    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
-    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
-    monkeypatch.chdir(tmp_path)
+    fast_rendered = threading.Event()
 
     class FakeStatus:
-        """Suppress terminal spinner rendering while keeping lifecycle valid."""
+        """Capture in-place terminal status updates."""
+
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the status message for compatibility."""
+
+            self.message = message
+
+        def __enter__(self):
+            """Start the fake status context."""
+
+            status_messages.append(self.message)
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """Exit the fake status context."""
+
+            return False
+
+        def update(
+            self,
+            message: str
+        ):
+            """Capture in-place status replacements."""
+
+            status_messages.append(message)
+            if (
+                "✅ Passed: 03-fast" in message
+                and "03-slow" in message
+            ):
+                fast_rendered.set()
+
+    monkeypatch.setattr(
+        test_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message))
+
+    fast_token = renderer.push(("files 03-*", "03-fast"))
+    slow_token = renderer.push(("files 03-*", "03-slow"))
+    renderer.resolve(
+        fast_token,
+        ("files 03-*", "✅ Passed: 03-fast (0 ms, 0% latency)"),
+    )
+
+    assert fast_rendered.wait(timeout = 1)
+    assert any(
+        "✅ Passed: 03-fast" in message
+        and "03-slow" in message
+        for message in status_messages
+    )
+    renderer.close(fast_token)
+    renderer.pop(slow_token)
+
+
+def test_test_parallel_group_prints_completed_failure_before_group_finishes(
+    monkeypatch
+):
+    renderer = test_feature.ParallelTestStatusRenderer()
+    status_messages: list[str] = []
+    failure_rendered = threading.Event()
+
+    class FakeStatus:
+        """Capture in-place terminal status updates."""
 
         def __init__(
             self,
@@ -1449,45 +1500,32 @@ def test_test_parallel_group_prints_completed_success_before_group_finishes(
             """Capture in-place status replacements."""
 
             status_messages.append(message)
+            if (
+                "❌ Failed: 03-fast" in message
+                and "03-slow" in message
+            ):
+                failure_rendered.set()
 
     monkeypatch.setattr(
         test_feature.DEBUG_CONSOLE,
         "status",
         lambda message: FakeStatus(message))
 
-    def fake_send_wallet_message(**kwargs):
-        subject = kwargs["subject"]
-        with started_lock:
-            started_subjects.append(subject)
-            if len(started_subjects) == 2:
-                both_started.set()
+    fast_token = renderer.push(("files 03-*", "03-fast"))
+    slow_token = renderer.push(("files 03-*", "03-slow"))
+    renderer.resolve(
+        fast_token,
+        ("files 03-*", "❌ Failed: 03-fast"),
+    )
 
-        if subject == "03-slow.yaml":
-            assert both_started.wait(timeout = 1)
-            assert release_slow.wait(timeout = 5)
-
-        return (
-            json.dumps({"Header": {"Subject": subject}}),
-            None,
-            "any-hoster.pollyweb.org",
-        )
-
-    monkeypatch.setattr(
-        test_feature,
-        "send_wallet_message",
-        fake_send_wallet_message)
-
-    cli_thread = threading.Thread(
-        target = lambda: cli.main(["tests"]),
-        daemon = True)
-    cli_thread.start()
-
-    assert both_started.wait(timeout = 1)
-
-    release_slow.set()
-    cli_thread.join(timeout = 2)
-    assert not cli_thread.is_alive()
-    assert status_messages or started_subjects
+    assert failure_rendered.wait(timeout = 1)
+    assert any(
+        "❌ Failed: 03-fast" in message
+        and "03-slow" in message
+        for message in status_messages
+    )
+    renderer.close(fast_token)
+    renderer.pop(slow_token)
 
 
 def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(

@@ -159,6 +159,7 @@ class ParallelTestStatusRenderer:
         self._lock = Lock()
         self._active_paths: dict[int, tuple[str, ...]] = {}
         self._resolved_paths: dict[int, tuple[str, ...]] = {}
+        self._resolved_rendered_events: dict[int, Event] = {}
         self._token_counter = count(1)
         self._change_event = Event()
         self._render_started_event = Event()
@@ -195,6 +196,7 @@ class ParallelTestStatusRenderer:
 
         with self._lock:
             self._active_paths.pop(token, None)
+            self._resolved_rendered_events.pop(token, None)
             if token not in self._resolved_paths:
                 self._change_event.set()
             if not self._active_paths:
@@ -217,7 +219,32 @@ class ParallelTestStatusRenderer:
         with self._lock:
             self._active_paths.pop(token, None)
             self._resolved_paths[token] = path
+            self._resolved_rendered_events[token] = Event()
             self._change_event.set()
+
+    def close(
+        self,
+        token: int
+    ) -> None:
+        """Retire one already-resolved path after its final snapshot is shown."""
+        with self._lock:
+            rendered_event = self._resolved_rendered_events.get(token)
+
+        if rendered_event is not None:
+            rendered_event.wait(timeout = 1)
+
+        with self._lock:
+            self._resolved_paths.pop(token, None)
+            self._resolved_rendered_events.pop(token, None)
+            render_thread = self._render_thread
+            self._change_event.set()
+
+        if (
+            render_thread is not None
+            and render_thread.is_alive()
+            and render_thread is not current_thread()
+        ):
+            render_thread.join(timeout = 1)
 
     def _run_render_loop(self) -> None:
         """Render status updates from one dedicated thread."""
@@ -251,6 +278,9 @@ class ParallelTestStatusRenderer:
                 if resolved_paths:
                     with self._lock:
                         for token in resolved_paths:
+                            rendered_event = self._resolved_rendered_events.get(token)
+                            if rendered_event is not None:
+                                rendered_event.set()
                             self._resolved_paths.pop(token, None)
 
                 self._change_event.wait(timeout = 0.05)
@@ -261,6 +291,7 @@ class ParallelTestStatusRenderer:
 
             with self._lock:
                 self._resolved_paths.clear()
+                self._resolved_rendered_events.clear()
                 if current_thread() is self._render_thread:
                     self._render_thread = None
             self._render_started_event.set()
@@ -364,10 +395,10 @@ def build_parallel_test_status_message(
 
 
 @contextmanager
-def test_parallel_status(
+def test_parallel_status_scope(
     *labels: str
 ):
-    """Show one shared hierarchical status for active parallel test work."""
+    """Register one shared parallel status path for the duration of a scope."""
 
     active_count = ACTIVE_PARALLEL_TEST_STATUS_COUNT.get()
     token = ACTIVE_PARALLEL_TEST_STATUS_COUNT.set(active_count + 1)
@@ -377,6 +408,16 @@ def test_parallel_status(
     finally:
         PARALLEL_TEST_STATUS_RENDERER.pop(status_token)
         ACTIVE_PARALLEL_TEST_STATUS_COUNT.reset(token)
+
+
+@contextmanager
+def test_parallel_status(
+    *labels: str
+):
+    """Show one shared hierarchical status for active parallel test work."""
+
+    with test_parallel_status_scope(*labels) as status_token:
+        yield status_token
 
 
 @contextmanager
@@ -1363,6 +1404,7 @@ def run_message_test_fixture(
     started_at = time.perf_counter()
     timing: dict[str, float] = {}
     parallel_status_token: int | None = None
+    parallel_status_scope = nullcontext()
 
     try:
         require_configured_keys()
@@ -1380,30 +1422,32 @@ def run_message_test_fixture(
             format_test_spinner_message(fixture_name)
         )
         if active_parallel_labels:
-            spinner_context = test_parallel_status(
+            parallel_status_scope = test_parallel_status_scope(
                 *active_parallel_labels,
                 fixture_name,
             )
+            spinner_context = nullcontext()
 
-        with spinner_context as parallel_status_token:
-            # Keep the fixture spinner visible during any configured delay so
-            # users can see progress immediately, then send after the pause.
-            if wait_seconds > 0:
-                time.sleep(wait_seconds)
+        with parallel_status_scope as parallel_status_token:
+            with spinner_context:
+                # Keep the fixture spinner visible during any configured delay so
+                # users can see progress immediately, then send after the pause.
+                if wait_seconds > 0:
+                    time.sleep(wait_seconds)
 
-            response_payload, _, _ = send_wallet_message(
-                domain = str(request["To"]),
-                subject = str(request["Subject"]),
-                body = dict(request["Body"]),
-                key_pair = key_pair,
-                debug = debug,
-                debug_json = json_output,
-                from_value = request.get("From"),
-                schema_value = request.get("Schema"),
-                anonymous = anonymous,
-                unsigned = unsigned,
-                timing = timing,
-            )
+                response_payload, _, _ = send_wallet_message(
+                    domain = str(request["To"]),
+                    subject = str(request["Subject"]),
+                    body = dict(request["Body"]),
+                    key_pair = key_pair,
+                    debug = debug,
+                    debug_json = json_output,
+                    from_value = request.get("From"),
+                    schema_value = request.get("Schema"),
+                    anonymous = anonymous,
+                    unsigned = unsigned,
+                    timing = timing,
+                )
     except FileNotFoundError:
         if parallel_status_token is not None:
             PARALLEL_TEST_STATUS_RENDERER.resolve(
@@ -1500,6 +1544,8 @@ def run_message_test_fixture(
                 parallel_status_token,
                 (*active_parallel_labels, output_line),
             )
+            PARALLEL_TEST_STATUS_RENDERER.close(parallel_status_token)
+            parallel_status_token = None
         return output_line
     except Exception as exc:
         if parallel_status_token is not None:
@@ -1507,5 +1553,7 @@ def run_message_test_fixture(
                 parallel_status_token,
                 (*active_parallel_labels, f"❌ Failed: {fixture_name}"),
             )
+            PARALLEL_TEST_STATUS_RENDERER.close(parallel_status_token)
+            parallel_status_token = None
             setattr(exc, "parallel_failure_already_reported", True)
         raise
