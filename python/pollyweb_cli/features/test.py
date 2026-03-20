@@ -73,6 +73,7 @@ TIMESTAMP_WILDCARD = "<timestamp>"
 DEFAULT_TESTS_DIR = "pw-tests"
 PARALLEL_FIXTURE_PREFIX_PATTERN = re.compile(r"^(\d+)-")
 PARALLEL_STATUS_ROOT_LABEL = ""
+PARALLEL_TEST_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 ACTIVE_TEST_SPINNER_COUNT: ContextVar[int] = ContextVar(
     "active_test_spinner_count",
     default = 0,
@@ -358,6 +359,7 @@ class ParallelTestStatusRenderer:
         status_context = None
         status_handle = None
         last_message: str | None = None
+        spinner_frame_index = 0
 
         try:
             while True:
@@ -372,6 +374,9 @@ class ParallelTestStatusRenderer:
                     build_parallel_test_render_paths(
                         active_paths,
                         resolved_paths,
+                        spinner_frame = PARALLEL_TEST_SPINNER_FRAMES[
+                            spinner_frame_index % len(PARALLEL_TEST_SPINNER_FRAMES)
+                        ],
                     )
                 )
                 if message != last_message:
@@ -390,6 +395,9 @@ class ParallelTestStatusRenderer:
                             rendered_event = self._resolved_rendered_events.get(token)
                             if rendered_event is not None:
                                 rendered_event.set()
+
+                if active_paths:
+                    spinner_frame_index += 1
 
                 self._change_event.wait(timeout = 0.05)
                 self._change_event.clear()
@@ -426,6 +434,8 @@ def open_parallel_test_status(
 def build_parallel_test_render_paths(
     active_paths: dict[int, tuple[str, ...]],
     resolved_paths: dict[int, tuple[str, ...]],
+    *,
+    spinner_frame: str = PARALLEL_TEST_SPINNER_FRAMES[0],
 ) -> list[tuple[str, ...]]:
     """Return renderer paths in stable token order across state transitions."""
 
@@ -434,6 +444,11 @@ def build_parallel_test_render_paths(
         path = resolved_paths.get(token)
         if path is None:
             path = active_paths.get(token)
+            if path is not None and path:
+                path = (
+                    *path[:-1],
+                    f"{spinner_frame} {path[-1]}",
+                )
         if path is not None:
             render_paths.append(path)
     return render_paths

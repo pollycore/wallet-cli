@@ -116,6 +116,21 @@ def test_format_test_group_success_message_uses_group_label():
     )
 
 
+def test_build_parallel_test_render_paths_prefixes_active_fixture_rows():
+    assert test_feature.build_parallel_test_render_paths(
+        {
+            1: ("", "03-first"),
+        },
+        {
+            2: ("", "✅ Passed: 03-second (10 ms, 50% latency)"),
+        },
+        spinner_frame = "x",
+    ) == [
+        ("", "x 03-first"),
+        ("", "✅ Passed: 03-second (10 ms, 50% latency)"),
+    ]
+
+
 def test_test_loads_wrapped_fixture_and_verifies_inbound(
     monkeypatch, tmp_path, capsys
 ):
