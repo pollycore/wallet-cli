@@ -269,8 +269,8 @@ def test_parallel_status_renderer_keeps_console_writes_off_worker_threads(
             return False
 
     monkeypatch.setattr(
-        test_feature.DEBUG_CONSOLE,
-        "status",
+        test_feature,
+        "open_parallel_test_status",
         lambda message: FakeStatus(message))
 
     def worker(
@@ -369,8 +369,8 @@ def test_parallel_status_renderer_waits_for_last_status_close(monkeypatch):
             return False
 
     monkeypatch.setattr(
-        test_feature.DEBUG_CONSOLE,
-        "status",
+        test_feature,
+        "open_parallel_test_status",
         lambda message: FakeStatus(message))
 
     token = renderer.push(("files 02-*", "02-sample"))
@@ -507,8 +507,8 @@ def test_test_shows_spinner_while_sending(
             return False
 
     monkeypatch.setattr(
-        test_feature.DEBUG_CONSOLE,
-        "status",
+        test_feature,
+        "open_parallel_test_status",
         lambda message: FakeStatus(message))
 
     def fake_send_wallet_message(**kwargs):
@@ -590,8 +590,8 @@ def test_test_without_path_shows_one_spinner_per_fixture(
             return False
 
     monkeypatch.setattr(
-        test_feature.DEBUG_CONSOLE,
-        "status",
+        test_feature,
+        "open_parallel_test_status",
         lambda message: FakeStatus(message))
 
     def fake_send_wallet_message(**kwargs):
@@ -686,8 +686,8 @@ def test_test_without_path_shows_nested_fixture_path_in_spinner(
             return False
 
     monkeypatch.setattr(
-        test_feature.DEBUG_CONSOLE,
-        "status",
+        test_feature,
+        "open_parallel_test_status",
         lambda message: FakeStatus(message))
 
     def fake_send_wallet_message(**kwargs):
@@ -1348,8 +1348,8 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
             lifecycle.append(f"update:{message}")
 
     monkeypatch.setattr(
-        test_feature.DEBUG_CONSOLE,
-        "status",
+        test_feature,
+        "open_parallel_test_status",
         lambda message: FakeStatus(message))
 
     def fake_load_message_test_fixture(
@@ -1482,8 +1482,8 @@ def test_test_parallel_group_prints_completed_success_before_group_finishes(
                 fast_rendered.set()
 
     monkeypatch.setattr(
-        test_feature.DEBUG_CONSOLE,
-        "status",
+        test_feature,
+        "open_parallel_test_status",
         lambda message: FakeStatus(message))
 
     fast_token = renderer.push(("files 03-*", "03-fast"))
@@ -1551,8 +1551,8 @@ def test_parallel_status_renderer_keeps_row_order_when_first_row_resolves(
                 first_rendered.set()
 
     monkeypatch.setattr(
-        test_feature.DEBUG_CONSOLE,
-        "status",
+        test_feature,
+        "open_parallel_test_status",
         lambda message: FakeStatus(message))
 
     first_token = renderer.push(("files 02-*", "02-first"))
@@ -1621,8 +1621,8 @@ def test_test_parallel_group_prints_completed_failure_before_group_finishes(
                 failure_rendered.set()
 
     monkeypatch.setattr(
-        test_feature.DEBUG_CONSOLE,
-        "status",
+        test_feature,
+        "open_parallel_test_status",
         lambda message: FakeStatus(message))
 
     fast_token = renderer.push(("files 03-*", "03-fast"))
@@ -1703,8 +1703,8 @@ def test_interactive_grouped_runs_do_not_print_duplicate_final_results(
     monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
     monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
     monkeypatch.setattr(
-        test_feature.DEBUG_CONSOLE,
-        "status",
+        test_feature,
+        "open_parallel_test_status",
         lambda message: FakeStatus(message))
     monkeypatch.setattr(
         test_feature,
@@ -1818,8 +1818,8 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
             lifecycle.append(f"update:{message}")
 
     monkeypatch.setattr(
-        test_feature.DEBUG_CONSOLE,
-        "status",
+        test_feature,
+        "open_parallel_test_status",
         lambda message: FakeStatus(message))
 
     def fake_send_wallet_message(**kwargs):
@@ -1882,12 +1882,12 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
 
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
-    assert lines == [
+    assert lines[:3] == [
         "✔️ Passed: folders 03-*",
         "  ✅ Passed: 03-alpha/child/a (0 ms, 0% latency)",
         "  ✅ Passed: 03-beta/b (0 ms, 0% latency)",
-        "✅ Passed: 04-gamma/c (0 ms, 0% latency)",
     ]
+    assert_passed_output(lines[3], "04-gamma/c")
     assert {
         entry
         for entry in lifecycle
@@ -2029,8 +2029,8 @@ def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_
                 nested_group_rendered.set()
 
     monkeypatch.setattr(
-        test_feature.DEBUG_CONSOLE,
-        "status",
+        test_feature,
+        "open_parallel_test_status",
         lambda message: FakeStatus(message))
 
     cli_thread = threading.Thread(

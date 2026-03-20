@@ -20,6 +20,7 @@ from typing import Any
 import uuid
 
 import yaml
+from rich.live import Live
 
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.features.bind import (
@@ -170,6 +171,50 @@ class _ParallelStatusNode:
 
     label: str
     children: dict[str, "_ParallelStatusNode"] = field(default_factory = dict)
+
+
+class ParallelTestLiveDisplay:
+    """Wrap a Rich live display with the status-like interface used in tests."""
+
+    def __init__(
+        self,
+        message: str
+    ):
+        """Store the initial message and create the live renderer."""
+
+        self.message = message
+        self._live = Live(
+            message,
+            console = DEBUG_CONSOLE,
+            auto_refresh = False,
+            refresh_per_second = 12.5,
+            transient = False,
+        )
+
+    def __enter__(self):
+        """Start the live renderer and return this adapter."""
+
+        self._live.__enter__()
+        return self
+
+    def update(
+        self,
+        message: str
+    ) -> None:
+        """Replace the live tree with one fresh rendered message."""
+
+        self.message = message
+        self._live.update(message, refresh = True)
+
+    def __exit__(
+        self,
+        exc_type,
+        exc,
+        tb
+    ) -> bool:
+        """Stop the live renderer without suppressing exceptions."""
+
+        return bool(self._live.__exit__(exc_type, exc, tb))
 
 
 class ParallelTestStatusRenderer:
@@ -333,7 +378,7 @@ class ParallelTestStatusRenderer:
                 )
                 if message != last_message:
                     if status_context is None:
-                        status_context = DEBUG_CONSOLE.status(message)
+                        status_context = open_parallel_test_status(message)
                         status_handle = status_context.__enter__()
                         self._render_started_event.set()
                     elif hasattr(status_handle, "update"):
@@ -370,6 +415,14 @@ def reset_parallel_test_status_renderer() -> None:
 
     global PARALLEL_TEST_STATUS_RENDERER
     PARALLEL_TEST_STATUS_RENDERER = ParallelTestStatusRenderer()
+
+
+def open_parallel_test_status(
+    message: str
+) -> ParallelTestLiveDisplay:
+    """Create the live grouped-status display for parallel `pw test` work."""
+
+    return ParallelTestLiveDisplay(message)
 
 
 def build_parallel_test_render_paths(
