@@ -1020,8 +1020,16 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
             }
         }
 
-    def fake_send_wallet_message(**kwargs):
-        subject = kwargs["subject"]
+    def fake_run_message_test_fixture_subprocess(
+        fixture_path,
+        *,
+        fixture_name,
+        debug,
+        json_output,
+        unsigned,
+        anonymous
+    ):
+        subject = fixture_path.name
         with started_lock:
             started_subjects.append(subject)
             if {
@@ -1035,16 +1043,29 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
             release_group.wait(timeout = 1)
 
         completed_subjects.append(subject)
-        return (
-            json.dumps({"Header": {"Subject": subject}}),
-            None,
-            "any-hoster.pollyweb.org",
+        return test_feature.format_test_success_message(
+            fixture_name,
+            total_seconds = 0.0,
+            network_seconds = 0.0,
         )
 
     monkeypatch.setattr(
         test_feature,
         "load_message_test_fixture",
         fake_load_message_test_fixture)
+    monkeypatch.setattr(
+        test_feature,
+        "run_message_test_fixture_subprocess",
+        fake_run_message_test_fixture_subprocess)
+
+    def fake_send_wallet_message(**kwargs):
+        completed_subjects.append(kwargs["subject"])
+        return (
+            json.dumps({"Header": {"Subject": kwargs["subject"]}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
     monkeypatch.setattr(
         test_feature,
         "send_wallet_message",

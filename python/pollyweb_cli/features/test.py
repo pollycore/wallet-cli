@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+import os
 from pathlib import Path
 import re
 import socket
 from concurrent.futures import ThreadPoolExecutor
+import subprocess
+import sys
 import time
 import urllib.error
 from typing import Any
@@ -721,17 +724,13 @@ def cmd_test(
                 (
                     fixture_run,
                     executor.submit(
-                        run_message_test_fixture,
+                        run_message_test_fixture_subprocess,
                         fixture_run["path"],
                         fixture_name = fixture_run["name"],
                         debug = debug,
                         json_output = json_output,
-                        config_dir = config_dir,
-                        binds_path = binds_path,
                         unsigned = unsigned,
                         anonymous = anonymous,
-                        require_configured_keys = require_configured_keys,
-                        load_signing_key_pair = load_signing_key_pair,
                     ),
                 )
                 for fixture_run in fixture_group
@@ -745,6 +744,73 @@ def cmd_test(
                     raise
 
     return 0
+
+
+def run_message_test_fixture_subprocess(
+    fixture_path: Path,
+    *,
+    fixture_name: str,
+    debug: bool,
+    json_output: bool,
+    unsigned: bool,
+    anonymous: bool
+) -> str:
+    """Run one fixture in a child CLI process to isolate transport state."""
+
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "import sys; "
+            "from pollyweb_cli.cli import main_dev; "
+            "raise SystemExit(main_dev(sys.argv[1:]))"
+        ),
+        "test",
+        str(fixture_path),
+    ]
+
+    if debug:
+        command.append("--debug")
+
+    if json_output:
+        command.append("--json")
+
+    if unsigned:
+        command.append("--unsigned")
+
+    if anonymous:
+        command.append("--anonymous")
+
+    child_env = os.environ.copy()
+    child_env["POLLYWEB_CLI_SKIP_UPGRADE_CHECK"] = "1"
+
+    completed = subprocess.run(
+        command,
+        check = False,
+        capture_output = True,
+        text = True,
+        cwd = str(Path.cwd()),
+        env = child_env,
+    )
+
+    stdout = completed.stdout.strip()
+    stderr = completed.stderr.strip()
+
+    if completed.returncode != 0:
+        if stderr:
+            raise UserFacingError(stderr) from None
+
+        raise UserFacingError(
+            f"Parallel fixture {fixture_name} failed with exit code "
+            f"{completed.returncode}."
+        ) from None
+
+    if stdout:
+        return stdout
+
+    raise UserFacingError(
+        f"Parallel fixture {fixture_name} completed without output."
+    ) from None
 
 
 def group_parallel_test_fixtures(
