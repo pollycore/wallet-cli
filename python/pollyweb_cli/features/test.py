@@ -347,6 +347,60 @@ def normalize_test_response(
     return loaded
 
 
+def extract_test_failure(
+    payload: str,
+    source_name: str
+) -> str | None:
+    """Return a user-facing server failure summary when one is present."""
+
+    normalized = normalize_test_response(
+        payload,
+        source_name)
+    candidates: list[dict[str, Any]] = []
+
+    if isinstance(normalized, dict):
+        candidates.append(normalized)
+
+        meta = normalized.get("Meta")
+        if isinstance(meta, dict):
+            candidates.append(meta)
+
+        wrapped_response = normalized.get("Response")
+        if isinstance(wrapped_response, dict):
+            candidates.append(wrapped_response)
+
+            wrapped_meta = wrapped_response.get("Meta")
+            if isinstance(wrapped_meta, dict):
+                candidates.append(wrapped_meta)
+
+    for candidate in candidates:
+        code = candidate.get("Code")
+        if isinstance(code, bool) or not isinstance(code, int):
+            continue
+
+        if code < 500:
+            continue
+
+        failure_parts = [f"Response returned Code {code}"]
+        message = candidate.get("Message")
+        if isinstance(message, str) and message.strip():
+            failure_parts.append(message.strip())
+
+        details = candidate.get("Details")
+        if isinstance(details, list):
+            detail_values = [
+                str(item).strip()
+                for item in details
+                if str(item).strip()
+            ]
+            if detail_values:
+                failure_parts.append(f"Details: {' | '.join(detail_values)}")
+
+        return ". ".join(failure_parts)
+
+    return None
+
+
 def assert_expected_subset(
     actual: Any,
     expected: Any,
@@ -733,11 +787,20 @@ def run_message_test_fixture(
             exc)
         raise UserFacingError(reason) from None
 
+    actual_response = normalize_test_response(
+        response_payload,
+        fixture_name)
+
+    failure_message = extract_test_failure(
+        response_payload,
+        fixture_name)
+    if failure_message is not None:
+        raise UserFacingError(
+            failure_message
+        ) from None
+
     expected_inbound = fixture.get("Inbound")
     if isinstance(expected_inbound, dict):
-        actual_response = normalize_test_response(
-            response_payload,
-            fixture_name)
 
         assert_expected_subset(
             actual_response,

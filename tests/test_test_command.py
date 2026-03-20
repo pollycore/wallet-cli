@@ -1636,6 +1636,95 @@ def test_test_reports_http_failures_with_fixture_path(
     assert "HTTP 502 Bad Gateway." in captured.err
     assert f"❌ Failed: {test_path.stem}" in captured.out
 
+
+def test_test_fails_when_response_meta_reports_server_error(
+    monkeypatch, tmp_path, capsys
+):
+    """A wrapped server-side 500 should fail the fixture even with no HTTP error."""
+
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Create@Hoster\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            json.dumps(
+                {
+                    "Meta": {
+                        "TotalMs": 1200,
+                    },
+                    "Response": {
+                        "Meta": {
+                            "Code": 500,
+                            "Message": "Unable to create domain",
+                            "Details": ["boom"],
+                        },
+                    },
+                }
+            ),
+            None,
+            "vault.example.com",
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Response returned Code 500. Unable to create domain. Details: boom" in captured.err
+    assert f"❌ Failed: {test_path.stem}" in captured.out
+
+
+def test_test_fails_when_response_reports_top_level_server_error(
+    monkeypatch, tmp_path, capsys
+):
+    """Keep compatibility with legacy top-level error payloads during migration."""
+
+    test_path = tmp_path / "test.yaml"
+    test_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: vault.example.com\n"
+            "  Subject: Create@Hoster\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            json.dumps(
+                {
+                    "Code": 500,
+                    "Message": "Unable to create domain",
+                    "Details": [
+                        "Route53 setup failed",
+                        "Certificate request failed",
+                    ],
+                }
+            ),
+            None,
+            "vault.example.com",
+        ))
+
+    exit_code = cli.main(["test", str(test_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Response returned Code 500. Unable to create domain." in captured.err
+    assert "Route53 setup failed | Certificate request failed" in captured.err
+    assert f"❌ Failed: {test_path.stem}" in captured.out
+
 def test_test_reports_inbound_error_details_for_http_failures(
     monkeypatch, tmp_path, capsys
 ):
