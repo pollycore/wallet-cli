@@ -2004,9 +2004,8 @@ def test_echo_reports_human_readable_dns_failures(
     captured = capsys.readouterr()
     assert (
         "Echo request to any-non-existing.dom failed: "
-        "Could not resolve PollyWeb inbox host "
-        "pw.any-non-existing.pollyweb.org."
-        " Check that the domain name is correct and that its DNS record exists."
+        "Could not resolve domain name any-non-existing.dom. "
+        "Check that the domain name is correct and that its DNS record exists."
     ) in captured.err
     assert "gaierror(" not in captured.err
 
@@ -2038,7 +2037,9 @@ def test_echo_debug_keeps_raw_dns_failure_details(
     captured = capsys.readouterr()
     assert (
         "Echo request to non-existing-domain.com failed: "
-        "gaierror(8, 'nodename nor servname provided, or not known')"
+        "Could not resolve domain name non-existing-domain.com. "
+        "Check that the domain name is correct and that its DNS record exists. "
+        "([Errno 8] nodename nor servname provided, or not known)"
     ) in captured.err
     assert "Could not resolve PollyWeb inbox host" not in captured.err
 
@@ -2163,8 +2164,8 @@ def test_echo_reports_human_readable_dns_failures_from_custom_transport(
     captured = capsys.readouterr()
     assert (
         "Echo request to non-existing-domain.com failed: "
-        "Could not resolve PollyWeb inbox host pw.non-existing-domain.com."
-        " Check that the domain name is correct and that its DNS record exists."
+        "Could not resolve domain name non-existing-domain.com. "
+        "Check that the domain name is correct and that its DNS record exists."
     ) in captured.err
     assert "Traceback" not in captured.err
 

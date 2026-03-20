@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import socket
 
 from pollyweb import Msg, MsgValidationError
 
@@ -259,6 +260,15 @@ def _describe_echo_network_error(
     debug: bool
 ) -> str:
     """Format echo transport failures for either normal or debug output."""
+
+    if isinstance(reason, socket.gaierror):
+        friendly = (
+            f"Could not resolve domain name {domain}. "
+            "Check that the domain name is correct and that its DNS record exists."
+        )
+        if debug:
+            return f"{friendly} ({reason})"
+        return friendly
 
     if debug:
         if isinstance(reason, str):
