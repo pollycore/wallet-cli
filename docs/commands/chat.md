@@ -1,6 +1,6 @@
 # pw chat
 
-Listen for notifier chat events on the configured wallet channel:
+Open an interactive terminal chat app on the configured wallet channel:
 
 ```bash
 pw chat
@@ -31,4 +31,9 @@ If you do not pass a domain, it also reads `Helpers.Notifier` from that file.
 If you pass a domain, that positional argument overrides `Helpers.Notifier` for the current command.
 The command connects to the notifier's AppSync Events endpoint at `wss://events.<notifier>/event/realtime` and subscribes to `/<namespace>/<wallet>`, currently `/default/<Wallet>` or `/default/Anonymous` when you use `--anonymous`.
 
-Stop listening with `Ctrl+C`.
+When stdin/stdout are TTYs and Textual is available, `pw chat` opens a
+chat-style terminal UI with a live transcript and an input box. Press `Enter`
+to send a message, or type `/quit` to leave. If the command is not running in
+an interactive terminal, it falls back to the original plain streaming output.
+
+Stop listening with `Ctrl+C` or quit from the chat app.

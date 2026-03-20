@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+from datetime import datetime
 import json
 import socket
 import stat
@@ -384,3 +385,88 @@ def test_chat_requires_wallet_in_config(tmp_path):
 
     with pytest.raises(cli.UserFacingError):
         chat_feature.load_wallet_id(config_path)
+
+
+def test_chat_formats_timestamped_transcript_lines():
+    chat_line = chat_feature._chat_line_from_payload(
+        "Hello world",
+        direction = "outbound",
+        current_time = datetime(2026, 3, 20, 11, 21, 0),
+    )
+
+    assert chat_line.text == "[11:21:00] You: Hello world"
+
+
+def test_chat_interactive_path_opens_textual_app(monkeypatch, tmp_path):
+    config_dir = tmp_path / ".pollyweb"
+    config_dir.mkdir()
+    config_path = config_dir / "config.yaml"
+    config_path.write_text(
+        f"Helpers:\n  Notifier: any-notifier.pollyweb.org\nWallet: {VALID_WALLET_ID}\n",
+        encoding = "utf-8")
+    observed: dict[str, object] = {}
+
+    class FakeChatTextualApp:
+        """Capture the interactive app setup without launching Textual."""
+
+        def __init__(self, **kwargs):
+            observed.update(kwargs)
+            self._exit_code = 0
+
+        def run(self):
+            observed["ran"] = True
+
+    monkeypatch.setattr(chat_feature, "_should_use_textual_chat_view", lambda: True)
+    monkeypatch.setattr(chat_feature, "_ChatTextualApp", FakeChatTextualApp)
+
+    exit_code = chat_feature.cmd_chat(
+        domain = None,
+        debug = True,
+        test = True,
+        unsigned = False,
+        anonymous = False,
+        config_path = config_path,
+        require_configured_keys = lambda: None,
+        load_signing_key_pair = cli.KeyPair,
+    )
+
+    assert exit_code == 0
+    assert observed["ran"] is True
+    assert observed["session"].notifier_domain == "any-notifier.pollyweb.org"
+    assert observed["session"].wallet_id == VALID_WALLET_ID
+    assert observed["session"].test_publish is True
+    assert observed["session"].debug_payload["WebSocketUrl"] == (
+        "wss://events.any-notifier.pollyweb.org/event/realtime"
+    )
+
+
+def test_chat_interactive_path_returns_textual_exit_code(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        f"Helpers:\n  Notifier: any-notifier.pollyweb.org\nWallet: {VALID_WALLET_ID}\n",
+        encoding = "utf-8")
+
+    class FakeChatTextualApp:
+        """Return a fixed exit code from the interactive app path."""
+
+        def __init__(self, **_kwargs):
+            self._exit_code = 7
+
+        def run(self):
+            return None
+
+    monkeypatch.setattr(chat_feature, "_should_use_textual_chat_view", lambda: True)
+    monkeypatch.setattr(chat_feature, "_ChatTextualApp", FakeChatTextualApp)
+
+    exit_code = chat_feature.cmd_chat(
+        domain = None,
+        debug = False,
+        test = False,
+        unsigned = False,
+        anonymous = False,
+        config_path = config_path,
+        require_configured_keys = lambda: None,
+        load_signing_key_pair = cli.KeyPair,
+    )
+
+    assert exit_code == 7
