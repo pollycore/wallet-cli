@@ -5,6 +5,8 @@ import json
 import socket
 import stat
 import sys
+import threading
+import time
 import uuid
 import urllib.error
 from pathlib import Path
@@ -744,6 +746,71 @@ def test_send_wallet_message_uses_extended_default_transport_timeout(monkeypatch
 
     assert observed["timeout"] == transport_tools.DEFAULT_SEND_TIMEOUT_SECONDS
     assert response_payload == '{"ok":true}'
+
+
+def test_send_wallet_message_serializes_concurrent_library_sends(monkeypatch):
+    key_pair = cli.KeyPair()
+    first_send_started = threading.Event()
+    release_first_send = threading.Event()
+    concurrent_entries: list[int] = []
+    results: list[str] = []
+    active_entries = 0
+    active_lock = threading.Lock()
+
+    class FakeOutboundMessage:
+        """Stand in for the library outbound message during concurrency checks."""
+
+        def send(
+            self
+        ):
+            """Record overlap and hold the first send long enough to race."""
+
+            nonlocal active_entries
+
+            with active_lock:
+                active_entries += 1
+                concurrent_entries.append(active_entries)
+                is_first_entry = len(concurrent_entries) == 1
+                if is_first_entry:
+                    first_send_started.set()
+
+            if is_first_entry:
+                assert release_first_send.wait(timeout = 5)
+
+            with active_lock:
+                active_entries -= 1
+
+            return {"ok": True}
+
+    monkeypatch.setattr(
+        transport_tools,
+        "build_wallet_outbound_message",
+        lambda wallet, request_message, *, unsigned = False: FakeOutboundMessage(),
+    )
+
+    def run_send():
+        """Run one wallet-backed send through the shared transport helper."""
+
+        response_payload, _, _ = transport_tools.send_wallet_message(
+            domain = "any-hoster.dom",
+            subject = "Echo@Domain",
+            body = {"Ping": "pong"},
+            key_pair = key_pair,
+        )
+        results.append(response_payload)
+
+    first_thread = threading.Thread(target = run_send, daemon = True)
+    second_thread = threading.Thread(target = run_send, daemon = True)
+    first_thread.start()
+    assert first_send_started.wait(timeout = 1)
+    second_thread.start()
+    time.sleep(0.05)
+    release_first_send.set()
+    first_thread.join(timeout = 2)
+    second_thread.join(timeout = 2)
+
+    assert concurrent_entries == [1, 1]
+    assert results == ['{"ok":true}', '{"ok":true}']
 
 def test_msg_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"

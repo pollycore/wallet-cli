@@ -7,6 +7,7 @@ import http.client
 import io
 import json
 from pathlib import Path
+from threading import Lock
 import time
 from types import MethodType
 from urllib.parse import urlsplit
@@ -31,6 +32,7 @@ DEFAULT_SCHEMA = "pollyweb.org/MSG:1.0"
 DEFAULT_BINDS_PATH = Path.home() / ".pollyweb" / "binds.yaml"
 DEFAULT_SEND_TIMEOUT_SECONDS = 100.0
 PROXY_DOMAIN_SUBJECT = "Proxy@Domain"
+WALLET_SEND_LOCK = Lock()
 
 
 def serialize_wallet_response(response: object) -> str:
@@ -465,55 +467,60 @@ def send_wallet_message(
 
         raise RuntimeError("Unreachable HTTPS transport retry state")
 
-    try:
-        if transport_metadata is not None:
-            pollyweb_transport._HTTPS_CONNECTION_POOL.post = MethodType(
-                capture_pool_post,
-                pollyweb_transport._HTTPS_CONNECTION_POOL,
-            )
-
-        send_started_at = time.perf_counter()
-
+    with WALLET_SEND_LOCK:
         try:
-            response = outbound_message.send()
-            send_finished_at = time.perf_counter()
-        except urllib.error.HTTPError as exc:
-            send_finished_at = time.perf_counter()
+            if transport_metadata is not None:
+                pollyweb_transport._HTTPS_CONNECTION_POOL.post = MethodType(
+                    capture_pool_post,
+                    pollyweb_transport._HTTPS_CONNECTION_POOL,
+                )
+
+            send_started_at = time.perf_counter()
+
+            try:
+                # PollyWeb currently reuses one cached HTTPSConnection per
+                # host inside a process. Keep the send boundary serialized so
+                # concurrent CLI test workers do not race that shared socket
+                # or the temporary transport monkeypatches above.
+                response = outbound_message.send()
+                send_finished_at = time.perf_counter()
+            except urllib.error.HTTPError as exc:
+                send_finished_at = time.perf_counter()
+
+                if timing is not None:
+                    timing["network_seconds"] = send_finished_at - send_started_at
+
+                error_body = None
+
+                try:
+                    error_body = exc.read().decode("utf-8", errors="replace")
+                except Exception:
+                    error_body = None
+
+                setattr(exc, "pollyweb_error_body", error_body)
+
+                if debug:
+                    try:
+                        debug_printer = print_debug_json_payload if debug_json else print_debug_payload
+                        debug_printer(
+                            "Inbound payload",
+                            build_debug_http_error_payload(error_body))
+                    except Exception:
+                        pass
+                raise
 
             if timing is not None:
                 timing["network_seconds"] = send_finished_at - send_started_at
 
-            error_body = None
-
-            try:
-                error_body = exc.read().decode("utf-8", errors="replace")
-            except Exception:
-                error_body = None
-
-            setattr(exc, "pollyweb_error_body", error_body)
+            response_payload = serialize_wallet_response(response)
 
             if debug:
-                try:
-                    debug_printer = print_debug_json_payload if debug_json else print_debug_payload
-                    debug_printer(
-                        "Inbound payload",
-                        build_debug_http_error_payload(error_body))
-                except Exception:
-                    pass
-            raise
+                debug_printer = print_debug_json_payload if debug_json else print_debug_payload
+                debug_printer("Inbound payload", parse_debug_payload(response_payload))
 
-        if timing is not None:
-            timing["network_seconds"] = send_finished_at - send_started_at
-
-        response_payload = serialize_wallet_response(response)
-
-        if debug:
-            debug_printer = print_debug_json_payload if debug_json else print_debug_payload
-            debug_printer("Inbound payload", parse_debug_payload(response_payload))
-
-        return response_payload, request_message, normalized_domain
-    finally:
-        if transport_metadata is not None:
-            pollyweb_transport._HTTPS_CONNECTION_POOL.post = original_pool_post
-            pollyweb_msg.post_json_bytes = original_post
-            pollyweb_transport.post_json_bytes = original_transport_post
+            return response_payload, request_message, normalized_domain
+        finally:
+            if transport_metadata is not None:
+                pollyweb_transport._HTTPS_CONNECTION_POOL.post = original_pool_post
+                pollyweb_msg.post_json_bytes = original_post
+                pollyweb_transport.post_json_bytes = original_transport_post
