@@ -86,6 +86,14 @@ def format_test_success_message(
     )
 
 
+def format_test_spinner_message(
+    fixture_name: str
+) -> str:
+    """Build the per-fixture spinner label for `pw test` sends."""
+
+    return f"Testing message: {fixture_name}"
+
+
 def get_test_fixture_display_name(
     fixture_path: Path
 ) -> str:
@@ -768,7 +776,9 @@ def run_message_test_fixture(
         request, _ = parse_message_request(
             [json.dumps(fixture["Outbound"])])
 
-        with DEBUG_CONSOLE.status("Testing message..."):
+        with DEBUG_CONSOLE.status(
+            format_test_spinner_message(fixture_name)
+        ):
             response_payload, _, _ = send_wallet_message(
                 domain = str(request["To"]),
                 subject = str(request["Subject"]),

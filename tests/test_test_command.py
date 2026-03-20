@@ -74,6 +74,28 @@ def assert_passed_output(
         line,
     )
 
+
+def assert_spinner_output(
+    lifecycle: list[str],
+    fixture_names: list[str],
+    send_labels: list[str]
+):
+    """Assert that the per-fixture spinner label matches the display name."""
+
+    expected_lifecycle: list[str] = []
+
+    for fixture_name, send_label in zip(fixture_names, send_labels, strict = True):
+        spinner_message = test_feature.format_test_spinner_message(fixture_name)
+        expected_lifecycle.extend(
+            [
+                f"enter:{spinner_message}",
+                send_label,
+                f"exit:{spinner_message}",
+            ]
+        )
+
+    assert lifecycle == expected_lifecycle
+
 def test_test_loads_wrapped_fixture_and_verifies_inbound(
     monkeypatch, tmp_path, capsys
 ):
@@ -202,11 +224,10 @@ def test_test_shows_spinner_while_sending(
     exit_code = cli.main(["test", str(test_path)])
 
     assert exit_code == 0
-    assert lifecycle == [
-        "enter:Testing message...",
-        "send",
-        "exit:Testing message...",
-    ]
+    assert_spinner_output(
+        lifecycle,
+        [test_path.stem],
+        ["send"])
     captured = capsys.readouterr()
     assert_passed_output(captured.out.strip(), test_path.stem)
 
@@ -302,19 +323,92 @@ def test_test_without_path_shows_one_spinner_per_fixture(
     exit_code = cli.main(["test"])
 
     assert exit_code == 0
-    assert lifecycle == [
-        "enter:Testing message...",
-        "send:a-first.yaml",
-        "exit:Testing message...",
-        "enter:Testing message...",
-        "send:b-second.yaml",
-        "exit:Testing message...",
-    ]
+    assert_spinner_output(
+        lifecycle,
+        ["a-first", "b-second"],
+        ["send:a-first.yaml", "send:b-second.yaml"])
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
     assert len(lines) == 2
     assert_passed_output(lines[0], "a-first")
     assert_passed_output(lines[1], "b-second")
+
+
+def test_test_without_path_shows_nested_fixture_path_in_spinner(
+    monkeypatch, tmp_path, capsys
+):
+    tests_dir = tmp_path / "pw-tests"
+    nested_path = tests_dir / "nested" / "fixture.yaml"
+    lifecycle: list[str] = []
+
+    nested_path.parent.mkdir(parents = True)
+    nested_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    class FakeStatus:
+        """Capture the spinner message for one nested fixture send."""
+
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the spinner message for assertions."""
+
+            self.message = message
+
+        def __enter__(self):
+            """Record spinner start for the nested fixture."""
+
+            lifecycle.append(f"enter:{self.message}")
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """Record spinner stop for the nested fixture."""
+
+            lifecycle.append(f"exit:{self.message}")
+            return False
+
+    monkeypatch.setattr(
+        test_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message))
+
+    def fake_send_wallet_message(**kwargs):
+        lifecycle.append("send")
+        return (
+            json.dumps({"Header": {"Subject": kwargs["subject"]}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    exit_code = cli.main(["test"])
+
+    assert exit_code == 0
+    assert_spinner_output(
+        lifecycle,
+        ["nested/fixture"],
+        ["send"])
+    captured = capsys.readouterr()
+    assert_passed_output(captured.out.strip(), "nested/fixture")
 
 
 def test_extract_test_total_seconds_prefers_wrapped_response_meta_total_ms():
