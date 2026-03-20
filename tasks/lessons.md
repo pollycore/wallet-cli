@@ -1,6 +1,7 @@
 # Lessons
 
 - For `pw test` parallel fixture rows, do not `pop()` the active status path before replacing it with the final `✅ Passed` or `❌ Failed` label; resolve the row first and wait for the renderer to paint that final snapshot before retiring it, or the spinner can disappear with no immediate replacement.
+- For interactive grouped `pw test` runs, treat the live parallel status tree as the success UI; once that tree has rendered the settled pass/fail hierarchy, do not also print a second final-result block underneath it, or users will see duplicated summaries such as `parallel messages` plus the same groups again.
 - For wrapped `pw test` fixture delays, start the per-fixture `Testing message...` spinner before honoring `Wait`; the pause is part of the live fixture run and should be visible in the UI instead of looking like the command stalled before progress began.
 - For wrapped `pw test` fixtures, support a top-level numeric `Wait` field next to `Outbound` and `Inbound`; validate it during fixture load and apply the delay immediately before transport so direct runs and recursive `pw-tests` sweeps behave the same way.
 - For non-debug `pw test` / `pw tests` fixture sweeps, keep discovery order deterministic but execute same-parent targets sharing a leading numeric prefix like `03-` in parallel as one batch; that applies to sibling YAML files as well as sibling subfolders, while final success lines should still print in sorted path order and `--debug` should stay sequential.

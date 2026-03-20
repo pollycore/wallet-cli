@@ -130,6 +130,12 @@ def format_test_group_success_message(
     return f"✔️ Passed: {group_name}"
 
 
+def should_print_grouped_test_results() -> bool:
+    """Return whether grouped success summaries should print after rendering."""
+
+    return not DEBUG_CONSOLE.is_terminal
+
+
 def build_test_group_success_lines(
     group_name: str,
     child_lines: list[str]
@@ -140,6 +146,22 @@ def build_test_group_success_lines(
         format_test_group_success_message(group_name),
         *[f"  {line}" for line in child_lines],
     ]
+
+
+def build_parallel_group_resolution_path(
+    parent_labels: tuple[str, ...],
+    group_summary_lines: list[str]
+) -> tuple[str, ...]:
+    """Build one renderer path for a resolved group without double indentation."""
+
+    if not group_summary_lines:
+        return parent_labels
+
+    return (
+        *parent_labels,
+        group_summary_lines[0],
+        *[line.lstrip() for line in group_summary_lines[1:]],
+    )
 
 
 @dataclass
@@ -297,14 +319,17 @@ class ParallelTestStatusRenderer:
         try:
             while True:
                 with self._lock:
-                    active_paths = list(self._active_paths.values())
+                    active_paths = dict(self._active_paths)
                     resolved_paths = dict(self._resolved_paths)
 
                 if not active_paths and not resolved_paths:
                     break
 
                 message = build_parallel_test_status_message(
-                    [*active_paths, *resolved_paths.values()]
+                    build_parallel_test_render_paths(
+                        active_paths,
+                        resolved_paths,
+                    )
                 )
                 if message != last_message:
                     if status_context is None:
@@ -345,6 +370,22 @@ def reset_parallel_test_status_renderer() -> None:
 
     global PARALLEL_TEST_STATUS_RENDERER
     PARALLEL_TEST_STATUS_RENDERER = ParallelTestStatusRenderer()
+
+
+def build_parallel_test_render_paths(
+    active_paths: dict[int, tuple[str, ...]],
+    resolved_paths: dict[int, tuple[str, ...]],
+) -> list[tuple[str, ...]]:
+    """Return renderer paths in stable token order across state transitions."""
+
+    render_paths: list[tuple[str, ...]] = []
+    for token in sorted(set(active_paths) | set(resolved_paths)):
+        path = resolved_paths.get(token)
+        if path is None:
+            path = active_paths.get(token)
+        if path is not None:
+            render_paths.append(path)
+    return render_paths
 
 
 def build_parallel_test_status_message(
@@ -409,15 +450,6 @@ def build_parallel_test_status_message(
         if own_status is not None:
             return node.label, own_status
 
-        if node.label == "Testing messages in parallel":
-            if child_summaries and len(child_statuses) == len(child_summaries):
-                if all(status == "passed" for status in child_statuses):
-                    return "✔️ Passed: parallel messages", "passed"
-
-                return "❌ Failed: parallel messages", "failed"
-
-            return node.label, None
-
         if child_summaries and len(child_statuses) == len(child_summaries):
             if all(status == "passed" for status in child_statuses):
                 return f"✔️ Passed: {node.label}", "passed"
@@ -427,14 +459,17 @@ def build_parallel_test_status_message(
         return node.label, None
 
     display_root = root
-    display_depth = 1
+    display_depth = 0
 
     if len(root.children) == 1:
         display_root = next(iter(root.children.values()))
         display_depth = 0
 
-    root_label, _ = summarize_node(display_root)
-    lines = [root_label]
+    lines: list[str] = []
+
+    if display_root is not root:
+        root_label, _ = summarize_node(display_root)
+        lines.append(root_label)
 
     def append_children(
         node: _ParallelStatusNode,
@@ -1281,16 +1316,18 @@ def run_test_target(
             # for both nested and top-level groups.
             PARALLEL_TEST_STATUS_RENDERER.resolve(
                 group_status_token,
-                (
-                    *active_parallel_labels,
-                    group_summary_lines[0],
-                    *group_summary_lines[1:],
+                build_parallel_group_resolution_path(
+                    active_parallel_labels,
+                    group_summary_lines,
                 ),
             )
 
         if emit_output_line is not None:
             if active_parallel_labels:
                 output_lines.extend(group_summary_lines)
+                continue
+
+            if not should_print_grouped_test_results():
                 continue
 
             for output_line in group_summary_lines:

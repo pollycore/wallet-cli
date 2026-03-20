@@ -177,6 +177,50 @@ def test_build_test_group_success_lines_keeps_child_results_visible():
     ]
 
 
+def test_build_parallel_group_resolution_path_strips_output_indentation():
+    assert test_feature.build_parallel_group_resolution_path(
+        ("folders 03-*",),
+        [
+            "✔️ Passed: files 03-beta/1-*",
+            "  ✅ Passed: 03-beta/1-Test-B1 (185 ms, 98% latency)",
+            "  ✅ Passed: 03-beta/1-Test-B2 (994 ms, 40% latency)",
+        ],
+    ) == (
+        "folders 03-*",
+        "✔️ Passed: files 03-beta/1-*",
+        "✅ Passed: 03-beta/1-Test-B1 (185 ms, 98% latency)",
+        "✅ Passed: 03-beta/1-Test-B2 (994 ms, 40% latency)",
+    )
+
+
+def test_build_parallel_test_render_paths_keeps_token_order_when_rows_resolve():
+    assert test_feature.build_parallel_test_render_paths(
+        {
+            2: ("files 02-*", "02-second"),
+        },
+        {
+            1: ("files 02-*", "✅ Passed: 02-first"),
+        },
+    ) == [
+        ("files 02-*", "✅ Passed: 02-first"),
+        ("files 02-*", "02-second"),
+    ]
+
+
+def test_build_parallel_test_status_message_omits_parallel_messages_root():
+    assert test_feature.build_parallel_test_status_message(
+        [
+            ("files 02-*", "✅ Passed: 02-first (435 ms, 99% latency)"),
+            ("folders 03-*", "✅ Passed: 03-alpha/child/a (0 ms, 0% latency)"),
+        ]
+    ) == (
+        "✔️ Passed: files 02-*\n"
+        "  ✅ Passed: 02-first (435 ms, 99% latency)\n"
+        "✔️ Passed: folders 03-*\n"
+        "  ✅ Passed: 03-alpha/child/a (0 ms, 0% latency)"
+    )
+
+
 def test_parallel_status_renderer_keeps_console_writes_off_worker_threads(
     monkeypatch
 ):
@@ -1459,6 +1503,76 @@ def test_test_parallel_group_prints_completed_success_before_group_finishes(
     renderer.pop(slow_token)
 
 
+def test_parallel_status_renderer_keeps_row_order_when_first_row_resolves(
+    monkeypatch
+):
+    renderer = test_feature.ParallelTestStatusRenderer()
+    status_messages: list[str] = []
+    first_rendered = threading.Event()
+
+    class FakeStatus:
+        """Capture ordered live status updates."""
+
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the rendered message."""
+
+            self.message = message
+
+        def __enter__(self):
+            """Record the initial tree."""
+
+            status_messages.append(self.message)
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """End the fake status context."""
+
+            return False
+
+        def update(
+            self,
+            message: str
+        ):
+            """Record later tree renders."""
+
+            status_messages.append(message)
+            if (
+                "✅ Passed: 02-first" in message
+                and "02-second" in message
+            ):
+                first_rendered.set()
+
+    monkeypatch.setattr(
+        test_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message))
+
+    first_token = renderer.push(("files 02-*", "02-first"))
+    second_token = renderer.push(("files 02-*", "02-second"))
+    renderer.resolve(
+        first_token,
+        ("files 02-*", "✅ Passed: 02-first"),
+    )
+
+    assert first_rendered.wait(timeout = 1)
+    assert any(
+        message.index("✅ Passed: 02-first") < message.index("02-second")
+        for message in status_messages
+        if "✅ Passed: 02-first" in message and "02-second" in message
+    )
+
+    renderer.close(first_token)
+    renderer.pop(second_token)
+
+
 def test_test_parallel_group_prints_completed_failure_before_group_finishes(
     monkeypatch
 ):
@@ -1526,6 +1640,102 @@ def test_test_parallel_group_prints_completed_failure_before_group_finishes(
     )
     renderer.close(fast_token)
     renderer.pop(slow_token)
+
+
+def test_interactive_grouped_runs_do_not_print_duplicate_final_results(
+    monkeypatch, tmp_path, capsys
+):
+    tests_dir = tmp_path / "pw-tests"
+    tests_dir.mkdir()
+    (tests_dir / "02-first.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+    (tests_dir / "02-second.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    status_messages: list[str] = []
+
+    class FakeStatus:
+        """Capture the interactive grouped status tree."""
+
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the rendered status message."""
+
+            self.message = message
+
+        def __enter__(self):
+            """Record the initial live tree render."""
+
+            status_messages.append(self.message)
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """End the fake status context."""
+
+            return False
+
+        def update(
+            self,
+            message: str
+        ):
+            """Record later in-place tree updates."""
+
+            status_messages.append(message)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.setattr(
+        test_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message))
+    monkeypatch.setattr(
+        test_feature,
+        "should_print_grouped_test_results",
+        lambda: False)
+
+    def fake_send_wallet_message(**kwargs):
+        """Return a minimal successful sync response."""
+
+        subject = kwargs["subject"]
+        return (
+            json.dumps({"Header": {"Subject": subject}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    cli.main(["tests"])
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert any(
+        "✔️ Passed: files 02-*" in message
+        and "✅ Passed: 02-first" in message
+        and "✅ Passed: 02-second" in message
+        for message in status_messages
+    )
 
 
 def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
@@ -1834,6 +2044,12 @@ def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_
         "✔️ Passed: files 01-alpha/10-*" in message
         and "  ✅ Passed: 01-alpha/10-fast-a" in message
         and "  ✅ Passed: 01-alpha/10-fast-b" in message
+        for message in status_messages
+    )
+    assert any(
+        "files 01-alpha/10-*" in message
+        and "      01-alpha/10-fast-a" not in message
+        and "      ✅ Passed: 01-alpha/10-fast-a" not in message
         for message in status_messages
     )
 

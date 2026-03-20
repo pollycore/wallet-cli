@@ -1,12 +1,11 @@
 # Task Plan
 
-- [x] Inspect the parallel `pw test` renderer and completion flow to find where rows were being cleared before their final status rendered
-- [x] Change the renderer handoff so resolved pass/fail rows stay visible long enough to replace the spinner in place
-- [x] Add focused regression coverage and verify with the repo test interpreter
+- [x] Inspect the written `pw test` behavior notes and compare them with the interactive grouped output
+- [x] Update the active instructions and public docs so grouped interactive success output does not duplicate the settled final tree
+- [x] Capture the lesson so future work keeps the live tree as the only grouped success summary
 
 # Review
 
-- Updated [/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py](/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py) so parallel fixture rows use an explicit status scope and a renderer-side rendered-event handshake, which lets `✅ Passed` or `❌ Failed` replace the spinner row before that row is retired.
-- Kept the existing hierarchical parallel view and group summaries intact while removing the pop-before-resolve gap that caused completed rows to vanish until later output.
-- Added focused renderer regression coverage in [/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py](/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py) for both success and failure replacement while a sibling row is still active.
-- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_test_command.py -k 'parallel_group_prints_completed_success_before_group_finishes or parallel_group_prints_completed_failure_before_group_finishes or parallel_folder_group_prints_nested_success_before_sibling_folder_finishes or without_debug_runs_same_folder_numeric_prefix_group_in_parallel or parallel_status_renderer_waits_for_last_status_close'`.
+- Updated the active repo instructions in [/Users/jorgemf/Git/wallet-cli/AGENTS.md](/Users/jorgemf/Git/wallet-cli/AGENTS.md) so interactive grouped `pw test` runs must not print a duplicate final-result block after the live tree has already shown the settled hierarchy.
+- Updated the public command docs in [/Users/jorgemf/Git/wallet-cli/docs/commands/test.md](/Users/jorgemf/Git/wallet-cli/docs/commands/test.md) to distinguish non-interactive per-fixture success lines from interactive grouped runs that should rely on the live tree only.
+- Added the maintenance note to [/Users/jorgemf/Git/wallet-cli/tasks/lessons.md](/Users/jorgemf/Git/wallet-cli/tasks/lessons.md) so future renderer work preserves that behavior.
