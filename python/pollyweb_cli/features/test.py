@@ -68,6 +68,26 @@ def describe_http_test_error(exc: urllib.error.HTTPError) -> str:
     return message
 
 
+def get_expected_http_status_code(
+    fixture: dict[str, Any]
+) -> int | None:
+    """Read the explicitly expected `Inbound.Meta.Code` status, when present."""
+
+    inbound = fixture.get("Inbound")
+    if not isinstance(inbound, dict):
+        return None
+
+    inbound_meta = inbound.get("Meta")
+    if not isinstance(inbound_meta, dict):
+        return None
+
+    expected_code = inbound_meta.get("Code")
+    if isinstance(expected_code, bool) or not isinstance(expected_code, int):
+        return None
+
+    return expected_code
+
+
 def is_timeout_reason(
     reason: object
 ) -> bool:
@@ -1609,6 +1629,9 @@ def run_message_test_fixture(
     timing: dict[str, float] = {}
     parallel_status_token: int | None = None
     parallel_status_scope = nullcontext()
+    fixture: dict[str, Any] | None = None
+    wait_seconds = 0.0
+    response_payload: str | None = None
 
     try:
         require_configured_keys()
@@ -1672,17 +1695,30 @@ def run_message_test_fixture(
             f"Missing PollyWeb keys in {config_dir}. Run `pw config` first."
         ) from None
     except urllib.error.HTTPError as exc:
-        if parallel_status_token is not None:
-            PARALLEL_TEST_STATUS_RENDERER.resolve(
-                parallel_status_token,
-                (*active_parallel_labels, f"❌ Failed: {fixture_name}"),
+        expected_http_status = None
+        if fixture is not None:
+            expected_http_status = get_expected_http_status_code(fixture)
+
+        error_body = getattr(exc, "pollyweb_error_body", None)
+        if (
+            expected_http_status is not None
+            and exc.code == expected_http_status
+            and isinstance(error_body, str)
+            and error_body.strip()
+        ):
+            response_payload = error_body
+        else:
+            if parallel_status_token is not None:
+                PARALLEL_TEST_STATUS_RENDERER.resolve(
+                    parallel_status_token,
+                    (*active_parallel_labels, f"❌ Failed: {fixture_name}"),
+                )
+            error = UserFacingError(
+                describe_http_test_error(exc)
             )
-        error = UserFacingError(
-            describe_http_test_error(exc)
-        )
-        if parallel_status_token is not None:
-            setattr(error, "parallel_failure_already_reported", True)
-        raise error from None
+            if parallel_status_token is not None:
+                setattr(error, "parallel_failure_already_reported", True)
+            raise error from None
     except urllib.error.URLError as exc:
         if parallel_status_token is not None:
             PARALLEL_TEST_STATUS_RENDERER.resolve(
@@ -1745,6 +1781,11 @@ def run_message_test_fixture(
         raise error from None
 
     try:
+        if response_payload is None:
+            raise UserFacingError(
+                f"Response from {fixture_name} was empty."
+            ) from None
+
         actual_response = normalize_test_response(
             response_payload,
             fixture_name)

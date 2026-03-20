@@ -1,5 +1,6 @@
 # Lessons
 
+- For `pw test` HTTP transport errors, do not fail immediately when the fixture explicitly expects the same status in `Inbound.Meta.Code`; treat the HTTP error body as the response payload and run the normal inbound subset matcher so expected `404`-style error responses can pass.
 - For `pw test` timeout failures, label them as client-side timeouts and print both the configured client timeout budget and the measured send duration; if no reply arrived, say server timing is unavailable, and keep any fixture `Wait` time separate so users do not mistake pre-send delay for the transport timeout.
 - For `pw test` parallel fixture rows, do not `pop()` the active status path before replacing it with the final `✅ Passed` or `❌ Failed` label; resolve the row first and wait for the renderer to paint that final snapshot before retiring it, or the spinner can disappear with no immediate replacement.
 - For `pw test` parallel failures, do not let the generic top-level CLI `Error: ...` line race onto stderr above the settled status tree; once the failed fixture row has already been rendered in the parallel output, print the detailed failure message after the renderer closes so it lands at the bottom of the list, and style the settled `❌ Failed:` row red in interactive terminals.
