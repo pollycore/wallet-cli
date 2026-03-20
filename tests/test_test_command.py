@@ -1164,19 +1164,7 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
 
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
-    assert len(lines) == 3
-    assert any(
-        re.fullmatch(r"✅ Passed: 03-first \(\d+ ms, \d+% latency\)", line)
-        for line in lines
-    )
-    assert any(
-        re.fullmatch(r"✅ Passed: 03-second \(\d+ ms, \d+% latency\)", line)
-        for line in lines
-    )
-    assert any(
-        re.fullmatch(r"✅ Passed: 04-third \(\d+ ms, \d+% latency\)", line)
-        for line in lines
-    )
+    assert lines == ["✅ Passed: 04-third (0 ms, 0% latency)"]
     assert any(entry.startswith("enter:") for entry in lifecycle)
     assert any(entry.startswith("update:") for entry in lifecycle)
     assert {
@@ -1333,19 +1321,8 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
 
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
-    assert len(lines) == 3
-    assert any(
-        re.fullmatch(r"✅ Passed: 03-alpha/child/a \(\d+ ms, \d+% latency\)", line)
-        for line in lines
-    )
-    assert any(
-        re.fullmatch(r"✅ Passed: 03-beta/b \(\d+ ms, \d+% latency\)", line)
-        for line in lines
-    )
-    assert any(
-        re.fullmatch(r"✅ Passed: 04-gamma/c \(\d+ ms, \d+% latency\)", line)
-        for line in lines
-    )
+    assert len(lines) == 1
+    assert_passed_output(lines[0], "04-gamma/c")
     assert any(entry.startswith("enter:") for entry in lifecycle)
     assert any(entry.startswith("update:") for entry in lifecycle)
     assert {

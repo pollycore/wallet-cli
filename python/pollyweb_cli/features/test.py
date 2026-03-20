@@ -133,12 +133,6 @@ def format_test_group_success_message(
     return f"✔️ Passed: {group_name}"
 
 
-def should_print_grouped_test_results() -> bool:
-    """Return whether grouped success summaries should print after rendering."""
-
-    return True
-
-
 def build_test_group_success_lines(
     group_name: str,
     child_lines: list[str]
@@ -187,7 +181,7 @@ class ParallelTestLiveDisplay:
             console = DEBUG_CONSOLE,
             auto_refresh = False,
             refresh_per_second = 12.5,
-            transient = True,
+            transient = False,
         )
 
     def __enter__(self):
@@ -1325,13 +1319,6 @@ def run_test_target(
         if emit_output_line is not None:
             if active_parallel_labels:
                 output_lines.extend(group_summary_lines)
-                continue
-
-            if not should_print_grouped_test_results():
-                continue
-
-            for output_line in group_summary_lines:
-                emit_output_line(output_line)
             continue
 
         output_lines.extend(group_summary_lines)
