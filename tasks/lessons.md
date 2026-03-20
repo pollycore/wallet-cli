@@ -1,5 +1,6 @@
 # Lessons
 
+- For non-debug `pw test` / `pw tests` fixture sweeps, keep discovery order deterministic but execute same-folder fixtures sharing a leading numeric prefix like `03-` in parallel as one batch; print their concise success lines back in sorted path order, and keep `--debug` runs sequential so debug output stays readable.
 - For `Proxy@Domain` outbound bodies, treat the nested proxied header as a routing envelope: require `Outbound.Body.Header.To` and `Outbound.Body.Header.Subject`, silently drop extra nested header fields such as `From` before transport, and rewrite backend validation paths like `Body.Message.Header` back to the user-authored `Outbound.Body.Header` shape in CLI errors.
 - For `pw chat`, keep the AppSync websocket transport on a single worker thread inside the interactive Textual app; publish acknowledgements and inbound events share the same socket, so splitting send and receive across threads causes races around `publish_success` and `data` frames.
 - For wallet-backed sends, keep the shared transport timeout in a named constant and cover it at the HTTPS pool boundary, so `pw test` timeout changes are explicit and verified instead of hiding in a literal default.

@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 import re
 import socket
+from concurrent.futures import ThreadPoolExecutor
 import time
 import urllib.error
 from typing import Any
@@ -63,6 +64,7 @@ STRING_WILDCARD = "<str>"
 INTEGER_WILDCARD = "<int>"
 TIMESTAMP_WILDCARD = "<timestamp>"
 DEFAULT_TESTS_DIR = "pw-tests"
+PARALLEL_FIXTURE_PREFIX_PATTERN = re.compile(r"^(\d+)-")
 
 # ISO-8601 UTC timestamp ending in Z, matching the pollyweb Zulu timestamp format.
 _Z_TIMESTAMP_RE = re.compile(
@@ -682,25 +684,118 @@ def cmd_test(
 
     fixture_paths = get_test_fixture_paths(test_path)
 
-    for fixture_path in fixture_paths:
-        fixture_name = get_test_fixture_display_name(fixture_path)
-        try:
-            run_message_test_fixture(
-                fixture_path,
-                fixture_name = fixture_name,
-                debug = debug,
-                json_output = json_output,
-                config_dir = config_dir,
-                binds_path = binds_path,
-                unsigned = unsigned,
-                anonymous = anonymous,
-                require_configured_keys = require_configured_keys,
-                load_signing_key_pair = load_signing_key_pair)
-        except Exception:
-            print(f"❌ Failed: {fixture_name}")
-            raise
+    fixture_runs = [
+        {
+            "path": fixture_path,
+            "name": get_test_fixture_display_name(fixture_path),
+        }
+        for fixture_path in fixture_paths
+    ]
+
+    for fixture_group in group_parallel_test_fixtures(
+        fixture_runs,
+        debug = debug):
+        if len(fixture_group) == 1:
+            fixture_run = fixture_group[0]
+            try:
+                print(
+                    run_message_test_fixture(
+                        fixture_run["path"],
+                        fixture_name = fixture_run["name"],
+                        debug = debug,
+                        json_output = json_output,
+                        config_dir = config_dir,
+                        binds_path = binds_path,
+                        unsigned = unsigned,
+                        anonymous = anonymous,
+                        require_configured_keys = require_configured_keys,
+                        load_signing_key_pair = load_signing_key_pair)
+                )
+            except Exception:
+                print(f"❌ Failed: {fixture_run['name']}")
+                raise
+            continue
+
+        with ThreadPoolExecutor(max_workers = len(fixture_group)) as executor:
+            future_results = [
+                (
+                    fixture_run,
+                    executor.submit(
+                        run_message_test_fixture,
+                        fixture_run["path"],
+                        fixture_name = fixture_run["name"],
+                        debug = debug,
+                        json_output = json_output,
+                        config_dir = config_dir,
+                        binds_path = binds_path,
+                        unsigned = unsigned,
+                        anonymous = anonymous,
+                        require_configured_keys = require_configured_keys,
+                        load_signing_key_pair = load_signing_key_pair,
+                    ),
+                )
+                for fixture_run in fixture_group
+            ]
+
+            for fixture_run, future in future_results:
+                try:
+                    print(future.result())
+                except Exception:
+                    print(f"❌ Failed: {fixture_run['name']}")
+                    raise
 
     return 0
+
+
+def group_parallel_test_fixtures(
+    fixture_runs: list[dict[str, Any]],
+    *,
+    debug: bool
+) -> list[list[dict[str, Any]]]:
+    """Group batch fixtures that can share one parallel execution wave."""
+
+    if debug:
+        return [[fixture_run] for fixture_run in fixture_runs]
+
+    grouped_runs: list[list[dict[str, Any]]] = []
+    current_group: list[dict[str, Any]] = []
+    current_parent: Path | None = None
+    current_prefix: str | None = None
+
+    for fixture_run in fixture_runs:
+        fixture_path = fixture_run["path"]
+        match = PARALLEL_FIXTURE_PREFIX_PATTERN.match(fixture_path.name)
+        prefix = match.group(1) if match is not None else None
+
+        if prefix is None:
+            if current_group:
+                grouped_runs.append(current_group)
+                current_group = []
+                current_parent = None
+                current_prefix = None
+
+            grouped_runs.append([fixture_run])
+            continue
+
+        if (
+            current_group
+            and fixture_path.parent == current_parent
+            and prefix == current_prefix
+        ):
+            current_group.append(fixture_run)
+            continue
+
+        if current_group:
+            grouped_runs.append(current_group)
+
+        current_group = [fixture_run]
+        current_parent = fixture_path.parent
+        current_prefix = prefix
+
+    if current_group:
+        grouped_runs.append(current_group)
+
+    return grouped_runs
 
 
 def get_test_fixture_paths(
@@ -763,7 +858,7 @@ def run_message_test_fixture(
     anonymous: bool,
     require_configured_keys,
     load_signing_key_pair
-) -> None:
+) -> str:
     """Send one wrapped test fixture and verify its expected inbound response."""
 
     started_at = time.perf_counter()
@@ -847,9 +942,7 @@ def run_message_test_fixture(
         response_payload,
         total_seconds = total_seconds,
         network_seconds = timing.get("network_seconds", 0.0))
-    print(
-        format_test_success_message(
-            fixture_name,
-            total_seconds = total_seconds,
-            network_seconds = network_seconds)
-    )
+    return format_test_success_message(
+        fixture_name,
+        total_seconds = total_seconds,
+        network_seconds = network_seconds)

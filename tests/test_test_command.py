@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import json
+import threading
 import re
 import socket
 import stat
@@ -978,6 +979,166 @@ def test_test_without_path_runs_nested_pw_tests_yaml_files_in_sorted_order(
     assert_passed_output(lines[0], "b-second")
     assert_passed_output(lines[1], "nested/a-first")
     assert_passed_output(lines[2], "nested/deeper/c-third")
+
+
+def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
+    monkeypatch, tmp_path, capsys
+):
+    tests_dir = tmp_path / "pw-tests"
+    first_path = tests_dir / "03-first.yaml"
+    second_path = tests_dir / "03-second.yaml"
+    third_path = tests_dir / "04-third.yaml"
+    started_subjects: list[str] = []
+    completed_subjects: list[str] = []
+    release_group = threading.Event()
+    parallel_ready = threading.Event()
+    started_lock = threading.Lock()
+
+    tests_dir.mkdir()
+    for path in (first_path, second_path, third_path):
+        path.write_text(
+            (
+                "Outbound:\n"
+                "  To: any-hoster.dom\n"
+                "  Subject: Echo@Domain\n"
+            ),
+            encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    def fake_load_message_test_fixture(
+        path,
+        binds_path,
+        public_key_path
+    ):
+        return {
+            "Outbound": {
+                "To": "any-hoster.dom",
+                "Subject": path.name,
+            }
+        }
+
+    def fake_send_wallet_message(**kwargs):
+        subject = kwargs["subject"]
+        with started_lock:
+            started_subjects.append(subject)
+            if {
+                "03-first.yaml",
+                "03-second.yaml",
+            }.issubset(set(started_subjects)):
+                parallel_ready.set()
+
+        if subject.startswith("03-"):
+            assert parallel_ready.wait(timeout = 1)
+            release_group.wait(timeout = 1)
+
+        completed_subjects.append(subject)
+        return (
+            json.dumps({"Header": {"Subject": subject}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "load_message_test_fixture",
+        fake_load_message_test_fixture)
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    cli_thread = threading.Thread(
+        target = lambda: cli.main(["tests"]),
+        daemon = True)
+    cli_thread.start()
+
+    assert parallel_ready.wait(timeout = 1)
+    assert set(started_subjects[:2]) == {
+        "03-first.yaml",
+        "03-second.yaml",
+    }
+    assert completed_subjects == []
+
+    release_group.set()
+    cli_thread.join(timeout = 2)
+    assert not cli_thread.is_alive()
+    assert set(completed_subjects[:2]) == {
+        "03-first.yaml",
+        "03-second.yaml",
+    }
+    assert completed_subjects[2:] == ["04-third.yaml"]
+
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert len(lines) == 3
+    assert_passed_output(lines[0], "03-first")
+    assert_passed_output(lines[1], "03-second")
+    assert_passed_output(lines[2], "04-third")
+
+
+def test_test_debug_keeps_same_folder_numeric_prefix_group_sequential(
+    monkeypatch, tmp_path, capsys
+):
+    tests_dir = tmp_path / "pw-tests"
+    first_path = tests_dir / "03-first.yaml"
+    second_path = tests_dir / "03-second.yaml"
+    observed_subjects: list[str] = []
+
+    tests_dir.mkdir()
+    for path in (first_path, second_path):
+        path.write_text(
+            (
+                "Outbound:\n"
+                "  To: any-hoster.dom\n"
+                "  Subject: Echo@Domain\n"
+            ),
+            encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    def fake_load_message_test_fixture(
+        path,
+        binds_path,
+        public_key_path
+    ):
+        return {
+            "Outbound": {
+                "To": "any-hoster.dom",
+                "Subject": path.name,
+            }
+        }
+
+    def fake_send_wallet_message(**kwargs):
+        observed_subjects.append(kwargs["subject"])
+        return (
+            json.dumps({"Header": {"Subject": kwargs["subject"]}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "load_message_test_fixture",
+        fake_load_message_test_fixture)
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    exit_code = cli.main(["tests", "--debug"])
+
+    assert exit_code == 0
+    assert observed_subjects == ["03-first.yaml", "03-second.yaml"]
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert len(lines) == 2
+    assert_passed_output(lines[0], "03-first")
+    assert_passed_output(lines[1], "03-second")
 
 
 def test_test_with_explicit_directory_runs_yaml_files_in_sorted_order(
