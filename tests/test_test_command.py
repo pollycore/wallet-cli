@@ -131,6 +131,20 @@ def test_build_parallel_test_render_paths_prefixes_active_fixture_rows():
     ]
 
 
+def test_build_parallel_test_render_paths_skips_empty_group_sentinel_rows():
+    assert test_feature.build_parallel_test_render_paths(
+        {
+            1: ("",),
+            2: ("", "03-first"),
+        },
+        {},
+        spinner_frame = "x",
+    ) == [
+        ("",),
+        ("", "x 03-first"),
+    ]
+
+
 def test_test_loads_wrapped_fixture_and_verifies_inbound(
     monkeypatch, tmp_path, capsys
 ):

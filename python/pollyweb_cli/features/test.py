@@ -445,9 +445,13 @@ def build_parallel_test_render_paths(
         if path is None:
             path = active_paths.get(token)
             if path is not None and path:
+                last_label = path[-1]
+                if not last_label or _is_group_label(last_label):
+                    render_paths.append(path)
+                    continue
                 path = (
                     *path[:-1],
-                    f"{spinner_frame} {path[-1]}",
+                    f"{spinner_frame} {last_label}",
                 )
         if path is not None:
             render_paths.append(path)
