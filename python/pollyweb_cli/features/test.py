@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager, nullcontext
+from contextvars import ContextVar
 import json
 from datetime import datetime
 import os
@@ -68,6 +70,10 @@ INTEGER_WILDCARD = "<int>"
 TIMESTAMP_WILDCARD = "<timestamp>"
 DEFAULT_TESTS_DIR = "pw-tests"
 PARALLEL_FIXTURE_PREFIX_PATTERN = re.compile(r"^(\d+)-")
+ACTIVE_TEST_SPINNER_COUNT: ContextVar[int] = ContextVar(
+    "active_test_spinner_count",
+    default = 0,
+)
 
 # ISO-8601 UTC timestamp ending in Z, matching the pollyweb Zulu timestamp format.
 _Z_TIMESTAMP_RE = re.compile(
@@ -109,6 +115,26 @@ def format_test_group_spinner_message(
     """Build the shared spinner label for one parallel test group."""
 
     return f"Testing message group: {group_name}"
+
+
+@contextmanager
+def test_spinner_status(
+    message: str
+):
+    """Show one test spinner unless another test spinner is already active."""
+
+    active_spinner_count = ACTIVE_TEST_SPINNER_COUNT.get()
+    if active_spinner_count > 0:
+        with nullcontext():
+            yield
+        return
+
+    spinner_token = ACTIVE_TEST_SPINNER_COUNT.set(active_spinner_count + 1)
+    try:
+        with DEBUG_CONSOLE.status(message):
+            yield
+    finally:
+        ACTIVE_TEST_SPINNER_COUNT.reset(spinner_token)
 
 
 def get_test_fixture_display_name(
@@ -766,7 +792,7 @@ def run_test_target(
             )
             continue
 
-        with DEBUG_CONSOLE.status(
+        with test_spinner_status(
             format_test_group_spinner_message(
                 get_parallel_test_group_name(target_group))
         ):
@@ -1050,7 +1076,7 @@ def run_message_test_fixture(
         request, _ = parse_message_request(
             [json.dumps(fixture["Outbound"])])
 
-        with DEBUG_CONSOLE.status(
+        with test_spinner_status(
             format_test_spinner_message(fixture_name)
         ):
             response_payload, _, _ = send_wallet_message(
