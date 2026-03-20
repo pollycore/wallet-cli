@@ -657,6 +657,18 @@ def test_parallel_status_scope(
 
 
 @contextmanager
+def test_pre_pushed_status_scope(
+    pre_pushed_token: int
+):
+    """Use an already-pushed status token and pop it on exit."""
+
+    try:
+        yield pre_pushed_token
+    finally:
+        PARALLEL_TEST_STATUS_RENDERER.pop(pre_pushed_token)
+
+
+@contextmanager
 def test_parallel_status(
     *labels: str
 ):
@@ -1327,6 +1339,7 @@ def run_test_target(
     load_signing_key_pair,
     emit_output_line = None,
     active_parallel_labels: tuple[str, ...] = (),
+    pre_status_token: int | None = None,
 ) -> list[str]:
     """Run one file or directory test target and return its output lines."""
 
@@ -1345,6 +1358,7 @@ def run_test_target(
                 require_configured_keys = require_configured_keys,
                 load_signing_key_pair = load_signing_key_pair,
                 active_parallel_labels = active_parallel_labels,
+                pre_status_token = pre_status_token,
             )
             if emit_output_line is not None:
                 if active_parallel_labels:
@@ -1404,6 +1418,14 @@ def run_test_target(
         group_summary_lines: list[str] = []
 
         with parallel_group_scope:
+            pre_pushed_tokens: dict[str, int] = {
+                str(target_run["name"]): PARALLEL_TEST_STATUS_RENDERER.push(
+                    (*group_labels, str(target_run["name"]))
+                )
+                for target_run in target_group
+                if not Path(str(target_run["path"])).is_dir()
+            }
+
             with ThreadPoolExecutor(max_workers = len(target_group)) as executor:
                 future_results: dict[Future[list[str]], dict[str, Path | str]] = {
                     executor.submit(
@@ -1419,6 +1441,7 @@ def run_test_target(
                         load_signing_key_pair = load_signing_key_pair,
                         emit_output_line = emit_output_line,
                         active_parallel_labels = group_labels,
+                        pre_status_token = pre_pushed_tokens.get(str(target_run["name"])),
                     ): target_run
                     for target_run in target_group
                 }
@@ -1663,6 +1686,7 @@ def run_message_test_fixture(
     require_configured_keys,
     load_signing_key_pair,
     active_parallel_labels: tuple[str, ...] = (),
+    pre_status_token: int | None = None,
 ) -> str:
     """Send one wrapped test fixture and verify its expected inbound response."""
 
@@ -1690,10 +1714,13 @@ def run_message_test_fixture(
             format_test_spinner_message(fixture_name)
         )
         if active_parallel_labels:
-            parallel_status_scope = test_parallel_status_scope(
-                *active_parallel_labels,
-                fixture_name,
-            )
+            if pre_status_token is not None:
+                parallel_status_scope = test_pre_pushed_status_scope(pre_status_token)
+            else:
+                parallel_status_scope = test_parallel_status_scope(
+                    *active_parallel_labels,
+                    fixture_name,
+                )
             spinner_context = nullcontext()
 
         with parallel_status_scope as parallel_status_token:
