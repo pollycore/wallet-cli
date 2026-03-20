@@ -119,10 +119,9 @@ def test_build_parallel_test_status_message_renders_file_hierarchy():
     )
 
     assert message == (
-        "Testing messages in parallel\n"
-        "  files 03-*\n"
-        "    03-first\n"
-        "    03-second"
+        "files 03-*\n"
+        "03-first\n"
+        "03-second"
     )
 
 
@@ -135,12 +134,11 @@ def test_build_parallel_test_status_message_renders_folder_and_file_hierarchy():
     )
 
     assert message == (
-        "Testing messages in parallel\n"
-        "  folders 01-*\n"
-        "    files 01-alpha/10-*\n"
-        "      01-alpha/10-fast\n"
-        "    files 01-beta/10-*\n"
-        "      01-beta/10-slow"
+        "folders 01-*\n"
+        "files 01-alpha/10-*\n"
+        "  01-alpha/10-fast\n"
+        "files 01-beta/10-*\n"
+        "  01-beta/10-slow"
     )
 
 
@@ -153,10 +151,9 @@ def test_build_parallel_test_status_message_bubbles_success_to_groups():
     )
 
     assert message == (
-        "✅ Passed: parallel messages\n"
-        "  ✅ Passed: files 02-*\n"
-        "    ✅ Passed: 2-PublicKeyA (435 ms, 99% latency)\n"
-        "    ✅ Passed: 2-PublicKeyB (930 ms, 53% latency)"
+        "✅ Passed: files 02-*\n"
+        "✅ Passed: 2-PublicKeyA (435 ms, 99% latency)\n"
+        "✅ Passed: 2-PublicKeyB (930 ms, 53% latency)"
     )
 
 
@@ -164,6 +161,20 @@ def test_format_test_group_success_message_uses_group_label():
     assert test_feature.format_test_group_success_message("files 02-*") == (
         "✅ Passed: files 02-*"
     )
+
+
+def test_build_test_group_success_lines_keeps_child_results_visible():
+    assert test_feature.build_test_group_success_lines(
+        "files 02-*",
+        [
+            "✅ Passed: 2-PublicKeyA (435 ms, 99% latency)",
+            "✅ Passed: 2-PublicKeyB (930 ms, 53% latency)",
+        ],
+    ) == [
+        "✅ Passed: files 02-*",
+        "  ✅ Passed: 2-PublicKeyA (435 ms, 99% latency)",
+        "  ✅ Passed: 2-PublicKeyB (930 ms, 53% latency)",
+    ]
 
 
 def test_parallel_status_renderer_keeps_console_writes_off_worker_threads(
@@ -261,7 +272,7 @@ def test_parallel_status_renderer_keeps_console_writes_off_worker_threads(
             break
         time.sleep(0.01)
 
-    assert lifecycle[0].startswith("enter:Testing messages in parallel")
+    assert lifecycle[0].startswith("enter:folders 01-*")
     assert any(
         "files 01-alpha/10-*" in entry and "files 01-beta/10-*" in entry
         for entry in lifecycle
@@ -324,7 +335,7 @@ def test_parallel_status_renderer_waits_for_last_status_close(monkeypatch):
         if lifecycle:
             break
         time.sleep(0.01)
-    assert lifecycle[0].startswith("enter:Testing messages in parallel")
+    assert lifecycle[0].startswith("enter:files 02-*")
 
     exit_finished = threading.Event()
 
@@ -1365,6 +1376,8 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
     lines = captured.out.splitlines()
     assert lines == [
         "✅ Passed: files 03-*",
+        "  ✅ Passed: 03-first (0 ms, 0% latency)",
+        "  ✅ Passed: 03-second (0 ms, 0% latency)",
         "✅ Passed: 04-third (0 ms, 0% latency)",
     ]
     assert {
@@ -1623,6 +1636,8 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
     lines = captured.out.splitlines()
     assert lines == [
         "✅ Passed: folders 03-*",
+        "  ✅ Passed: 03-alpha/child/a (0 ms, 0% latency)",
+        "  ✅ Passed: 03-beta/b (0 ms, 0% latency)",
         "✅ Passed: 04-gamma/c (0 ms, 0% latency)",
     ]
     assert {
@@ -2206,6 +2221,146 @@ def test_test_command_accepts_every_checked_in_test_message_fixture(
     assert exit_code == 0
     captured = capsys.readouterr()
     assert_passed_output(captured.out.strip(), fixture_path.stem)
+
+
+def test_load_message_test_fixture_accepts_numeric_wait(
+    tmp_path
+):
+    fixture_path = tmp_path / "test.yaml"
+    fixture_path.write_text(
+        (
+            "Wait: 1.5\n"
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8",
+    )
+
+    fixture = test_feature.load_message_test_fixture(
+        fixture_path,
+        tmp_path / "binds.yaml",
+        tmp_path / "public.pem",
+    )
+
+    assert fixture["Wait"] == 1.5
+
+
+def test_load_message_test_fixture_rejects_non_numeric_wait(
+    tmp_path
+):
+    fixture_path = tmp_path / "test.yaml"
+    fixture_path.write_text(
+        (
+            "Wait: later\n"
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8",
+    )
+
+    with pytest.raises(test_feature.UserFacingError) as exc_info:
+        test_feature.load_message_test_fixture(
+            fixture_path,
+            tmp_path / "binds.yaml",
+            tmp_path / "public.pem",
+        )
+
+    assert str(exc_info.value) == (
+        f"Test file {fixture_path} must define `Wait` as a number when present."
+    )
+
+
+def test_load_message_test_fixture_rejects_negative_wait(
+    tmp_path
+):
+    fixture_path = tmp_path / "test.yaml"
+    fixture_path.write_text(
+        (
+            "Wait: -1\n"
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8",
+    )
+
+    with pytest.raises(test_feature.UserFacingError) as exc_info:
+        test_feature.load_message_test_fixture(
+            fixture_path,
+            tmp_path / "binds.yaml",
+            tmp_path / "public.pem",
+        )
+
+    assert str(exc_info.value) == (
+        f"Test file {fixture_path} must define `Wait` as a non-negative number."
+    )
+
+
+def test_run_message_test_fixture_waits_before_sending(
+    monkeypatch, tmp_path
+):
+    sleep_calls: list[float] = []
+    call_order: list[str] = []
+
+    fixture_path = tmp_path / "test.yaml"
+
+    def fake_load_message_test_fixture(
+        path,
+        binds_path,
+        public_key_path
+    ):
+        assert path == fixture_path
+        return {
+            "Wait": 1.25,
+            "Outbound": {
+                "To": "any-hoster.dom",
+                "Subject": "Echo@Domain",
+            },
+        }
+
+    def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+        call_order.append("sleep")
+
+    def fake_send_wallet_message(**kwargs):
+        call_order.append("send")
+        return (
+            json.dumps({"Header": {"Subject": kwargs["subject"]}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "load_message_test_fixture",
+        fake_load_message_test_fixture,
+    )
+    monkeypatch.setattr(test_feature.time, "sleep", fake_sleep)
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message,
+    )
+
+    output = test_feature.run_message_test_fixture(
+        fixture_path,
+        fixture_name = "test",
+        debug = False,
+        json_output = False,
+        config_dir = tmp_path,
+        binds_path = tmp_path / "binds.yaml",
+        unsigned = False,
+        anonymous = False,
+        require_configured_keys = lambda: None,
+        load_signing_key_pair = lambda: object(),
+    )
+
+    assert_passed_output(output, "test")
+    assert sleep_calls == [1.25]
+    assert call_order == ["sleep", "send"]
+
 
 def test_test_reports_missing_expected_inbound_key(
     monkeypatch, tmp_path, capsys

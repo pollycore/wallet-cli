@@ -130,6 +130,18 @@ def format_test_group_success_message(
     return f"✅ Passed: {group_name}"
 
 
+def build_test_group_success_lines(
+    group_name: str,
+    child_lines: list[str]
+) -> list[str]:
+    """Build the durable multiline summary shown after one parallel group finishes."""
+
+    return [
+        format_test_group_success_message(group_name),
+        *[f"  {line}" for line in child_lines],
+    ]
+
+
 @dataclass
 class _ParallelStatusNode:
     """Represent one branch in the hierarchical parallel test status view."""
@@ -319,7 +331,14 @@ def build_parallel_test_status_message(
 
         return node.label, None
 
-    root_label, _ = summarize_node(root)
+    display_root = root
+    display_depth = 1
+
+    if len(root.children) == 1:
+        display_root = next(iter(root.children.values()))
+        display_depth = 0
+
+    root_label, _ = summarize_node(display_root)
     lines = [root_label]
 
     def append_children(
@@ -338,8 +357,8 @@ def build_parallel_test_status_message(
             )
 
     append_children(
-        root,
-        depth = 1,
+        display_root,
+        depth = display_depth,
     )
     return "\n".join(lines)
 
@@ -592,6 +611,18 @@ def load_message_test_fixture(
         raise UserFacingError(
             f"Test file {path} must define `Inbound` as an object when present."
         ) from None
+
+    wait = loaded.get("Wait")
+    if wait is not None:
+        if isinstance(wait, bool) or not isinstance(wait, (int, float)):
+            raise UserFacingError(
+                f"Test file {path} must define `Wait` as a number when present."
+            ) from None
+
+        if wait < 0:
+            raise UserFacingError(
+                f"Test file {path} must define `Wait` as a non-negative number."
+            ) from None
 
     return resolve_fixture_placeholders(
         loaded,
@@ -1013,7 +1044,7 @@ def run_test_target(
             )
             if emit_output_line is not None:
                 if active_parallel_labels:
-                    return []
+                    return [output_line]
                 emit_output_line(output_line)
                 return []
             return [output_line]
@@ -1059,6 +1090,7 @@ def run_test_target(
 
         group_label = get_parallel_test_spinner_group_name(target_group)
         group_labels = (*active_parallel_labels, group_label)
+        group_child_lines_by_name: dict[str, list[str]] = {}
         with test_parallel_status(
             *group_labels
         ):
@@ -1099,19 +1131,31 @@ def run_test_target(
                             print(f"❌ Failed: {failure_name}")
                         raise
 
-                    if emit_output_line is not None:
-                        for output_line in future_output_lines:
-                            emit_output_line(output_line)
-                        continue
+                    group_child_lines_by_name[str(target_run["name"])] = future_output_lines
 
-                    output_lines.extend(future_output_lines)
+        group_child_lines: list[str] = []
+        for target_run in target_group:
+            group_child_lines.extend(
+                group_child_lines_by_name.get(
+                    str(target_run["name"]),
+                    [],
+                )
+            )
 
-        group_success_line = format_test_group_success_message(group_label)
+        group_summary_lines = build_test_group_success_lines(
+            group_label,
+            group_child_lines,
+        )
         if emit_output_line is not None:
-            emit_output_line(group_success_line)
+            if active_parallel_labels:
+                output_lines.extend(group_summary_lines)
+                continue
+
+            for output_line in group_summary_lines:
+                emit_output_line(output_line)
             continue
 
-        output_lines.append(group_success_line)
+        output_lines.extend(group_summary_lines)
 
     return output_lines
 
@@ -1327,6 +1371,12 @@ def run_message_test_fixture(
             fixture_path,
             binds_path,
             config_dir / "public.pem")
+        wait_seconds = float(fixture.get("Wait", 0))
+
+        # Allow wrapped fixtures to pause before transport when a service
+        # needs time to settle between dependent integration steps.
+        if wait_seconds > 0:
+            time.sleep(wait_seconds)
 
         request, _ = parse_message_request(
             [json.dumps(fixture["Outbound"])])
