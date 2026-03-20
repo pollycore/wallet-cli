@@ -149,6 +149,62 @@ def test_normalize_parallel_test_status_message_pads_shorter_follow_up_lines():
     assert normalized.rstrip() == "✅ Passed: short"
 
 
+def test_build_parallel_test_status_message_renders_failed_rows_in_red(monkeypatch):
+    monkeypatch.setattr(test_feature.sys.stdout, "isatty", lambda: True)
+
+    message = test_feature.build_parallel_test_status_message(
+        [
+            ("", "✅ Passed: 03-first (10 ms, 50% latency)"),
+            ("", "❌ Failed: 03-second"),
+        ]
+    )
+
+    assert "✅ Passed: 03-first (10 ms, 50% latency)" in message
+    assert (
+        f"{test_feature.ERROR_STYLE}❌ Failed: 03-second{test_feature.ERROR_STYLE_RESET}"
+        in message
+    )
+
+
+def test_cmd_test_prints_parallel_failure_detail_after_settled_output(
+    monkeypatch, tmp_path, capsys
+):
+    test_path = tmp_path / "pw-tests"
+    test_path.mkdir()
+    failing_fixture = test_path / "03-fail.yaml"
+    failing_fixture.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    def raise_parallel_failure(*args, **kwargs):
+        error = cli.UserFacingError("HTTP 502 Bad Gateway.")
+        setattr(error, "parallel_failure_already_reported", True)
+        raise error
+
+    monkeypatch.setattr(test_feature, "run_test_target", raise_parallel_failure)
+
+    exit_code = test_feature.cmd_test(
+        str(test_path),
+        debug = False,
+        json_output = False,
+        config_dir = tmp_path / ".pollyweb",
+        binds_path = tmp_path / ".pollyweb" / "binds.yaml",
+        unsigned = False,
+        anonymous = False,
+        require_configured_keys = lambda: None,
+        load_signing_key_pair = lambda: object(),
+    )
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == ["Error: HTTP 502 Bad Gateway."]
+    assert captured.err == ""
+
+
 def test_test_loads_wrapped_fixture_and_verifies_inbound(
     monkeypatch, tmp_path, capsys
 ):

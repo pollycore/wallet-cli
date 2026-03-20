@@ -1,12 +1,12 @@
 # Task Plan
 
-- [x] Inspect the existing `pw test` timeout handling, docs, and worktree state before editing
-- [x] Add timeout-aware `pw test` failure reporting with elapsed/client timeout details
-- [x] Cover timeout reporting with targeted automated tests
-- [x] Update `pw test` docs and review notes for the new timeout output
+- [x] Inspect the parallel `pw test` result rendering path and current renderer behavior
+- [x] Keep parallel failure details from surfacing above the settled result list
+- [x] Render failed parallel fixture rows in red in the live/final status output
+- [x] Add targeted regression coverage and verify with the repo test environment
 
 # Review
 
-- Added timeout-aware `pw test` failure wording in [/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py](/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py) so timeout-shaped transport errors now report the configured client timeout, measured send duration, missing server timing, and any fixture `Wait` separately.
-- Updated wallet transport timing capture in [/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/transport.py](/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/transport.py) so failed sends populate timeout-related timing data the test command can explain.
-- Documented the new timeout behavior in [/Users/jorgemf/Git/wallet-cli/docs/commands/test.md](/Users/jorgemf/Git/wallet-cli/docs/commands/test.md) and added focused regression coverage in [/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py](/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py).
+- Updated [/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py](/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/features/test.py) so parallel `pw test` failures that already rendered a `❌ Failed:` row no longer bubble a generic CLI stderr error ahead of the settled list; the command now prints the detailed failure message after the parallel renderer closes, and failed live rows render red on interactive terminals.
+- Added focused regression coverage in [/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py](/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py) for red failed-row styling and for the command-level deferred parallel failure detail output.
+- Verified with `./.venv-tests/bin/python -m pytest tests/test_test_command.py -k "renders_failed_rows_in_red or cmd_test_prints_parallel_failure_detail_after_settled_output or parallel_folder_failure_reports_nested_fixture_path"` and `./.venv-tests/bin/python -m pytest tests/test_test_command.py -k "test_test_parallel_folder_failure_reports_nested_fixture_path or test_test_reports_http_failures_with_fixture_path or test_cmd_test_prints_parallel_failure_detail_after_settled_output"`.

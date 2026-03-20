@@ -12,6 +12,7 @@ from itertools import count
 from pathlib import Path
 import re
 import socket
+import sys
 from concurrent.futures import Future, ThreadPoolExecutor
 from threading import Event, Lock, Thread, current_thread
 import time
@@ -135,6 +136,8 @@ ACTIVE_PARALLEL_TEST_STATUS_COUNT: ContextVar[int] = ContextVar(
     "active_parallel_test_status_count",
     default = 0,
 )
+ERROR_STYLE = "\033[1;31m"
+ERROR_STYLE_RESET = "\033[0m"
 
 # ISO-8601 UTC timestamp ending in Z, matching the pollyweb Zulu timestamp format.
 _Z_TIMESTAMP_RE = re.compile(
@@ -176,6 +179,28 @@ def format_test_group_spinner_message(
     """Build the shared spinner label for one parallel test group."""
 
     return f"Testing message group: {group_name}"
+
+
+def format_parallel_test_error_message(
+    message: str
+) -> str:
+    """Render one test error line, with red ANSI styling on TTY stdout."""
+
+    rendered = f"Error: {message}"
+    if sys.stdout.isatty():
+        return f"{ERROR_STYLE}{rendered}{ERROR_STYLE_RESET}"
+    return rendered
+
+
+def format_parallel_test_status_label(
+    label: str
+) -> str:
+    """Apply user-facing styling to settled parallel status labels."""
+
+    if label.startswith("❌ Failed:") and sys.stdout.isatty():
+        return f"{ERROR_STYLE}{label}{ERROR_STYLE_RESET}"
+
+    return label
 
 
 @dataclass
@@ -550,7 +575,9 @@ def build_parallel_test_status_message(
 
         for child in node.children.values():
             if not _is_group_label(child.label):
-                lines.append(child.label)
+                lines.append(
+                    format_parallel_test_status_label(child.label)
+                )
             append_children(child)
 
     append_children(root)
@@ -1203,17 +1230,27 @@ def cmd_test(
 
     test_target_path = resolve_test_target_path(test_path)
 
-    run_test_target(
-        test_target_path,
-        debug = debug,
-        json_output = json_output,
-        config_dir = config_dir,
-        binds_path = binds_path,
-        unsigned = unsigned,
-        anonymous = anonymous,
-        require_configured_keys = require_configured_keys,
-        load_signing_key_pair = load_signing_key_pair,
-        emit_output_line = print)
+    try:
+        run_test_target(
+            test_target_path,
+            debug = debug,
+            json_output = json_output,
+            config_dir = config_dir,
+            binds_path = binds_path,
+            unsigned = unsigned,
+            anonymous = anonymous,
+            require_configured_keys = require_configured_keys,
+            load_signing_key_pair = load_signing_key_pair,
+            emit_output_line = print)
+    except UserFacingError as exc:
+        if getattr(exc, "parallel_failure_already_reported", False):
+            print(
+                format_parallel_test_error_message(
+                    str(exc)
+                )
+            )
+            return 1
+        raise
 
     return 0
 
