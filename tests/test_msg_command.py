@@ -591,6 +591,82 @@ def test_send_wallet_message_builds_request_at_shared_transport_boundary(monkeyp
     assert normalized_domain == "any-hoster.pollyweb.org"
     assert response_payload == '{"ok":true}'
 
+def test_send_wallet_message_uses_extended_default_transport_timeout(monkeypatch):
+    key_pair = cli.KeyPair()
+    observed: dict[str, float] = {}
+
+    class FakeResponse:
+        """Mimic a successful HTTPS response for transport timeout checks."""
+
+        status = 200
+        reason = "OK"
+        will_close = False
+
+        def __init__(self):
+            """Populate the minimal header mapping expected by transport."""
+
+            self.headers = {}
+
+        def read(self):
+            """Return a small JSON payload."""
+
+            return b'{"ok":true}'
+
+    class FakeConnection:
+        """Capture the request path while keeping transport logic intact."""
+
+        def request(
+            self,
+            method,
+            path,
+            *,
+            body,
+            headers
+        ):
+            """Accept the outgoing request without additional behavior."""
+
+        def getresponse(self):
+            """Return the mocked successful response."""
+
+            return FakeResponse()
+
+    def fake_get_connection(host, port, *, timeout):
+        """Record the timeout passed into the shared HTTPS pool."""
+
+        observed["timeout"] = timeout
+        return FakeConnection()
+
+    monkeypatch.setattr(
+        transport_tools.pollyweb_transport._HTTPS_CONNECTION_POOL,
+        "_get_connection",
+        fake_get_connection)
+    monkeypatch.setattr(
+        transport_tools.pollyweb_transport._HTTPS_CONNECTION_POOL,
+        "_drop_connection",
+        lambda host, port: None)
+    monkeypatch.setattr(
+        transport_tools.pollyweb_transport,
+        "post_json_bytes",
+        lambda url, body, *, timeout = transport_tools.DEFAULT_SEND_TIMEOUT_SECONDS: transport_tools.pollyweb_transport._HTTPS_CONNECTION_POOL.post(
+            url,
+            body,
+            timeout = timeout))
+    monkeypatch.setattr(
+        transport_tools.pollyweb_msg,
+        "post_json_bytes",
+        transport_tools.pollyweb_transport.post_json_bytes)
+
+    response_payload, _, _ = transport_tools.send_wallet_message(
+        domain = "any-hoster.dom",
+        subject = "Echo@Domain",
+        body = {"Ping": "pong"},
+        key_pair = key_pair,
+        transport_metadata = {},
+    )
+
+    assert observed["timeout"] == transport_tools.DEFAULT_SEND_TIMEOUT_SECONDS
+    assert response_payload == '{"ok":true}'
+
 def test_msg_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"

@@ -110,7 +110,7 @@ def bridge_pollyweb_transport_to_cli_urlopen(
         url: str,
         body: bytes,
         *,
-        timeout: float = 10.0
+        timeout: float = transport_tools.DEFAULT_SEND_TIMEOUT_SECONDS
     ) -> bytes:
         """Delegate PollyWeb transport sends through the CLI urlopen stub."""
 

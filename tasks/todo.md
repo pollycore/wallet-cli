@@ -1,4 +1,4 @@
-- [x] Inspect current DNS failure handling for wallet-backed sends
-- [x] Implement friendly missing-DNS error with external lookup link
-- [x] Add or update tests for pw test transport failures
+- [x] Inspect the shared wallet transport timeout used by `pw test`
+- [x] Increase the default wallet send timeout by 10x
+- [x] Add focused coverage for the shared transport timeout value
 - [x] Run focused pytest verification

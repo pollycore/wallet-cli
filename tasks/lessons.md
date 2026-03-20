@@ -1,5 +1,6 @@
 # Lessons
 
+- For wallet-backed sends, keep the shared transport timeout in a named constant and cover it at the HTTPS pool boundary, so `pw test` timeout changes are explicit and verified instead of hiding in a literal default.
 - For wallet-backed HTTP debug failures, if the server-side `error` string embeds a JSON inbound message, render that inbound message first in the `Inbound payload` section and keep the extracted concise `error` line after it so verification failures do not hide the returned payload.
 - For wallet-backed send commands, translate resolver `socket.gaierror` failures into `No DNS entry found for domain <domain>` and include an MXToolbox A-record lookup link for `pw.<domain>` so missing DNS records read like actionable domain issues instead of low-level transport crashes.
 - For default `pw test` directory sweeps, walk `./pw-tests` recursively with a deterministic sort so new YAML fixtures in nested feature folders run automatically without changing the command line.

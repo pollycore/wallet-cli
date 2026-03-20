@@ -29,6 +29,7 @@ from pollyweb_cli.tools.debug import (
 
 DEFAULT_SCHEMA = "pollyweb.org/MSG:1.0"
 DEFAULT_BINDS_PATH = Path.home() / ".pollyweb" / "binds.yaml"
+DEFAULT_SEND_TIMEOUT_SECONDS = 100.0
 
 
 def serialize_wallet_response(response: object) -> str:
@@ -315,7 +316,7 @@ def send_wallet_message(
         body: bytes,
         *,
         headers: dict[str, str] | None = None,
-        timeout: float = 10.0
+        timeout: float = DEFAULT_SEND_TIMEOUT_SECONDS
     ) -> bytes:
         """Mirror PollyWeb HTTPS transport while also collecting response metadata."""
 
