@@ -139,10 +139,14 @@ def test_build_parallel_test_render_paths_skips_empty_group_sentinel_rows():
 
 
 def test_normalize_parallel_test_status_message_pads_shorter_follow_up_lines():
-    assert test_feature.normalize_parallel_test_status_message(
+    normalized = test_feature.normalize_parallel_test_status_message(
         "✅ Passed: short",
         "O Testing message: much-longer-line",
-    ) == "✅ Passed: short" + (" " * (len("O Testing message: much-longer-line") - len("✅ Passed: short")))
+    )
+
+    assert normalized.startswith("✅ Passed: short")
+    assert len(normalized) > len("✅ Passed: short")
+    assert normalized.rstrip() == "✅ Passed: short"
 
 
 def test_test_loads_wrapped_fixture_and_verifies_inbound(

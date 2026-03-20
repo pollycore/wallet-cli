@@ -20,6 +20,7 @@ from typing import Any
 import uuid
 
 import yaml
+from rich.cells import cell_len
 from rich.live import Live
 
 from pollyweb_cli.errors import UserFacingError
@@ -191,7 +192,9 @@ def normalize_parallel_test_status_message(
     for index in range(total_lines):
         current_line = current_lines[index] if index < len(current_lines) else ""
         previous_line = previous_lines[index] if index < len(previous_lines) else ""
-        normalized_lines.append(current_line.ljust(max(len(current_line), len(previous_line))))
+        target_width = max(cell_len(current_line), cell_len(previous_line))
+        padding = max(0, target_width - cell_len(current_line))
+        normalized_lines.append(f"{current_line}{' ' * padding}")
 
     return "\n".join(normalized_lines)
 
