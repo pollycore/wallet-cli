@@ -886,6 +886,104 @@ def test_test_without_path_runs_nested_pw_tests_yaml_files_in_sorted_order(
     assert_passed_output(lines[2], "nested/deeper/c-third")
 
 
+def test_test_with_explicit_directory_runs_yaml_files_in_sorted_order(
+    monkeypatch, tmp_path, capsys
+):
+    fixtures_dir = tmp_path / "fixtures"
+    nested_dir = fixtures_dir / "nested"
+    deep_dir = nested_dir / "deeper"
+    observed_paths: list[str] = []
+
+    fixtures_dir.mkdir()
+    nested_dir.mkdir()
+    deep_dir.mkdir()
+    (fixtures_dir / "b-second.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+    (nested_dir / "a-first.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+    (deep_dir / "c-third.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    def fake_send_wallet_message(**kwargs):
+        observed_paths.append(kwargs["subject"])
+        return (
+            json.dumps({"Header": {"Subject": kwargs["subject"]}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    def fake_load_message_test_fixture(
+        path,
+        binds_path,
+        public_key_path
+    ):
+        return {
+            "Outbound": {
+                "To": "any-hoster.dom",
+                "Subject": path.relative_to(fixtures_dir).as_posix(),
+            }
+        }
+
+    monkeypatch.setattr(
+        test_feature,
+        "load_message_test_fixture",
+        fake_load_message_test_fixture)
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    exit_code = cli.main(["test", str(fixtures_dir)])
+
+    assert exit_code == 0
+    assert observed_paths == [
+        "b-second.yaml",
+        "nested/a-first.yaml",
+        "nested/deeper/c-third.yaml",
+    ]
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert len(lines) == 3
+    assert_passed_output(lines[0], "fixtures/b-second")
+    assert_passed_output(lines[1], "fixtures/nested/a-first")
+    assert_passed_output(lines[2], "fixtures/nested/deeper/c-third")
+
+
+def test_test_with_explicit_directory_reports_missing_yaml_fixtures(
+    monkeypatch, tmp_path, capsys
+):
+    fixtures_dir = tmp_path / "fixtures"
+
+    fixtures_dir.mkdir()
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+
+    exit_code = cli.main(["test", str(fixtures_dir)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert f"No YAML test fixtures were found in {fixtures_dir}." in captured.err
+
+
 def test_get_test_fixture_display_name_includes_nested_subfolders(monkeypatch, tmp_path):
     tests_dir = tmp_path / "pw-tests"
     nested_path = tests_dir / "nested" / "deeper" / "fixture.yaml"

@@ -697,7 +697,17 @@ def get_test_fixture_paths(
     """Resolve explicit or default `pw test` fixture paths."""
 
     if test_path is not None:
-        return [Path(test_path)]
+        fixture_path = Path(test_path)
+        if not fixture_path.is_dir():
+            return [fixture_path]
+
+        fixture_paths = sorted(fixture_path.rglob("*.yaml"))
+        if not fixture_paths:
+            raise UserFacingError(
+                f"No YAML test fixtures were found in {fixture_path}."
+            ) from None
+
+        return fixture_paths
 
     tests_dir = Path.cwd() / DEFAULT_TESTS_DIR
     if not tests_dir.exists():
