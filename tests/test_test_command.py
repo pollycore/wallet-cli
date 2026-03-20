@@ -241,7 +241,10 @@ def test_parallel_status_renderer_keeps_console_writes_off_worker_threads(
         time.sleep(0.01)
 
     assert lifecycle[0].startswith("enter:Testing messages in parallel")
-    assert any(entry.startswith("update:") for entry in lifecycle)
+    assert any(
+        "files 01-alpha/10-*" in entry and "files 01-beta/10-*" in entry
+        for entry in lifecycle
+    )
     assert lifecycle[-1] == "exit"
     assert status_thread_ids
     assert set(status_thread_ids).isdisjoint(worker_thread_ids)
