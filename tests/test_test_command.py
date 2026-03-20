@@ -1548,6 +1548,39 @@ def test_test_reports_inbound_error_details_for_http_failures(
     assert "Signature verification failed: Missing Selector" in captured.err
     assert f"❌ Failed: {test_path.stem}" in captured.out
 
+
+def test_transport_debug_http_error_payload_keeps_embedded_message_before_error():
+    """HTTP debug payloads should show an embedded inbound message first."""
+
+    payload = transport_tools.build_debug_http_error_payload(
+        json.dumps(
+            {
+                "error": (
+                    "Legacy proxy request failed with HTTP 401: "
+                    '{"Header":{"From":"any-graph.pollyweb.org","To":"client"},'
+                    '"Body":{"Status":"denied"},"error":"Signature verification failed: Missing Selector"}'
+                ),
+                "Code": 401,
+            }
+        )
+    )
+
+    assert payload == {
+        "Message": {
+            "Header": {
+                "From": "any-graph.pollyweb.org",
+                "To": "client",
+            },
+            "Body": {
+                "Status": "denied",
+            },
+            "error": "Signature verification failed: Missing Selector",
+        },
+        "Code": 401,
+        "error": "Signature verification failed: Missing Selector",
+    }
+
+
 def test_test_reports_dns_failures_without_http_code(
     monkeypatch, tmp_path, capsys
 ):

@@ -1,5 +1,6 @@
 # Lessons
 
+- For wallet-backed HTTP debug failures, if the server-side `error` string embeds a JSON inbound message, render that inbound message first in the `Inbound payload` section and keep the extracted concise `error` line after it so verification failures do not hide the returned payload.
 - For default `pw test` directory sweeps, walk `./pw-tests` recursively with a deterministic sort so new YAML fixtures in nested feature folders run automatically without changing the command line.
 - For `pw bind`, support wrapped synchronous PollyWeb response envelopes in addition to the legacy bare-token replies: when the server returns `{"Request": ..., "Response": {"Body": {"Bind": ...}}}`, extract the bind from the nested `Response.Body` payload before surfacing the old "missing bind token" error.
 - For `pw test`, treat wrapped `Response.Meta.TotalMs` as server time inside the round trip when calculating the concise success-line latency share, so the displayed percentage reflects the remaining transport time instead of the raw wall-clock send duration.

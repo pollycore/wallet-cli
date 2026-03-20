@@ -197,6 +197,67 @@ def build_wallet_sender(
     return wallet, normalized_domain
 
 
+def _extract_embedded_json_object(
+    value: str
+) -> object | None:
+    """Extract one embedded JSON object or array from a longer string."""
+
+    decoder = json.JSONDecoder()
+
+    for index, character in enumerate(value):
+        if character not in "[{":
+            continue
+
+        try:
+            parsed_value, _ = decoder.raw_decode(value[index:])
+        except json.JSONDecodeError:
+            continue
+
+        if isinstance(parsed_value, (dict, list)):
+            return parsed_value
+
+    return None
+
+
+def build_debug_http_error_payload(
+    error_body: str | None
+) -> object:
+    """Build the debug payload shown for one HTTP error response."""
+
+    if not isinstance(error_body, str) or not error_body.strip():
+        return {}
+
+    parsed_payload = parse_debug_payload(error_body)
+    if not isinstance(parsed_payload, dict):
+        return parsed_payload
+
+    error_value = parsed_payload.get("error")
+    if not isinstance(error_value, str) or not error_value.strip():
+        return parsed_payload
+
+    embedded_payload = _extract_embedded_json_object(error_value)
+    if not isinstance(embedded_payload, dict):
+        return parsed_payload
+
+    nested_error = embedded_payload.get("error")
+    if isinstance(nested_error, str) and nested_error.strip():
+        # Keep the server's returned message visible before the concise error
+        # line so debug runs can show the full inbound payload and the final
+        # extracted verification failure side by side.
+        debug_payload = {
+            "Message": embedded_payload,
+            **{
+                key: value
+                for key, value in parsed_payload.items()
+                if key != "error"
+            },
+            "error": nested_error,
+        }
+        return debug_payload
+
+    return parsed_payload
+
+
 def send_wallet_message(
     domain: str,
     subject: str,
@@ -351,7 +412,7 @@ def send_wallet_message(
                     debug_printer = print_debug_json_payload if debug_json else print_debug_payload
                     debug_printer(
                         "Inbound payload",
-                        parse_debug_payload(error_body))
+                        build_debug_http_error_payload(error_body))
                 except Exception:
                     pass
             raise

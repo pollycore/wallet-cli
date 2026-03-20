@@ -1,5 +1,16 @@
 # Task Plan
 
+- [x] Inspect the current `pw test` HTTP debug failure path and confirm why embedded inbound messages collapse to a single `error` line
+- [x] Update the shared wallet transport debug payload builder so embedded inbound JSON messages render before the extracted error line
+- [x] Add focused regression coverage and verify with the repo test interpreter
+
+# Review
+
+- Updated [/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/transport.py](/Users/jorgemf/Git/wallet-cli/python/pollyweb_cli/tools/transport.py) so wallet-backed HTTP debug failures now detect JSON messages embedded inside server-side `error` strings, render that inbound message first under `Inbound payload`, and then keep the concise extracted `error` line after it.
+- Added [/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py](/Users/jorgemf/Git/wallet-cli/tests/test_test_command.py) coverage for the proxied HTTP-failure shape where a nested inbound message is packed into the outer error string.
+- Updated [/Users/jorgemf/Git/wallet-cli/tasks/lessons.md](/Users/jorgemf/Git/wallet-cli/tasks/lessons.md) with the correction so future debug-output work preserves the inbound-message-first ordering.
+- Verified with `./.venv-tests/bin/python -m pytest -q tests/test_test_command.py` (`45 passed, 1 skipped`).
+
 - [x] Reproduce the remaining generic `pw bind` failure for DNS-unresolvable domains and confirm which exception escapes the bind error boundary
 - [x] Catch raw resolver exceptions from wallet transport in `pw bind` and reuse the human-readable inbox-host wording
 - [x] Add regression coverage and verify both pytest and the local `pw-dev bind` repro
