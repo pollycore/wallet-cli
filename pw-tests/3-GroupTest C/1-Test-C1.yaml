@@ -2,7 +2,7 @@
 # Purpose: checking if the domain inbox is working.
 # Note: don't change the content
 
-Wait: 3
+#Wait: 3
 
 Outbound:
   Header:
