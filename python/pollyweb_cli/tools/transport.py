@@ -30,6 +30,7 @@ from pollyweb_cli.tools.debug import (
 DEFAULT_SCHEMA = "pollyweb.org/MSG:1.0"
 DEFAULT_BINDS_PATH = Path.home() / ".pollyweb" / "binds.yaml"
 DEFAULT_SEND_TIMEOUT_SECONDS = 100.0
+PROXY_DOMAIN_SUBJECT = "Proxy@Domain"
 
 
 def serialize_wallet_response(response: object) -> str:
@@ -40,6 +41,79 @@ def serialize_wallet_response(response: object) -> str:
     if isinstance(response, dict):
         return json.dumps(response, separators=(",", ":"))
     return str(response)
+
+
+def rewrite_backend_validation_error(
+    message: str
+) -> str:
+    """Translate backend validation paths into the user's outbound payload shape."""
+
+    rewritten_message = message
+
+    for backend_path, user_path in (
+        ("Body.Message.Header", "Outbound.Body.Header"),
+        ("Body.Message.Body", "Outbound.Body.Body"),
+        ("Body.Message", "Outbound.Body"),
+    ):
+        rewritten_message = rewritten_message.replace(
+            backend_path,
+            user_path)
+
+    return rewritten_message
+
+
+def _sanitize_proxy_message_header(
+    body: dict[str, object]
+) -> dict[str, object]:
+    """Keep required proxied header fields and drop unsupported extras."""
+
+    nested_header = body.get("Header")
+    if not isinstance(nested_header, dict):
+        return body
+
+    normalized_to = nested_header.get("To")
+    if not isinstance(normalized_to, str) or not normalized_to.strip():
+        raise UserFacingError(
+            "Missing Outbound.Body.Header.To."
+        ) from None
+
+    normalized_subject = nested_header.get("Subject")
+    if not isinstance(normalized_subject, str) or not normalized_subject.strip():
+        raise UserFacingError(
+            "Missing Outbound.Body.Header.Subject."
+        ) from None
+
+    # The current broker contract routes proxied messages by `To` and
+    # `Subject`. Extra user-supplied header fields such as `From` should not
+    # make the request fail, so normalize the nested wire header down to the
+    # required keys before sending.
+    return {
+        **body,
+        "Header": {
+            "To": normalized_to,
+            "Subject": normalized_subject,
+        },
+    }
+
+
+def normalize_proxy_domain_body(
+    subject: str,
+    body: dict[str, object]
+) -> dict[str, object]:
+    """Normalize known `Proxy@Domain` nested-message shapes before transport."""
+
+    if subject != PROXY_DOMAIN_SUBJECT:
+        return body
+
+    normalized_body = _sanitize_proxy_message_header(body)
+    nested_message = normalized_body.get("Message")
+    if not isinstance(nested_message, dict):
+        return normalized_body
+
+    return {
+        **normalized_body,
+        "Message": _sanitize_proxy_message_header(nested_message),
+    }
 
 
 def build_debug_outbound_payload(
@@ -154,10 +228,13 @@ def build_wallet_request_message(
     """Build one PollyWeb request message for the shared wallet send path."""
 
     normalized_domain = normalize_domain_name(domain)
+    normalized_body = normalize_proxy_domain_body(
+        subject,
+        body)
     outbound_request: dict[str, object] = {
         "To": normalized_domain,
         "Subject": subject,
-        "Body": body,
+        "Body": normalized_body,
     }
 
     if schema_value is not None:
@@ -236,23 +313,30 @@ def build_debug_http_error_payload(
     if not isinstance(error_value, str) or not error_value.strip():
         return parsed_payload
 
+    parsed_payload["error"] = rewrite_backend_validation_error(error_value)
+
     embedded_payload = _extract_embedded_json_object(error_value)
     if not isinstance(embedded_payload, dict):
         return parsed_payload
 
     nested_error = embedded_payload.get("error")
     if isinstance(nested_error, str) and nested_error.strip():
+        rewritten_nested_error = rewrite_backend_validation_error(nested_error)
+
         # Keep the server's returned message visible before the concise error
         # line so debug runs can show the full inbound payload and the final
         # extracted verification failure side by side.
         debug_payload = {
-            "Message": embedded_payload,
+            "Message": {
+                **embedded_payload,
+                "error": rewritten_nested_error,
+            },
             **{
                 key: value
                 for key, value in parsed_payload.items()
                 if key != "error"
             },
-            "error": nested_error,
+            "error": rewritten_nested_error,
         }
         return debug_payload
 

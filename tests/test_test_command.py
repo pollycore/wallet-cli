@@ -2132,6 +2132,56 @@ def test_transport_debug_http_error_payload_keeps_embedded_message_before_error(
     }
 
 
+def test_transport_debug_http_error_payload_rewrites_backend_validation_path():
+    """Backend validation paths should match the user's outbound fixture shape."""
+
+    payload = transport_tools.build_debug_http_error_payload(
+        json.dumps(
+            {
+                "error": (
+                    "Outbound request failed: "
+                    "Body.Message.Header can only contain To and Subject, got From."
+                )
+            }
+        )
+    )
+
+    assert payload == {
+        "error": (
+            "Outbound request failed: "
+            "Outbound.Body.Header can only contain To and Subject, got From."
+        )
+    }
+
+
+def test_test_http_error_message_rewrites_backend_validation_path():
+    """Non-debug HTTP failures should also use the outbound fixture path."""
+
+    error = urllib.error.HTTPError(
+        url = "https://pw.any-broker.pollyweb.org/inbox",
+        code = 400,
+        msg = "Bad Request",
+        hdrs = {},
+        fp = None,
+    )
+    setattr(
+        error,
+        "pollyweb_error_body",
+        json.dumps(
+            {
+                "error": (
+                    "Body.Message.Header can only contain To and Subject, got From."
+                )
+            }
+        ),
+    )
+
+    assert test_feature.describe_http_test_error(error) == (
+        "HTTP 400 Bad Request. "
+        "Outbound.Body.Header can only contain To and Subject, got From."
+    )
+
+
 def test_test_reports_dns_failures_without_http_code(
     monkeypatch, tmp_path, capsys
 ):

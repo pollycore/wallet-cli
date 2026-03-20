@@ -591,6 +591,84 @@ def test_send_wallet_message_builds_request_at_shared_transport_boundary(monkeyp
     assert normalized_domain == "any-hoster.pollyweb.org"
     assert response_payload == '{"ok":true}'
 
+
+def test_send_wallet_message_sanitizes_extra_proxy_header_fields(monkeypatch):
+    key_pair = cli.KeyPair()
+    observed = {}
+
+    original_from_outbound = transport_tools.Msg.from_outbound
+
+    def wrapped_from_outbound(value):
+        observed["value"] = value
+        return original_from_outbound(value)
+
+    def fake_send(self):
+        return {"ok": True}
+
+    monkeypatch.setattr(transport_tools.Msg, "from_outbound", wrapped_from_outbound)
+    monkeypatch.setattr(transport_tools.Msg, "send", fake_send)
+
+    response_payload, request_message, normalized_domain = transport_tools.send_wallet_message(
+        domain = "any-broker.dom",
+        subject = "Proxy@Domain",
+        body = {
+            "Header": {
+                "From": "any-broker.dom",
+                "To": "any-notifier.dom",
+                "Subject": "Open@Notifier",
+            },
+            "Body": {
+                "Host": "another-domain.dom",
+            },
+        },
+        key_pair = key_pair,
+    )
+
+    assert observed["value"] == {
+        "To": "any-broker.pollyweb.org",
+        "Subject": "Proxy@Domain",
+        "Body": {
+            "Header": {
+                "To": "any-notifier.dom",
+                "Subject": "Open@Notifier",
+            },
+            "Body": {
+                "Host": "another-domain.dom",
+            },
+        },
+        "Schema": "pollyweb.org/MSG:1.0",
+    }
+    assert request_message.Body == {
+        "Header": {
+            "To": "any-notifier.dom",
+            "Subject": "Open@Notifier",
+        },
+        "Body": {
+            "Host": "another-domain.dom",
+        },
+    }
+    assert normalized_domain == "any-broker.pollyweb.org"
+    assert response_payload == '{"ok":true}'
+
+
+def test_send_wallet_message_requires_proxy_header_to(monkeypatch):
+    key_pair = cli.KeyPair()
+
+    with pytest.raises(cli.UserFacingError) as exc_info:
+        transport_tools.send_wallet_message(
+            domain = "any-broker.dom",
+            subject = "Proxy@Domain",
+            body = {
+                "Header": {
+                    "Subject": "Open@Notifier",
+                },
+                "Body": {},
+            },
+            key_pair = key_pair,
+        )
+
+    assert str(exc_info.value) == "Missing Outbound.Body.Header.To."
+
 def test_send_wallet_message_uses_extended_default_transport_timeout(monkeypatch):
     key_pair = cli.KeyPair()
     observed: dict[str, float] = {}

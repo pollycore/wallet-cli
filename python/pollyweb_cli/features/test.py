@@ -29,6 +29,7 @@ from pollyweb_cli.tools.debug import (
     parse_debug_payload,
 )
 from pollyweb_cli.tools.transport import send_wallet_message
+from pollyweb_cli.tools.transport import rewrite_backend_validation_error
 
 
 def describe_http_test_error(exc: urllib.error.HTTPError) -> str:
@@ -48,7 +49,10 @@ def describe_http_test_error(exc: urllib.error.HTTPError) -> str:
     if isinstance(parsed_body, dict):
         error_value = parsed_body.get("error")
         if isinstance(error_value, str) and error_value.strip():
-            return f"{message} {error_value}"
+            return (
+                f"{message} "
+                f"{rewrite_backend_validation_error(error_value)}"
+            )
 
     return message
 
