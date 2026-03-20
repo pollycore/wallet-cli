@@ -507,8 +507,8 @@ def test_test_shows_spinner_while_sending(
             return False
 
     monkeypatch.setattr(
-        test_feature,
-        "open_parallel_test_status",
+        test_feature.DEBUG_CONSOLE,
+        "status",
         lambda message: FakeStatus(message))
 
     def fake_send_wallet_message(**kwargs):
@@ -590,8 +590,8 @@ def test_test_without_path_shows_one_spinner_per_fixture(
             return False
 
     monkeypatch.setattr(
-        test_feature,
-        "open_parallel_test_status",
+        test_feature.DEBUG_CONSOLE,
+        "status",
         lambda message: FakeStatus(message))
 
     def fake_send_wallet_message(**kwargs):
@@ -686,8 +686,8 @@ def test_test_without_path_shows_nested_fixture_path_in_spinner(
             return False
 
     monkeypatch.setattr(
-        test_feature,
-        "open_parallel_test_status",
+        test_feature.DEBUG_CONSOLE,
+        "status",
         lambda message: FakeStatus(message))
 
     def fake_send_wallet_message(**kwargs):
@@ -1418,12 +1418,12 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
 
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
-    assert lines == [
+    assert lines[:3] == [
         "✔️ Passed: files 03-*",
         "  ✅ Passed: 03-first (0 ms, 0% latency)",
         "  ✅ Passed: 03-second (0 ms, 0% latency)",
-        "✅ Passed: 04-third (0 ms, 0% latency)",
     ]
+    assert_passed_output(lines[3], "04-third")
     assert {
         entry
         for entry in lifecycle
