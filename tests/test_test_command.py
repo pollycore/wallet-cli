@@ -984,6 +984,139 @@ def test_test_with_explicit_directory_reports_missing_yaml_fixtures(
     assert f"No YAML test fixtures were found in {fixtures_dir}." in captured.err
 
 
+def test_test_with_named_pw_tests_subdirectory_runs_nested_yaml_files(
+    monkeypatch, tmp_path, capsys
+):
+    tests_dir = tmp_path / "pw-tests"
+    fixtures_dir = tests_dir / "bla"
+    nested_dir = fixtures_dir / "nested"
+    observed_paths: list[str] = []
+
+    nested_dir.mkdir(parents = True)
+    (fixtures_dir / "b-second.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+    (nested_dir / "a-first.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    def fake_send_wallet_message(**kwargs):
+        observed_paths.append(kwargs["subject"])
+        return (
+            json.dumps({"Header": {"Subject": kwargs["subject"]}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    def fake_load_message_test_fixture(
+        path,
+        binds_path,
+        public_key_path
+    ):
+        return {
+            "Outbound": {
+                "To": "any-hoster.dom",
+                "Subject": path.relative_to(fixtures_dir).as_posix(),
+            }
+        }
+
+    monkeypatch.setattr(
+        test_feature,
+        "load_message_test_fixture",
+        fake_load_message_test_fixture)
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    exit_code = cli.main(["test", "bla"])
+
+    assert exit_code == 0
+    assert observed_paths == [
+        "b-second.yaml",
+        "nested/a-first.yaml",
+    ]
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert len(lines) == 2
+    assert_passed_output(lines[0], "bla/b-second")
+    assert_passed_output(lines[1], "bla/nested/a-first")
+
+
+def test_test_named_pw_tests_subdirectory_does_not_override_explicit_file(
+    monkeypatch, tmp_path, capsys
+):
+    tests_dir = tmp_path / "pw-tests"
+    fallback_dir = tests_dir / "bla"
+    explicit_file = tmp_path / "bla"
+    loaded_paths: list[Path] = []
+
+    fallback_dir.mkdir(parents = True)
+    (fallback_dir / "ignored.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: ignored\n"
+        ),
+        encoding = "utf-8")
+    explicit_file.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: explicit\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    def fake_load_message_test_fixture(
+        path,
+        binds_path,
+        public_key_path
+    ):
+        loaded_paths.append(path)
+        return {
+            "Outbound": {
+                "To": "any-hoster.dom",
+                "Subject": "explicit",
+            }
+        }
+
+    monkeypatch.setattr(
+        test_feature,
+        "load_message_test_fixture",
+        fake_load_message_test_fixture)
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        lambda **kwargs: (
+            json.dumps({"Header": {"Subject": kwargs["subject"]}}),
+            None,
+            "any-hoster.pollyweb.org",
+        ))
+
+    exit_code = cli.main(["test", "bla"])
+
+    assert exit_code == 0
+    assert loaded_paths == [Path("bla")]
+    captured = capsys.readouterr()
+    assert_passed_output(captured.out.strip(), "bla")
+
+
 def test_get_test_fixture_display_name_includes_nested_subfolders(monkeypatch, tmp_path):
     tests_dir = tmp_path / "pw-tests"
     nested_path = tests_dir / "nested" / "deeper" / "fixture.yaml"

@@ -1,11 +1,11 @@
 - [x] Inspect the `pw test` fixture path resolution flow
-- [x] Add coverage for explicit directory arguments to `pw test`
-- [x] Update `pw test` to run every YAML fixture inside an explicit directory path
+- [x] Add coverage for `pw test <name>` resolving `./pw-tests/<name>` directories
+- [x] Update `pw test` path resolution to treat bare names as `./pw-tests/<name>` when that fallback is a directory
 - [x] Run focused pytest verification
-- [x] Capture the folder-discovery lesson in `tasks/lessons.md`
+- [x] Capture the new path-resolution lesson in `tasks/lessons.md`
 
 ## Review
 
-- Implemented explicit directory support for `pw test` by reusing the same recursive sorted `*.yaml` discovery pattern as the default `./pw-tests` sweep.
-- Added focused tests for explicit directory recursion and the empty-directory user-facing error.
+- Added the `./pw-tests/<name>` directory fallback for bare `pw test <name>` arguments while keeping literal existing paths higher priority.
+- Added focused coverage for the named-subdirectory shortcut and the precedence rule when a same-named explicit file exists.
 - Verified with `./.venv-tests/bin/python -m pytest tests/test_test_command.py`.

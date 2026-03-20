@@ -696,18 +696,32 @@ def get_test_fixture_paths(
 ) -> list[Path]:
     """Resolve explicit or default `pw test` fixture paths."""
 
-    if test_path is not None:
-        fixture_path = Path(test_path)
-        if not fixture_path.is_dir():
-            return [fixture_path]
+    def collect_fixture_paths(
+        fixture_dir: Path
+    ) -> list[Path]:
+        """Collect YAML fixture paths from one directory."""
 
-        fixture_paths = sorted(fixture_path.rglob("*.yaml"))
+        fixture_paths = sorted(fixture_dir.rglob("*.yaml"))
         if not fixture_paths:
             raise UserFacingError(
-                f"No YAML test fixtures were found in {fixture_path}."
+                f"No YAML test fixtures were found in {fixture_dir}."
             ) from None
 
         return fixture_paths
+
+    if test_path is not None:
+        fixture_path = Path(test_path)
+        if fixture_path.exists():
+            if not fixture_path.is_dir():
+                return [fixture_path]
+
+            return collect_fixture_paths(fixture_path)
+
+        fallback_fixture_path = Path.cwd() / DEFAULT_TESTS_DIR / test_path
+        if fallback_fixture_path.is_dir():
+            return collect_fixture_paths(fallback_fixture_path)
+
+        return [fixture_path]
 
     tests_dir = Path.cwd() / DEFAULT_TESTS_DIR
     if not tests_dir.exists():
@@ -722,13 +736,7 @@ def get_test_fixture_paths(
 
     # Walk the default fixtures directory recursively so `pw test` picks up
     # wrapped YAML files grouped into nested folders as part of one sweep.
-    fixture_paths = sorted(tests_dir.rglob("*.yaml"))
-    if not fixture_paths:
-        raise UserFacingError(
-            f"No YAML test fixtures were found in {tests_dir}."
-        ) from None
-
-    return fixture_paths
+    return collect_fixture_paths(tests_dir)
 
 
 def run_message_test_fixture(
