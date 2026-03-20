@@ -1373,11 +1373,6 @@ def run_message_test_fixture(
             config_dir / "public.pem")
         wait_seconds = float(fixture.get("Wait", 0))
 
-        # Allow wrapped fixtures to pause before transport when a service
-        # needs time to settle between dependent integration steps.
-        if wait_seconds > 0:
-            time.sleep(wait_seconds)
-
         request, _ = parse_message_request(
             [json.dumps(fixture["Outbound"])])
 
@@ -1391,6 +1386,11 @@ def run_message_test_fixture(
             )
 
         with spinner_context as parallel_status_token:
+            # Keep the fixture spinner visible during any configured delay so
+            # users can see progress immediately, then send after the pause.
+            if wait_seconds > 0:
+                time.sleep(wait_seconds)
+
             response_payload, _, _ = send_wallet_message(
                 domain = str(request["To"]),
                 subject = str(request["Subject"]),

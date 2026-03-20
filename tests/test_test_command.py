@@ -2306,6 +2306,34 @@ def test_run_message_test_fixture_waits_before_sending(
 
     fixture_path = tmp_path / "test.yaml"
 
+    class FakeStatus:
+        """Capture the spinner lifecycle around one delayed fixture send."""
+
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the spinner message for later assertions."""
+
+            self.message = message
+
+        def __enter__(self):
+            """Record that the spinner starts before the configured wait."""
+
+            call_order.append(f"enter:{self.message}")
+            return None
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """Record that the spinner exits after the delayed send finishes."""
+
+            call_order.append(f"exit:{self.message}")
+            return False
+
     def fake_load_message_test_fixture(
         path,
         binds_path,
@@ -2337,6 +2365,11 @@ def test_run_message_test_fixture_waits_before_sending(
         "load_message_test_fixture",
         fake_load_message_test_fixture,
     )
+    monkeypatch.setattr(
+        test_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message),
+    )
     monkeypatch.setattr(test_feature.time, "sleep", fake_sleep)
     monkeypatch.setattr(
         test_feature,
@@ -2359,7 +2392,12 @@ def test_run_message_test_fixture_waits_before_sending(
 
     assert_passed_output(output, "test")
     assert sleep_calls == [1.25]
-    assert call_order == ["sleep", "send"]
+    assert call_order == [
+        "enter:Testing message: test",
+        "sleep",
+        "send",
+        "exit:Testing message: test",
+    ]
 
 
 def test_test_reports_missing_expected_inbound_key(
