@@ -5,15 +5,15 @@ from __future__ import annotations
 from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from concurrent.futures import as_completed
+from dataclasses import dataclass, field
 import json
 from datetime import datetime
-import os
+from itertools import count
 from pathlib import Path
 import re
 import socket
 from concurrent.futures import Future, ThreadPoolExecutor
-import subprocess
-import sys
+from threading import Lock
 import time
 import urllib.error
 from typing import Any
@@ -75,6 +75,10 @@ ACTIVE_TEST_SPINNER_COUNT: ContextVar[int] = ContextVar(
     "active_test_spinner_count",
     default = 0,
 )
+ACTIVE_PARALLEL_TEST_STATUS_COUNT: ContextVar[int] = ContextVar(
+    "active_parallel_test_status_count",
+    default = 0,
+)
 
 # ISO-8601 UTC timestamp ending in Z, matching the pollyweb Zulu timestamp format.
 _Z_TIMESTAMP_RE = re.compile(
@@ -116,6 +120,128 @@ def format_test_group_spinner_message(
     """Build the shared spinner label for one parallel test group."""
 
     return f"Testing message group: {group_name}"
+
+
+@dataclass
+class _ParallelStatusNode:
+    """Represent one branch in the hierarchical parallel test status view."""
+
+    label: str
+    children: dict[str, "_ParallelStatusNode"] = field(default_factory = dict)
+
+
+class ParallelTestStatusRenderer:
+    """Maintain one shared hierarchical Rich status for active parallel work."""
+
+    def __init__(self):
+        """Initialize the renderer state."""
+
+        self._lock = Lock()
+        self._active_paths: dict[int, tuple[str, ...]] = {}
+        self._status_context = None
+        self._status_handle = None
+        self._token_counter = count(1)
+
+    def push(
+        self,
+        path: tuple[str, ...]
+    ) -> int:
+        """Register one active hierarchical path and refresh the status."""
+
+        with self._lock:
+            token = next(self._token_counter)
+            self._active_paths[token] = path
+            self._refresh_locked()
+            return token
+
+    def pop(
+        self,
+        token: int
+    ) -> None:
+        """Remove one active hierarchical path and refresh the status."""
+
+        with self._lock:
+            self._active_paths.pop(token, None)
+            self._refresh_locked()
+
+    def _refresh_locked(self) -> None:
+        """Open, update, or close the shared Rich status."""
+
+        if not self._active_paths:
+            if self._status_context is not None:
+                self._status_context.__exit__(None, None, None)
+                self._status_context = None
+                self._status_handle = None
+            return
+
+        message = build_parallel_test_status_message(
+            list(self._active_paths.values())
+        )
+
+        if self._status_context is None:
+            self._status_context = DEBUG_CONSOLE.status(message)
+            self._status_handle = self._status_context.__enter__()
+            return
+
+        if hasattr(self._status_handle, "update"):
+            self._status_handle.update(message)
+
+
+PARALLEL_TEST_STATUS_RENDERER = ParallelTestStatusRenderer()
+
+
+def build_parallel_test_status_message(
+    active_paths: list[tuple[str, ...]]
+) -> str:
+    """Render the hierarchical status text for active parallel test work."""
+
+    root = _ParallelStatusNode(label = "Testing messages in parallel")
+
+    for path in active_paths:
+        current = root
+        for label in path:
+            current = current.children.setdefault(
+                label,
+                _ParallelStatusNode(label = label),
+            )
+
+    lines = [root.label]
+
+    def append_children(
+        node: _ParallelStatusNode,
+        *,
+        depth: int
+    ) -> None:
+        """Append one node subtree with indentation."""
+
+        for child in node.children.values():
+            lines.append(f"{'  ' * depth}{child.label}")
+            append_children(
+                child,
+                depth = depth + 1,
+            )
+
+    append_children(
+        root,
+        depth = 1,
+    )
+    return "\n".join(lines)
+
+
+@contextmanager
+def test_parallel_status(
+    *labels: str
+):
+    """Show one shared hierarchical status for active parallel test work."""
+
+    active_count = ACTIVE_PARALLEL_TEST_STATUS_COUNT.get()
+    token = ACTIVE_PARALLEL_TEST_STATUS_COUNT.set(active_count + 1)
+    status_token = PARALLEL_TEST_STATUS_RENDERER.push(tuple(labels))
+    try:
+        yield
+    finally:
+        PARALLEL_TEST_STATUS_RENDERER.pop(status_token)
+        ACTIVE_PARALLEL_TEST_STATUS_COUNT.reset(token)
 
 
 @contextmanager
@@ -748,7 +874,8 @@ def run_test_target(
     anonymous: bool,
     require_configured_keys,
     load_signing_key_pair,
-    emit_output_line = None
+    emit_output_line = None,
+    active_parallel_labels: tuple[str, ...] = (),
 ) -> list[str]:
     """Run one file or directory test target and return its output lines."""
 
@@ -765,13 +892,17 @@ def run_test_target(
                 unsigned = unsigned,
                 anonymous = anonymous,
                 require_configured_keys = require_configured_keys,
-                load_signing_key_pair = load_signing_key_pair)
+                load_signing_key_pair = load_signing_key_pair,
+                active_parallel_labels = active_parallel_labels,
+            )
             if emit_output_line is not None:
                 emit_output_line(output_line)
                 return []
             return [output_line]
-        except Exception:
+        except Exception as exc:
             print(f"❌ Failed: {fixture_name}")
+            setattr(exc, "parallel_failure_display_name", fixture_name)
+            setattr(exc, "parallel_failure_already_reported", True)
             raise
 
     target_runs = collect_test_target_runs(test_target_path)
@@ -793,24 +924,32 @@ def run_test_target(
                     anonymous = anonymous,
                     require_configured_keys = require_configured_keys,
                     load_signing_key_pair = load_signing_key_pair,
-                    emit_output_line = emit_output_line)
+                    emit_output_line = emit_output_line,
+                    active_parallel_labels = active_parallel_labels,
+                )
             )
             continue
 
-        with test_spinner_status(
-            format_test_group_spinner_message(
-                get_parallel_test_group_name(target_group))
+        group_label = get_parallel_test_spinner_group_name(target_group)
+        group_labels = (*active_parallel_labels, group_label)
+        with test_parallel_status(
+            *group_labels
         ):
             with ThreadPoolExecutor(max_workers = len(target_group)) as executor:
                 future_results: dict[Future[list[str]], dict[str, Path | str]] = {
                     executor.submit(
-                        run_message_test_fixture_subprocess,
+                        run_test_target,
                         target_run["path"],
-                        target_name = target_run["name"],
                         debug = debug,
                         json_output = json_output,
+                        config_dir = config_dir,
+                        binds_path = binds_path,
                         unsigned = unsigned,
                         anonymous = anonymous,
+                        require_configured_keys = require_configured_keys,
+                        load_signing_key_pair = load_signing_key_pair,
+                        emit_output_line = emit_output_line,
+                        active_parallel_labels = group_labels,
                     ): target_run
                     for target_run in target_group
                 }
@@ -819,8 +958,18 @@ def run_test_target(
                     target_run = future_results[future]
                     try:
                         future_output_lines = future.result()
-                    except Exception:
-                        print(f"❌ Failed: {target_run['name']}")
+                    except Exception as exc:
+                        failure_name = getattr(
+                            exc,
+                            "parallel_failure_display_name",
+                            target_run["name"],
+                        )
+                        if not getattr(
+                            exc,
+                            "parallel_failure_already_reported",
+                            False,
+                        ):
+                            print(f"❌ Failed: {failure_name}")
                         raise
 
                     if emit_output_line is not None:
@@ -831,77 +980,6 @@ def run_test_target(
                     output_lines.extend(future_output_lines)
 
     return output_lines
-
-
-def run_message_test_fixture_subprocess(
-    test_target_path: Path,
-    *,
-    target_name: str,
-    debug: bool,
-    json_output: bool,
-    unsigned: bool,
-    anonymous: bool
-) -> list[str]:
-    """Run one file or directory target in a child CLI process."""
-
-    command = [
-        sys.executable,
-        "-c",
-        (
-            "import sys; "
-            "from pollyweb_cli.cli import main_dev; "
-            "raise SystemExit(main_dev(sys.argv[1:]))"
-        ),
-        "test",
-        str(test_target_path),
-    ]
-
-    if debug:
-        command.append("--debug")
-
-    if json_output:
-        command.append("--json")
-
-    if unsigned:
-        command.append("--unsigned")
-
-    if anonymous:
-        command.append("--anonymous")
-
-    child_env = os.environ.copy()
-    child_env["POLLYWEB_CLI_SKIP_UPGRADE_CHECK"] = "1"
-
-    completed = subprocess.run(
-        command,
-        check = False,
-        capture_output = True,
-        text = True,
-        cwd = str(Path.cwd()),
-        env = child_env,
-    )
-
-    stdout_lines = [
-        line
-        for line in completed.stdout.splitlines()
-        if line.strip()
-    ]
-    stderr = completed.stderr.strip()
-
-    if completed.returncode != 0:
-        if stderr:
-            raise UserFacingError(stderr) from None
-
-        raise UserFacingError(
-            f"Parallel target {target_name} failed with exit code "
-            f"{completed.returncode}."
-        ) from None
-
-    if stdout_lines:
-        return stdout_lines
-
-    raise UserFacingError(
-        f"Parallel target {target_name} completed without output."
-    ) from None
 
 
 def collect_test_target_runs(
@@ -1045,6 +1123,24 @@ def get_parallel_test_group_name(
     return grouped_name.as_posix()
 
 
+def get_parallel_test_spinner_group_name(
+    target_group: list[dict[str, Path | str]]
+) -> str:
+    """Return the user-facing label shown for one active parallel group."""
+
+    target_paths = [
+        target_run["path"]
+        for target_run in target_group
+        if isinstance(target_run.get("path"), Path)
+    ]
+    group_name = get_parallel_test_group_name(target_group)
+
+    if target_paths and all(target_path.is_dir() for target_path in target_paths):
+        return f"folders {group_name}"
+
+    return f"files {group_name}"
+
+
 def get_test_fixture_paths(
     test_path: str | None
 ) -> list[Path]:
@@ -1068,7 +1164,8 @@ def run_message_test_fixture(
     unsigned: bool,
     anonymous: bool,
     require_configured_keys,
-    load_signing_key_pair
+    load_signing_key_pair,
+    active_parallel_labels: tuple[str, ...] = (),
 ) -> str:
     """Send one wrapped test fixture and verify its expected inbound response."""
 
@@ -1086,9 +1183,16 @@ def run_message_test_fixture(
         request, _ = parse_message_request(
             [json.dumps(fixture["Outbound"])])
 
-        with test_spinner_status(
+        spinner_context = test_spinner_status(
             format_test_spinner_message(fixture_name)
-        ):
+        )
+        if active_parallel_labels:
+            spinner_context = test_parallel_status(
+                *active_parallel_labels,
+                fixture_name,
+            )
+
+        with spinner_context:
             response_payload, _, _ = send_wallet_message(
                 domain = str(request["To"]),
                 subject = str(request["Subject"]),

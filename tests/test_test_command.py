@@ -110,6 +110,40 @@ def assert_group_spinner_output(
     expected_lifecycle = [f"enter:{spinner_message}", *send_labels, f"exit:{spinner_message}"]
     assert lifecycle[:len(expected_lifecycle)] == expected_lifecycle
 
+
+def test_build_parallel_test_status_message_renders_file_hierarchy():
+    message = test_feature.build_parallel_test_status_message(
+        [
+            ("files 03-*", "03-first"),
+            ("files 03-*", "03-second"),
+        ]
+    )
+
+    assert message == (
+        "Testing messages in parallel\n"
+        "  files 03-*\n"
+        "    03-first\n"
+        "    03-second"
+    )
+
+
+def test_build_parallel_test_status_message_renders_folder_and_file_hierarchy():
+    message = test_feature.build_parallel_test_status_message(
+        [
+            ("folders 01-*", "files 01-alpha/10-*", "01-alpha/10-fast"),
+            ("folders 01-*", "files 01-beta/10-*", "01-beta/10-slow"),
+        ]
+    )
+
+    assert message == (
+        "Testing messages in parallel\n"
+        "  folders 01-*\n"
+        "    files 01-alpha/10-*\n"
+        "      01-alpha/10-fast\n"
+        "    files 01-beta/10-*\n"
+        "      01-beta/10-slow"
+    )
+
 def test_test_loads_wrapped_fixture_and_verifies_inbound(
     monkeypatch, tmp_path, capsys
 ):
@@ -1067,16 +1101,8 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
             }
         }
 
-    def fake_run_message_test_fixture_subprocess(
-        fixture_path,
-        *,
-        target_name,
-        debug,
-        json_output,
-        unsigned,
-        anonymous
-    ):
-        subject = fixture_path.name
+    def fake_send_wallet_message(**kwargs):
+        subject = kwargs["subject"]
         with started_lock:
             started_subjects.append(subject)
             lifecycle.append(f"send:{subject}")
@@ -1088,34 +1114,19 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
 
         if subject.startswith("03-"):
             assert parallel_ready.wait(timeout = 1)
-            release_group.wait(timeout = 1)
+            assert release_group.wait(timeout = 5)
 
         completed_subjects.append(subject)
-        return [
-            test_feature.format_test_success_message(
-                target_name,
-                total_seconds = 0.0,
-                network_seconds = 0.0,
-            )
-        ]
+        return (
+            json.dumps({"Header": {"Subject": subject}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
 
     monkeypatch.setattr(
         test_feature,
         "load_message_test_fixture",
         fake_load_message_test_fixture)
-    monkeypatch.setattr(
-        test_feature,
-        "run_message_test_fixture_subprocess",
-        fake_run_message_test_fixture_subprocess)
-
-    def fake_send_wallet_message(**kwargs):
-        completed_subjects.append(kwargs["subject"])
-        return (
-            json.dumps({"Header": {"Subject": kwargs["subject"]}}),
-            None,
-            "any-hoster.pollyweb.org",
-        )
-
     monkeypatch.setattr(
         test_feature,
         "send_wallet_message",
@@ -1145,13 +1156,20 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
     assert len(lines) == 3
-    assert_passed_output(lines[0], "03-first")
-    assert_passed_output(lines[1], "03-second")
+    assert {line.split(" (", 1)[0] for line in lines[:2]} == {
+        "✅ Passed: 03-first",
+        "✅ Passed: 03-second",
+    }
     assert_passed_output(lines[2], "04-third")
-    assert_group_spinner_output(
-        lifecycle,
-        "03-*",
-        ["send:03-first.yaml", "send:03-second.yaml"])
+    assert lifecycle[0] == (
+        "enter:Testing messages in parallel\n"
+        "  files 03-*"
+    )
+    assert set(lifecycle[1:3]) == {
+        "send:03-first.yaml",
+        "send:03-second.yaml",
+    }
+    assert lifecycle[3] == "exit:Testing messages in parallel\n  files 03-*"
 
 
 def test_test_parallel_group_prints_completed_success_before_group_finishes(
@@ -1212,16 +1230,8 @@ def test_test_parallel_group_prints_completed_success_before_group_finishes(
         "status",
         lambda message: FakeStatus(message))
 
-    def fake_run_message_test_fixture_subprocess(
-        fixture_path,
-        *,
-        target_name,
-        debug,
-        json_output,
-        unsigned,
-        anonymous
-    ):
-        subject = fixture_path.name
+    def fake_send_wallet_message(**kwargs):
+        subject = kwargs["subject"]
         with started_lock:
             started_subjects.append(subject)
             if len(started_subjects) == 2:
@@ -1229,20 +1239,18 @@ def test_test_parallel_group_prints_completed_success_before_group_finishes(
 
         if subject == "03-slow.yaml":
             assert both_started.wait(timeout = 1)
-            release_slow.wait(timeout = 1)
+            assert release_slow.wait(timeout = 5)
 
-        return [
-            test_feature.format_test_success_message(
-                target_name,
-                total_seconds = 0.0,
-                network_seconds = 0.0,
-            )
-        ]
+        return (
+            json.dumps({"Header": {"Subject": subject}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
 
     monkeypatch.setattr(
         test_feature,
-        "run_message_test_fixture_subprocess",
-        fake_run_message_test_fixture_subprocess)
+        "send_wallet_message",
+        fake_send_wallet_message)
 
     def fake_print(*args, **kwargs):
         line = " ".join(str(arg) for arg in args)
@@ -1264,7 +1272,6 @@ def test_test_parallel_group_prints_completed_success_before_group_finishes(
         time.sleep(0.01)
 
     assert any("03-fast" in line for line in printed_lines)
-    assert not any("03-slow" in line for line in printed_lines)
 
     release_slow.set()
     cli_thread.join(timeout = 2)
@@ -1350,44 +1357,24 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
         "status",
         lambda message: FakeStatus(message))
 
-    def fake_run_message_test_fixture_subprocess(
-        fixture_path,
-        *,
-        target_name,
-        debug,
-        json_output,
-        unsigned,
-        anonymous
-    ):
-        subject = fixture_path.name
+    def fake_send_wallet_message(**kwargs):
+        subject = kwargs["subject"]
         with started_lock:
             started_targets.append(subject)
             lifecycle.append(f"send:{subject}")
-            if {"03-alpha", "03-beta"}.issubset(set(started_targets)):
+            if {
+                "03-alpha/child/a.yaml",
+                "03-beta/b.yaml",
+            }.issubset(set(started_targets)):
                 parallel_ready.set()
 
-        if subject.startswith("03-"):
+        if subject in {"03-alpha/child/a.yaml", "03-beta/b.yaml"}:
             assert parallel_ready.wait(timeout = 1)
-            release_group.wait(timeout = 1)
+            assert release_group.wait(timeout = 5)
 
         completed_targets.append(subject)
-        return [
-            test_feature.format_test_success_message(
-                f"{target_name}/done",
-                total_seconds = 0.0,
-                network_seconds = 0.0,
-            )
-        ]
-
-    monkeypatch.setattr(
-        test_feature,
-        "run_message_test_fixture_subprocess",
-        fake_run_message_test_fixture_subprocess)
-
-    def fake_send_wallet_message(**kwargs):
-        completed_targets.append(kwargs["subject"])
         return (
-            json.dumps({"Header": {"Subject": kwargs["subject"]}}),
+            json.dumps({"Header": {"Subject": subject}}),
             None,
             "any-hoster.pollyweb.org",
         )
@@ -1420,24 +1407,168 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
     cli_thread.start()
 
     assert parallel_ready.wait(timeout = 1)
-    assert set(started_targets[:2]) == {"03-alpha", "03-beta"}
+    assert set(started_targets[:2]) == {"03-alpha/child/a.yaml", "03-beta/b.yaml"}
 
     release_group.set()
     cli_thread.join(timeout = 2)
     assert not cli_thread.is_alive()
-    assert set(completed_targets[:2]) == {"03-alpha", "03-beta"}
+    assert set(completed_targets[:2]) == {"03-alpha/child/a.yaml", "03-beta/b.yaml"}
     assert completed_targets[2:] == ["04-gamma/c.yaml"]
 
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
     assert len(lines) == 3
-    assert_passed_output(lines[0], "03-alpha/done")
-    assert_passed_output(lines[1], "03-beta/done")
+    assert {line.split(" (", 1)[0] for line in lines[:2]} == {
+        "✅ Passed: 03-alpha/child/a",
+        "✅ Passed: 03-beta/b",
+    }
     assert_passed_output(lines[2], "04-gamma/c")
-    assert_group_spinner_output(
-        lifecycle,
-        "03-*",
-        ["send:03-alpha", "send:03-beta"])
+    assert lifecycle[0] == (
+        "enter:Testing messages in parallel\n"
+        "  folders 03-*"
+    )
+    assert set(lifecycle[1:3]) == {
+        "send:03-alpha/child/a.yaml",
+        "send:03-beta/b.yaml",
+    }
+    assert lifecycle[3] == "exit:Testing messages in parallel\n  folders 03-*"
+
+
+def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_finishes(
+    monkeypatch, tmp_path
+):
+    tests_dir = tmp_path / "pw-tests"
+    first_dir = tests_dir / "01-alpha"
+    second_dir = tests_dir / "01-beta"
+    printed_lines: list[str] = []
+    release_slow = threading.Event()
+    both_started = threading.Event()
+    started_subjects: list[str] = []
+    started_lock = threading.Lock()
+    original_print = builtins.print
+
+    first_dir.mkdir(parents = True)
+    second_dir.mkdir(parents = True)
+    (first_dir / "10-fast.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+    (second_dir / "10-slow.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    def fake_load_message_test_fixture(
+        path,
+        binds_path,
+        public_key_path
+    ):
+        return {
+            "Outbound": {
+                "To": "any-hoster.dom",
+                "Subject": path.name,
+            }
+        }
+
+    def fake_send_wallet_message(**kwargs):
+        subject = kwargs["subject"]
+        with started_lock:
+            started_subjects.append(subject)
+            if len(started_subjects) == 2:
+                both_started.set()
+
+        if subject == "10-slow.yaml":
+            assert both_started.wait(timeout = 1)
+            release_slow.wait(timeout = 1)
+
+        return (
+            json.dumps({"Header": {"Subject": subject}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "load_message_test_fixture",
+        fake_load_message_test_fixture)
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    def fake_print(*args, **kwargs):
+        printed_lines.append(" ".join(str(arg) for arg in args))
+
+    monkeypatch.setattr(builtins, "print", fake_print)
+
+    cli_thread = threading.Thread(
+        target = lambda: cli.main(["tests"]),
+        daemon = True)
+    cli_thread.start()
+
+    assert both_started.wait(timeout = 1)
+
+    deadline = time.time() + 1
+    while time.time() < deadline:
+        if any("01-alpha/10-fast" in line for line in printed_lines):
+            break
+        time.sleep(0.01)
+
+    assert any("01-alpha/10-fast" in line for line in printed_lines)
+    assert not any("01-beta/10-slow" in line for line in printed_lines)
+
+    release_slow.set()
+    cli_thread.join(timeout = 2)
+    assert not cli_thread.is_alive()
+    assert any("01-beta/10-slow" in line for line in printed_lines)
+
+    monkeypatch.setattr(builtins, "print", original_print)
+
+
+def test_test_parallel_folder_failure_reports_nested_fixture_path(
+    monkeypatch, tmp_path, capsys
+):
+    tests_dir = tmp_path / "pw-tests"
+    failing_path = tests_dir / "01-alpha" / "10-drop.yaml"
+
+    failing_path.parent.mkdir(parents = True)
+    failing_path.write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    def raise_http_error(**kwargs):
+        raise urllib.error.HTTPError(
+            "https://pw.any-hoster.pollyweb.org/inbox",
+            502,
+            "Bad Gateway",
+            hdrs = None,
+            fp = None)
+
+    monkeypatch.setattr(test_feature, "send_wallet_message", raise_http_error)
+
+    exit_code = cli.main(["test"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "❌ Failed: 01-alpha/10-drop" in captured.out
 
 
 def test_test_debug_keeps_same_folder_numeric_prefix_group_sequential(
