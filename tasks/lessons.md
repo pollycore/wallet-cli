@@ -1,6 +1,7 @@
 # Lessons
 
 - For non-debug `pw test` / `pw tests` fixture sweeps, keep discovery order deterministic but execute same-parent targets sharing a leading numeric prefix like `03-` in parallel as one batch; that applies to sibling YAML files as well as sibling subfolders, while final success lines should still print in sorted path order and `--debug` should stay sequential.
+- For the shared `pw test` parallel status renderer, treat resolved success and failure leaf rows as one-render snapshots: show them once in the tree, then retire them so the renderer thread can shut down cleanly before the next test batch starts.
 - For `pw test` parallel progress, keep the view hierarchical: render active folder groups, nested file groups, and leaf fixtures in one shared status tree so mixed folder-plus-file parallel runs stay understandable while pass lines still print immediately on completion.
 - For `pw test` hierarchical parallel progress, do not let worker threads call `DEBUG_CONSOLE.status(...)` or its handle methods directly; keep Rich status lifecycle and updates on one dedicated renderer thread, with workers only mutating shared progress state.
 - For `Proxy@Domain` outbound bodies, treat the nested proxied header as a routing envelope: require `Outbound.Body.Header.To` and `Outbound.Body.Header.Subject`, silently drop extra nested header fields such as `From` before transport, and rewrite backend validation paths like `Body.Message.Header` back to the user-authored `Outbound.Body.Header` shape in CLI errors.

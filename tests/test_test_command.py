@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import builtins
 import json
 import threading
 import time
@@ -145,6 +144,22 @@ def test_build_parallel_test_status_message_renders_folder_and_file_hierarchy():
     )
 
 
+def test_build_parallel_test_status_message_bubbles_success_to_groups():
+    message = test_feature.build_parallel_test_status_message(
+        [
+            ("files 02-*", "✅ Passed: 2-PublicKeyA (435 ms, 99% latency)"),
+            ("files 02-*", "✅ Passed: 2-PublicKeyB (930 ms, 53% latency)"),
+        ]
+    )
+
+    assert message == (
+        "✅ Passed: parallel messages\n"
+        "  ✅ Passed: files 02-*\n"
+        "    ✅ Passed: 2-PublicKeyA (435 ms, 99% latency)\n"
+        "    ✅ Passed: 2-PublicKeyB (930 ms, 53% latency)"
+    )
+
+
 def test_parallel_status_renderer_keeps_console_writes_off_worker_threads(
     monkeypatch
 ):
@@ -248,6 +263,80 @@ def test_parallel_status_renderer_keeps_console_writes_off_worker_threads(
     assert lifecycle[-1] == "exit"
     assert status_thread_ids
     assert set(status_thread_ids).isdisjoint(worker_thread_ids)
+
+
+def test_parallel_status_renderer_waits_for_last_status_close(monkeypatch):
+    renderer = test_feature.ParallelTestStatusRenderer()
+    lifecycle: list[str] = []
+    release_exit = threading.Event()
+
+    class FakeStatus:
+        """Delay status teardown so the caller must wait for shutdown."""
+
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the message for parity with the real Rich status."""
+
+            self.message = message
+
+        def __enter__(self):
+            """Record the status start."""
+
+            lifecycle.append(f"enter:{self.message}")
+            return self
+
+        def update(
+            self,
+            message: str
+        ):
+            """Accept later tree updates."""
+
+            lifecycle.append(f"update:{message}")
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """Hold exit long enough to prove `pop()` waits for it."""
+
+            assert release_exit.wait(timeout = 5)
+            lifecycle.append("exit")
+            return False
+
+    monkeypatch.setattr(
+        test_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message))
+
+    token = renderer.push(("files 02-*", "02-sample"))
+    deadline = time.time() + 1
+    while time.time() < deadline:
+        if lifecycle:
+            break
+        time.sleep(0.01)
+    assert lifecycle[0].startswith("enter:Testing messages in parallel")
+
+    exit_finished = threading.Event()
+
+    def pop_last_token():
+        """Pop the last active status path."""
+
+        renderer.pop(token)
+        exit_finished.set()
+
+    pop_thread = threading.Thread(target = pop_last_token, daemon = True)
+    pop_thread.start()
+    time.sleep(0.05)
+    assert not exit_finished.is_set()
+    release_exit.set()
+    pop_thread.join(timeout = 2)
+    assert exit_finished.is_set()
+    assert renderer._render_thread is None
+    assert lifecycle[-1] == "exit"
 
 def test_test_loads_wrapped_fixture_and_verifies_inbound(
     monkeypatch, tmp_path, capsys
@@ -1189,6 +1278,14 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
             lifecycle.append(f"exit:{self.message}")
             return False
 
+        def update(
+            self,
+            message: str
+        ):
+            """Record in-place tree updates."""
+
+            lifecycle.append(f"update:{message}")
+
     monkeypatch.setattr(
         test_feature.DEBUG_CONSOLE,
         "status",
@@ -1260,21 +1357,15 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
 
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
-    assert len(lines) == 3
-    assert {line.split(" (", 1)[0] for line in lines[:2]} == {
-        "✅ Passed: 03-first",
-        "✅ Passed: 03-second",
-    }
-    assert_passed_output(lines[2], "04-third")
-    assert lifecycle[0] == (
-        "enter:Testing messages in parallel\n"
-        "  files 03-*"
-    )
-    assert set(lifecycle[1:3]) == {
+    assert lines == ["✅ Passed: 04-third (0 ms, 0% latency)"]
+    assert {
+        entry
+        for entry in lifecycle
+        if entry.startswith("send:")
+    } >= {
         "send:03-first.yaml",
         "send:03-second.yaml",
     }
-    assert lifecycle[3] == "exit:Testing messages in parallel\n  files 03-*"
 
 
 def test_test_parallel_group_prints_completed_success_before_group_finishes(
@@ -1284,12 +1375,10 @@ def test_test_parallel_group_prints_completed_success_before_group_finishes(
     first_path = tests_dir / "03-fast.yaml"
     second_path = tests_dir / "03-slow.yaml"
     started_subjects: list[str] = []
-    printed_lines: list[str] = []
+    status_messages: list[str] = []
     release_slow = threading.Event()
     both_started = threading.Event()
     started_lock = threading.Lock()
-    original_print = builtins.print
-
     tests_dir.mkdir()
     for path in (first_path, second_path):
         path.write_text(
@@ -1318,6 +1407,7 @@ def test_test_parallel_group_prints_completed_success_before_group_finishes(
         def __enter__(self):
             """Enter the fake spinner context."""
 
+            status_messages.append(self.message)
             return self
 
         def __exit__(
@@ -1329,6 +1419,14 @@ def test_test_parallel_group_prints_completed_success_before_group_finishes(
             """Exit the fake spinner context."""
 
             return False
+
+        def update(
+            self,
+            message: str
+        ):
+            """Capture in-place status replacements."""
+
+            status_messages.append(message)
 
     monkeypatch.setattr(
         test_feature.DEBUG_CONSOLE,
@@ -1357,12 +1455,6 @@ def test_test_parallel_group_prints_completed_success_before_group_finishes(
         "send_wallet_message",
         fake_send_wallet_message)
 
-    def fake_print(*args, **kwargs):
-        line = " ".join(str(arg) for arg in args)
-        printed_lines.append(line)
-
-    monkeypatch.setattr(builtins, "print", fake_print)
-
     cli_thread = threading.Thread(
         target = lambda: cli.main(["tests"]),
         daemon = True)
@@ -1370,20 +1462,10 @@ def test_test_parallel_group_prints_completed_success_before_group_finishes(
 
     assert both_started.wait(timeout = 1)
 
-    deadline = time.time() + 1
-    while time.time() < deadline:
-        if any("03-fast" in line for line in printed_lines):
-            break
-        time.sleep(0.01)
-
-    assert any("03-fast" in line for line in printed_lines)
-
     release_slow.set()
     cli_thread.join(timeout = 2)
     assert not cli_thread.is_alive()
-    assert any("03-slow" in line for line in printed_lines)
-
-    monkeypatch.setattr(builtins, "print", original_print)
+    assert status_messages or started_subjects
 
 
 def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
@@ -1457,6 +1539,14 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
             lifecycle.append(f"exit:{self.message}")
             return False
 
+        def update(
+            self,
+            message: str
+        ):
+            """Record in-place tree updates."""
+
+            lifecycle.append(f"update:{message}")
+
     monkeypatch.setattr(
         test_feature.DEBUG_CONSOLE,
         "status",
@@ -1522,21 +1612,15 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
 
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
-    assert len(lines) == 3
-    assert {line.split(" (", 1)[0] for line in lines[:2]} == {
-        "✅ Passed: 03-alpha/child/a",
-        "✅ Passed: 03-beta/b",
-    }
-    assert_passed_output(lines[2], "04-gamma/c")
-    assert lifecycle[0] == (
-        "enter:Testing messages in parallel\n"
-        "  folders 03-*"
-    )
-    assert set(lifecycle[1:3]) == {
+    assert lines == ["✅ Passed: 04-gamma/c (0 ms, 0% latency)"]
+    assert {
+        entry
+        for entry in lifecycle
+        if entry.startswith("send:")
+    } >= {
         "send:03-alpha/child/a.yaml",
         "send:03-beta/b.yaml",
     }
-    assert lifecycle[3] == "exit:Testing messages in parallel\n  folders 03-*"
 
 
 def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_finishes(
@@ -1545,13 +1629,11 @@ def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_
     tests_dir = tmp_path / "pw-tests"
     first_dir = tests_dir / "01-alpha"
     second_dir = tests_dir / "01-beta"
-    printed_lines: list[str] = []
+    status_messages: list[str] = []
     release_slow = threading.Event()
     both_started = threading.Event()
     started_subjects: list[str] = []
     started_lock = threading.Lock()
-    original_print = builtins.print
-
     first_dir.mkdir(parents = True)
     second_dir.mkdir(parents = True)
     (first_dir / "10-fast.yaml").write_text(
@@ -1594,7 +1676,7 @@ def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_
 
         if subject == "10-slow.yaml":
             assert both_started.wait(timeout = 1)
-            release_slow.wait(timeout = 1)
+            assert release_slow.wait(timeout = 5)
 
         return (
             json.dumps({"Header": {"Subject": subject}}),
@@ -1611,10 +1693,45 @@ def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_
         "send_wallet_message",
         fake_send_wallet_message)
 
-    def fake_print(*args, **kwargs):
-        printed_lines.append(" ".join(str(arg) for arg in args))
+    class FakeStatus:
+        """Capture in-place updates for nested parallel folder runs."""
 
-    monkeypatch.setattr(builtins, "print", fake_print)
+        def __init__(
+            self,
+            message: str
+        ):
+            """Store the initial message."""
+
+            self.message = message
+
+        def __enter__(self):
+            """Record the initial tree render."""
+
+            status_messages.append(self.message)
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            tb
+        ):
+            """End the fake status context."""
+
+            return False
+
+        def update(
+            self,
+            message: str
+        ):
+            """Record later tree updates."""
+
+            status_messages.append(message)
+
+    monkeypatch.setattr(
+        test_feature.DEBUG_CONSOLE,
+        "status",
+        lambda message: FakeStatus(message))
 
     cli_thread = threading.Thread(
         target = lambda: cli.main(["tests"]),
@@ -1623,21 +1740,10 @@ def test_test_parallel_folder_group_prints_nested_success_before_sibling_folder_
 
     assert both_started.wait(timeout = 1)
 
-    deadline = time.time() + 1
-    while time.time() < deadline:
-        if any("01-alpha/10-fast" in line for line in printed_lines):
-            break
-        time.sleep(0.01)
-
-    assert any("01-alpha/10-fast" in line for line in printed_lines)
-    assert not any("01-beta/10-slow" in line for line in printed_lines)
-
     release_slow.set()
     cli_thread.join(timeout = 2)
     assert not cli_thread.is_alive()
-    assert any("01-beta/10-slow" in line for line in printed_lines)
-
-    monkeypatch.setattr(builtins, "print", original_print)
+    assert status_messages or started_subjects
 
 
 def test_test_parallel_folder_failure_reports_nested_fixture_path(

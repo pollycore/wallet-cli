@@ -138,8 +138,10 @@ class ParallelTestStatusRenderer:
 
         self._lock = Lock()
         self._active_paths: dict[int, tuple[str, ...]] = {}
+        self._resolved_paths: dict[int, tuple[str, ...]] = {}
         self._token_counter = count(1)
         self._change_event = Event()
+        self._render_started_event = Event()
         self._render_thread: Thread | None = None
 
     def push(
@@ -152,6 +154,7 @@ class ParallelTestStatusRenderer:
             token = next(self._token_counter)
             self._active_paths[token] = path
             if self._render_thread is None or not self._render_thread.is_alive():
+                self._render_started_event.clear()
                 self._render_thread = Thread(
                     target = self._run_render_loop,
                     name = "pw-test-status",
@@ -159,7 +162,8 @@ class ParallelTestStatusRenderer:
                 )
                 self._render_thread.start()
             self._change_event.set()
-            return token
+        self._render_started_event.wait(timeout = 0.2)
+        return token
 
     def pop(
         self,
@@ -167,8 +171,32 @@ class ParallelTestStatusRenderer:
     ) -> None:
         """Remove one active hierarchical path and refresh the status."""
 
+        render_thread: Thread | None = None
+
         with self._lock:
             self._active_paths.pop(token, None)
+            if token not in self._resolved_paths:
+                self._change_event.set()
+            if not self._active_paths:
+                render_thread = self._render_thread
+
+        if (
+            render_thread is not None
+            and render_thread.is_alive()
+            and render_thread is not current_thread()
+        ):
+            render_thread.join(timeout = 1)
+
+    def resolve(
+        self,
+        token: int,
+        path: tuple[str, ...]
+    ) -> None:
+        """Replace one active path with its final rendered result label."""
+
+        with self._lock:
+            self._active_paths.pop(token, None)
+            self._resolved_paths[token] = path
             self._change_event.set()
 
     def _run_render_loop(self) -> None:
@@ -182,19 +210,28 @@ class ParallelTestStatusRenderer:
             while True:
                 with self._lock:
                     active_paths = list(self._active_paths.values())
+                    resolved_paths = dict(self._resolved_paths)
 
-                if not active_paths:
+                if not active_paths and not resolved_paths:
                     break
 
-                message = build_parallel_test_status_message(active_paths)
+                message = build_parallel_test_status_message(
+                    [*active_paths, *resolved_paths.values()]
+                )
                 if message != last_message:
                     if status_context is None:
                         status_context = DEBUG_CONSOLE.status(message)
                         status_handle = status_context.__enter__()
+                        self._render_started_event.set()
                     elif hasattr(status_handle, "update"):
                         status_handle.update(message)
 
                     last_message = message
+
+                if resolved_paths:
+                    with self._lock:
+                        for token in resolved_paths:
+                            self._resolved_paths.pop(token, None)
 
                 self._change_event.wait(timeout = 0.05)
                 self._change_event.clear()
@@ -203,8 +240,10 @@ class ParallelTestStatusRenderer:
                 status_context.__exit__(None, None, None)
 
             with self._lock:
+                self._resolved_paths.clear()
                 if current_thread() is self._render_thread:
                     self._render_thread = None
+            self._render_started_event.set()
 
 
 PARALLEL_TEST_STATUS_RENDERER = ParallelTestStatusRenderer()
@@ -225,7 +264,55 @@ def build_parallel_test_status_message(
                 _ParallelStatusNode(label = label),
             )
 
-    lines = [root.label]
+    def node_status(
+        label: str
+    ) -> str | None:
+        """Return the terminal status prefix encoded in one label."""
+
+        if label.startswith("✅ Passed:"):
+            return "passed"
+        if label.startswith("❌ Failed:"):
+            return "failed"
+        return None
+
+    def summarize_node(
+        node: _ParallelStatusNode
+    ) -> tuple[str, str | None]:
+        """Return the rendered label and aggregate terminal status."""
+
+        child_summaries = [
+            summarize_node(child)
+            for child in node.children.values()
+        ]
+        child_statuses = [
+            status
+            for _, status in child_summaries
+            if status is not None
+        ]
+
+        own_status = node_status(node.label)
+        if own_status is not None:
+            return node.label, own_status
+
+        if node.label == "Testing messages in parallel":
+            if child_summaries and len(child_statuses) == len(child_summaries):
+                if all(status == "passed" for status in child_statuses):
+                    return "✅ Passed: parallel messages", "passed"
+
+                return "❌ Failed: parallel messages", "failed"
+
+            return node.label, None
+
+        if child_summaries and len(child_statuses) == len(child_summaries):
+            if all(status == "passed" for status in child_statuses):
+                return f"✅ Passed: {node.label}", "passed"
+
+            return f"❌ Failed: {node.label}", "failed"
+
+        return node.label, None
+
+    root_label, _ = summarize_node(root)
+    lines = [root_label]
 
     def append_children(
         node: _ParallelStatusNode,
@@ -235,7 +322,8 @@ def build_parallel_test_status_message(
         """Append one node subtree with indentation."""
 
         for child in node.children.values():
-            lines.append(f"{'  ' * depth}{child.label}")
+            child_label, _ = summarize_node(child)
+            lines.append(f"{'  ' * depth}{child_label}")
             append_children(
                 child,
                 depth = depth + 1,
@@ -258,7 +346,7 @@ def test_parallel_status(
     token = ACTIVE_PARALLEL_TEST_STATUS_COUNT.set(active_count + 1)
     status_token = PARALLEL_TEST_STATUS_RENDERER.push(tuple(labels))
     try:
-        yield
+        yield status_token
     finally:
         PARALLEL_TEST_STATUS_RENDERER.pop(status_token)
         ACTIVE_PARALLEL_TEST_STATUS_COUNT.reset(token)
@@ -916,13 +1004,24 @@ def run_test_target(
                 active_parallel_labels = active_parallel_labels,
             )
             if emit_output_line is not None:
+                if active_parallel_labels:
+                    return []
                 emit_output_line(output_line)
                 return []
             return [output_line]
         except Exception as exc:
-            print(f"❌ Failed: {fixture_name}")
+            if not getattr(exc, "parallel_failure_already_reported", False):
+                print(f"❌ Failed: {fixture_name}")
             setattr(exc, "parallel_failure_display_name", fixture_name)
-            setattr(exc, "parallel_failure_already_reported", True)
+            setattr(
+                exc,
+                "parallel_failure_already_reported",
+                active_parallel_labels or getattr(
+                    exc,
+                    "parallel_failure_already_reported",
+                    False,
+                ),
+            )
             raise
 
     target_runs = collect_test_target_runs(test_target_path)
@@ -1204,6 +1303,7 @@ def run_message_test_fixture(
 
     started_at = time.perf_counter()
     timing: dict[str, float] = {}
+    parallel_status_token: int | None = None
 
     try:
         require_configured_keys()
@@ -1225,7 +1325,7 @@ def run_message_test_fixture(
                 fixture_name,
             )
 
-        with spinner_context:
+        with spinner_context as parallel_status_token:
             response_payload, _, _ = send_wallet_message(
                 domain = str(request["To"]),
                 subject = str(request["Subject"]),
@@ -1240,6 +1340,11 @@ def run_message_test_fixture(
                 timing = timing,
             )
     except FileNotFoundError:
+        if parallel_status_token is not None:
+            PARALLEL_TEST_STATUS_RENDERER.resolve(
+                parallel_status_token,
+                (*active_parallel_labels, f"❌ Failed: {fixture_name}"),
+            )
         if fixture_path.suffix in {".yaml", ".yml", ".json"}:
             raise UserFacingError(
                 f"Test file not found: {fixture_path}"
@@ -1254,49 +1359,88 @@ def run_message_test_fixture(
             f"Missing PollyWeb keys in {config_dir}. Run `pw config` first."
         ) from None
     except urllib.error.HTTPError as exc:
-        raise UserFacingError(
+        if parallel_status_token is not None:
+            PARALLEL_TEST_STATUS_RENDERER.resolve(
+                parallel_status_token,
+                (*active_parallel_labels, f"❌ Failed: {fixture_name}"),
+            )
+        error = UserFacingError(
             describe_http_test_error(exc)
-        ) from None
+        )
+        if parallel_status_token is not None:
+            setattr(error, "parallel_failure_already_reported", True)
+        raise error from None
     except urllib.error.URLError as exc:
+        if parallel_status_token is not None:
+            PARALLEL_TEST_STATUS_RENDERER.resolve(
+                parallel_status_token,
+                (*active_parallel_labels, f"❌ Failed: {fixture_name}"),
+            )
         reason = describe_message_network_error(
             str(request["To"]),
             exc.reason)
-        raise UserFacingError(reason) from None
+        error = UserFacingError(reason)
+        if parallel_status_token is not None:
+            setattr(error, "parallel_failure_already_reported", True)
+        raise error from None
     except OSError as exc:
+        if parallel_status_token is not None:
+            PARALLEL_TEST_STATUS_RENDERER.resolve(
+                parallel_status_token,
+                (*active_parallel_labels, f"❌ Failed: {fixture_name}"),
+            )
         reason = describe_message_network_error(
             str(request["To"]),
             exc)
-        raise UserFacingError(reason) from None
+        error = UserFacingError(reason)
+        if parallel_status_token is not None:
+            setattr(error, "parallel_failure_already_reported", True)
+        raise error from None
 
-    actual_response = normalize_test_response(
-        response_payload,
-        fixture_name)
+    try:
+        actual_response = normalize_test_response(
+            response_payload,
+            fixture_name)
 
-    failure_message = extract_test_failure(
-        response_payload,
-        fixture_name)
-    if failure_message is not None:
-        raise UserFacingError(
-            failure_message
-        ) from None
+        failure_message = extract_test_failure(
+            response_payload,
+            fixture_name)
+        if failure_message is not None:
+            raise UserFacingError(
+                failure_message
+            ) from None
 
-    expected_inbound = fixture.get("Inbound")
-    if isinstance(expected_inbound, dict):
+        expected_inbound = fixture.get("Inbound")
+        if isinstance(expected_inbound, dict):
 
-        assert_expected_subset(
-            actual_response,
-            expected_inbound,
-            "response")
+            assert_expected_subset(
+                actual_response,
+                expected_inbound,
+                "response")
 
-    total_seconds = time.perf_counter() - started_at
-    total_seconds = extract_test_total_seconds(
-        response_payload,
-        measured_total_seconds = total_seconds)
-    network_seconds = extract_test_latency_seconds(
-        response_payload,
-        total_seconds = total_seconds,
-        network_seconds = timing.get("network_seconds", 0.0))
-    return format_test_success_message(
-        fixture_name,
-        total_seconds = total_seconds,
-        network_seconds = network_seconds)
+        total_seconds = time.perf_counter() - started_at
+        total_seconds = extract_test_total_seconds(
+            response_payload,
+            measured_total_seconds = total_seconds)
+        network_seconds = extract_test_latency_seconds(
+            response_payload,
+            total_seconds = total_seconds,
+            network_seconds = timing.get("network_seconds", 0.0))
+        output_line = format_test_success_message(
+            fixture_name,
+            total_seconds = total_seconds,
+            network_seconds = network_seconds)
+        if parallel_status_token is not None:
+            PARALLEL_TEST_STATUS_RENDERER.resolve(
+                parallel_status_token,
+                (*active_parallel_labels, output_line),
+            )
+        return output_line
+    except Exception as exc:
+        if parallel_status_token is not None:
+            PARALLEL_TEST_STATUS_RENDERER.resolve(
+                parallel_status_token,
+                (*active_parallel_labels, f"❌ Failed: {fixture_name}"),
+            )
+            setattr(exc, "parallel_failure_already_reported", True)
+        raise
