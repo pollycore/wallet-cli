@@ -1023,7 +1023,7 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
     def fake_run_message_test_fixture_subprocess(
         fixture_path,
         *,
-        fixture_name,
+        target_name,
         debug,
         json_output,
         unsigned,
@@ -1043,11 +1043,13 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
             release_group.wait(timeout = 1)
 
         completed_subjects.append(subject)
-        return test_feature.format_test_success_message(
-            fixture_name,
-            total_seconds = 0.0,
-            network_seconds = 0.0,
-        )
+        return [
+            test_feature.format_test_success_message(
+                target_name,
+                total_seconds = 0.0,
+                network_seconds = 0.0,
+            )
+        ]
 
     monkeypatch.setattr(
         test_feature,
@@ -1098,6 +1100,133 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
     assert_passed_output(lines[0], "03-first")
     assert_passed_output(lines[1], "03-second")
     assert_passed_output(lines[2], "04-third")
+
+
+def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
+    monkeypatch, tmp_path, capsys
+):
+    tests_dir = tmp_path / "pw-tests"
+    first_dir = tests_dir / "03-alpha"
+    second_dir = tests_dir / "03-beta"
+    third_dir = tests_dir / "04-gamma"
+    started_targets: list[str] = []
+    completed_targets: list[str] = []
+    release_group = threading.Event()
+    parallel_ready = threading.Event()
+    started_lock = threading.Lock()
+
+    (first_dir / "child").mkdir(parents = True)
+    second_dir.mkdir(parents = True)
+    third_dir.mkdir(parents = True)
+    (first_dir / "child" / "a.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+    (second_dir / "b.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+    (third_dir / "c.yaml").write_text(
+        (
+            "Outbound:\n"
+            "  To: any-hoster.dom\n"
+            "  Subject: Echo@Domain\n"
+        ),
+        encoding = "utf-8")
+
+    monkeypatch.setattr(cli, "require_configured_keys", lambda: None)
+    monkeypatch.setattr(cli, "load_signing_key_pair", lambda: object())
+    monkeypatch.chdir(tmp_path)
+
+    def fake_run_message_test_fixture_subprocess(
+        fixture_path,
+        *,
+        target_name,
+        debug,
+        json_output,
+        unsigned,
+        anonymous
+    ):
+        subject = fixture_path.name
+        with started_lock:
+            started_targets.append(subject)
+            if {"03-alpha", "03-beta"}.issubset(set(started_targets)):
+                parallel_ready.set()
+
+        if subject.startswith("03-"):
+            assert parallel_ready.wait(timeout = 1)
+            release_group.wait(timeout = 1)
+
+        completed_targets.append(subject)
+        return [
+            test_feature.format_test_success_message(
+                f"{target_name}/done",
+                total_seconds = 0.0,
+                network_seconds = 0.0,
+            )
+        ]
+
+    monkeypatch.setattr(
+        test_feature,
+        "run_message_test_fixture_subprocess",
+        fake_run_message_test_fixture_subprocess)
+
+    def fake_send_wallet_message(**kwargs):
+        completed_targets.append(kwargs["subject"])
+        return (
+            json.dumps({"Header": {"Subject": kwargs["subject"]}}),
+            None,
+            "any-hoster.pollyweb.org",
+        )
+
+    monkeypatch.setattr(
+        test_feature,
+        "send_wallet_message",
+        fake_send_wallet_message)
+
+    def fake_load_message_test_fixture(
+        path,
+        binds_path,
+        public_key_path
+    ):
+        return {
+            "Outbound": {
+                "To": "any-hoster.dom",
+                "Subject": path.relative_to(tests_dir).as_posix(),
+            }
+        }
+
+    monkeypatch.setattr(
+        test_feature,
+        "load_message_test_fixture",
+        fake_load_message_test_fixture)
+
+    cli_thread = threading.Thread(
+        target = lambda: cli.main(["tests"]),
+        daemon = True)
+    cli_thread.start()
+
+    assert parallel_ready.wait(timeout = 1)
+    assert set(started_targets[:2]) == {"03-alpha", "03-beta"}
+
+    release_group.set()
+    cli_thread.join(timeout = 2)
+    assert not cli_thread.is_alive()
+    assert set(completed_targets[:2]) == {"03-alpha", "03-beta"}
+    assert completed_targets[2:] == ["04-gamma/c.yaml"]
+
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert len(lines) == 3
+    assert_passed_output(lines[0], "03-alpha/done")
+    assert_passed_output(lines[1], "03-beta/done")
+    assert_passed_output(lines[2], "04-gamma/c")
 
 
 def test_test_debug_keeps_same_folder_numeric_prefix_group_sequential(

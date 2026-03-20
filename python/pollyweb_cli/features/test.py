@@ -685,77 +685,116 @@ def cmd_test(
 ) -> int:
     """Send one or more wrapped test fixtures and verify expected responses."""
 
-    fixture_paths = get_test_fixture_paths(test_path)
+    test_target_path = resolve_test_target_path(test_path)
 
-    fixture_runs = [
-        {
-            "path": fixture_path,
-            "name": get_test_fixture_display_name(fixture_path),
-        }
-        for fixture_path in fixture_paths
-    ]
+    for output_line in run_test_target(
+        test_target_path,
+        debug = debug,
+        json_output = json_output,
+        config_dir = config_dir,
+        binds_path = binds_path,
+        unsigned = unsigned,
+        anonymous = anonymous,
+        require_configured_keys = require_configured_keys,
+        load_signing_key_pair = load_signing_key_pair):
+        print(output_line)
 
-    for fixture_group in group_parallel_test_fixtures(
-        fixture_runs,
+    return 0
+
+
+def run_test_target(
+    test_target_path: Path,
+    *,
+    debug: bool,
+    json_output: bool,
+    config_dir: Path,
+    binds_path: Path,
+    unsigned: bool,
+    anonymous: bool,
+    require_configured_keys,
+    load_signing_key_pair
+) -> list[str]:
+    """Run one file or directory test target and return its output lines."""
+
+    if not test_target_path.is_dir():
+        fixture_name = get_test_fixture_display_name(test_target_path)
+        try:
+            return [
+                run_message_test_fixture(
+                    test_target_path,
+                    fixture_name = fixture_name,
+                    debug = debug,
+                    json_output = json_output,
+                    config_dir = config_dir,
+                    binds_path = binds_path,
+                    unsigned = unsigned,
+                    anonymous = anonymous,
+                    require_configured_keys = require_configured_keys,
+                    load_signing_key_pair = load_signing_key_pair)
+            ]
+        except Exception:
+            print(f"❌ Failed: {fixture_name}")
+            raise
+
+    target_runs = collect_test_target_runs(test_target_path)
+    output_lines: list[str] = []
+
+    for target_group in group_parallel_test_targets(
+        target_runs,
         debug = debug):
-        if len(fixture_group) == 1:
-            fixture_run = fixture_group[0]
-            try:
-                print(
-                    run_message_test_fixture(
-                        fixture_run["path"],
-                        fixture_name = fixture_run["name"],
-                        debug = debug,
-                        json_output = json_output,
-                        config_dir = config_dir,
-                        binds_path = binds_path,
-                        unsigned = unsigned,
-                        anonymous = anonymous,
-                        require_configured_keys = require_configured_keys,
-                        load_signing_key_pair = load_signing_key_pair)
-                )
-            except Exception:
-                print(f"❌ Failed: {fixture_run['name']}")
-                raise
+        if len(target_group) == 1:
+            target_run = target_group[0]
+            output_lines.extend(
+                run_test_target(
+                    target_run["path"],
+                    debug = debug,
+                    json_output = json_output,
+                    config_dir = config_dir,
+                    binds_path = binds_path,
+                    unsigned = unsigned,
+                    anonymous = anonymous,
+                    require_configured_keys = require_configured_keys,
+                    load_signing_key_pair = load_signing_key_pair)
+            )
             continue
 
-        with ThreadPoolExecutor(max_workers = len(fixture_group)) as executor:
+        with ThreadPoolExecutor(max_workers = len(target_group)) as executor:
             future_results = [
                 (
-                    fixture_run,
+                    target_run,
                     executor.submit(
                         run_message_test_fixture_subprocess,
-                        fixture_run["path"],
-                        fixture_name = fixture_run["name"],
+                        target_run["path"],
+                        target_name = target_run["name"],
                         debug = debug,
                         json_output = json_output,
                         unsigned = unsigned,
                         anonymous = anonymous,
                     ),
                 )
-                for fixture_run in fixture_group
+                for target_run in target_group
             ]
 
-            for fixture_run, future in future_results:
+            for target_run, future in future_results:
                 try:
-                    print(future.result())
+                    output_lines.extend(future.result())
                 except Exception:
-                    print(f"❌ Failed: {fixture_run['name']}")
+                    print(f"❌ Failed: {target_run['name']}")
                     raise
 
-    return 0
+    return output_lines
 
 
 def run_message_test_fixture_subprocess(
-    fixture_path: Path,
+    test_target_path: Path,
     *,
-    fixture_name: str,
+    target_name: str,
     debug: bool,
     json_output: bool,
     unsigned: bool,
     anonymous: bool
-) -> str:
-    """Run one fixture in a child CLI process to isolate transport state."""
+) -> list[str]:
+    """Run one file or directory target in a child CLI process."""
 
     command = [
         sys.executable,
@@ -766,7 +805,7 @@ def run_message_test_fixture_subprocess(
             "raise SystemExit(main_dev(sys.argv[1:]))"
         ),
         "test",
-        str(fixture_path),
+        str(test_target_path),
     ]
 
     if debug:
@@ -793,7 +832,11 @@ def run_message_test_fixture_subprocess(
         env = child_env,
     )
 
-    stdout = completed.stdout.strip()
+    stdout_lines = [
+        line
+        for line in completed.stdout.splitlines()
+        if line.strip()
+    ]
     stderr = completed.stderr.strip()
 
     if completed.returncode != 0:
@@ -801,36 +844,108 @@ def run_message_test_fixture_subprocess(
             raise UserFacingError(stderr) from None
 
         raise UserFacingError(
-            f"Parallel fixture {fixture_name} failed with exit code "
+            f"Parallel target {target_name} failed with exit code "
             f"{completed.returncode}."
         ) from None
 
-    if stdout:
-        return stdout
+    if stdout_lines:
+        return stdout_lines
 
     raise UserFacingError(
-        f"Parallel fixture {fixture_name} completed without output."
+        f"Parallel target {target_name} completed without output."
     ) from None
 
 
-def group_parallel_test_fixtures(
-    fixture_runs: list[dict[str, Any]],
+def collect_test_target_runs(
+    target_dir: Path
+) -> list[dict[str, Path | str]]:
+    """Collect one directory's immediate runnable test targets."""
+
+    target_runs: list[dict[str, Path | str]] = []
+
+    for child_path in sorted(target_dir.iterdir()):
+        if child_path.is_file() and child_path.suffix == ".yaml":
+            target_runs.append(
+                {
+                    "path": child_path,
+                    "name": get_test_fixture_display_name(child_path),
+                }
+            )
+            continue
+
+        if child_path.is_dir() and directory_contains_yaml_fixtures(child_path):
+            target_runs.append(
+                {
+                    "path": child_path,
+                    "name": get_test_fixture_display_name(child_path),
+                }
+            )
+
+    if target_runs:
+        return target_runs
+
+    raise UserFacingError(
+        f"No YAML test fixtures were found in {target_dir}."
+    ) from None
+
+
+def directory_contains_yaml_fixtures(
+    target_dir: Path
+) -> bool:
+    """Return whether one directory contains any YAML fixtures recursively."""
+
+    return any(target_dir.rglob("*.yaml"))
+
+
+def resolve_test_target_path(
+    test_path: str | None
+) -> Path:
+    """Resolve the explicit or default `pw test` target path."""
+
+    if test_path is not None:
+        fixture_path = Path(test_path)
+        if fixture_path.exists():
+            return fixture_path
+
+        fallback_fixture_path = Path.cwd() / DEFAULT_TESTS_DIR / test_path
+        if fallback_fixture_path.is_dir():
+            return fallback_fixture_path
+
+        return fixture_path
+
+    tests_dir = Path.cwd() / DEFAULT_TESTS_DIR
+    if not tests_dir.exists():
+        raise UserFacingError(
+            f"No test path was provided and {tests_dir} does not exist."
+        ) from None
+
+    if not tests_dir.is_dir():
+        raise UserFacingError(
+            f"No test path was provided and {tests_dir} is not a directory."
+        ) from None
+
+    return tests_dir
+
+
+def group_parallel_test_targets(
+    target_runs: list[dict[str, Path | str]],
     *,
     debug: bool
-) -> list[list[dict[str, Any]]]:
-    """Group batch fixtures that can share one parallel execution wave."""
+) -> list[list[dict[str, Path | str]]]:
+    """Group sibling test targets that can share one parallel execution wave."""
 
     if debug:
-        return [[fixture_run] for fixture_run in fixture_runs]
+        return [[target_run] for target_run in target_runs]
 
-    grouped_runs: list[list[dict[str, Any]]] = []
-    current_group: list[dict[str, Any]] = []
+    grouped_runs: list[list[dict[str, Path | str]]] = []
+    current_group: list[dict[str, Path | str]] = []
     current_parent: Path | None = None
     current_prefix: str | None = None
 
-    for fixture_run in fixture_runs:
-        fixture_path = fixture_run["path"]
-        match = PARALLEL_FIXTURE_PREFIX_PATTERN.match(fixture_path.name)
+    for target_run in target_runs:
+        target_path = target_run["path"]
+        assert isinstance(target_path, Path)
+        match = PARALLEL_FIXTURE_PREFIX_PATTERN.match(target_path.name)
         prefix = match.group(1) if match is not None else None
 
         if prefix is None:
@@ -840,22 +955,22 @@ def group_parallel_test_fixtures(
                 current_parent = None
                 current_prefix = None
 
-            grouped_runs.append([fixture_run])
+            grouped_runs.append([target_run])
             continue
 
         if (
             current_group
-            and fixture_path.parent == current_parent
+            and target_path.parent == current_parent
             and prefix == current_prefix
         ):
-            current_group.append(fixture_run)
+            current_group.append(target_run)
             continue
 
         if current_group:
             grouped_runs.append(current_group)
 
-        current_group = [fixture_run]
-        current_parent = fixture_path.parent
+        current_group = [target_run]
+        current_parent = target_path.parent
         current_prefix = prefix
 
     if current_group:
@@ -869,47 +984,11 @@ def get_test_fixture_paths(
 ) -> list[Path]:
     """Resolve explicit or default `pw test` fixture paths."""
 
-    def collect_fixture_paths(
-        fixture_dir: Path
-    ) -> list[Path]:
-        """Collect YAML fixture paths from one directory."""
+    test_target_path = resolve_test_target_path(test_path)
+    if not test_target_path.is_dir():
+        return [test_target_path]
 
-        fixture_paths = sorted(fixture_dir.rglob("*.yaml"))
-        if not fixture_paths:
-            raise UserFacingError(
-                f"No YAML test fixtures were found in {fixture_dir}."
-            ) from None
-
-        return fixture_paths
-
-    if test_path is not None:
-        fixture_path = Path(test_path)
-        if fixture_path.exists():
-            if not fixture_path.is_dir():
-                return [fixture_path]
-
-            return collect_fixture_paths(fixture_path)
-
-        fallback_fixture_path = Path.cwd() / DEFAULT_TESTS_DIR / test_path
-        if fallback_fixture_path.is_dir():
-            return collect_fixture_paths(fallback_fixture_path)
-
-        return [fixture_path]
-
-    tests_dir = Path.cwd() / DEFAULT_TESTS_DIR
-    if not tests_dir.exists():
-        raise UserFacingError(
-            f"No test path was provided and {tests_dir} does not exist."
-        ) from None
-
-    if not tests_dir.is_dir():
-        raise UserFacingError(
-            f"No test path was provided and {tests_dir} is not a directory."
-        ) from None
-
-    # Walk the default fixtures directory recursively so `pw test` picks up
-    # wrapped YAML files grouped into nested folders as part of one sweep.
-    return collect_fixture_paths(tests_dir)
+    return sorted(test_target_path.rglob("*.yaml"))
 
 
 def run_message_test_fixture(
