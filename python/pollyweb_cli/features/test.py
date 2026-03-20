@@ -72,6 +72,7 @@ INTEGER_WILDCARD = "<int>"
 TIMESTAMP_WILDCARD = "<timestamp>"
 DEFAULT_TESTS_DIR = "pw-tests"
 PARALLEL_FIXTURE_PREFIX_PATTERN = re.compile(r"^(\d+)-")
+PARALLEL_STATUS_ROOT_LABEL = ""
 ACTIVE_TEST_SPINNER_COUNT: ContextVar[int] = ContextVar(
     "active_test_spinner_count",
     default = 0,
@@ -442,6 +443,8 @@ def _is_group_label(label: str) -> bool:
     """Return whether one status label refers to a group rather than a fixture."""
 
     return (
+        label == PARALLEL_STATUS_ROOT_LABEL
+        or
         label.startswith("files ")
         or label.startswith("folders ")
         or label.startswith("✔️ Passed:")
@@ -1236,9 +1239,17 @@ def run_test_target(
             continue
 
         group_child_lines_by_name: dict[str, list[str]] = {}
+        group_labels = (*active_parallel_labels, PARALLEL_STATUS_ROOT_LABEL)
+        parallel_group_scope = test_parallel_status(
+            *group_labels
+        )
+        if active_parallel_labels:
+            parallel_group_scope = test_parallel_status_scope(
+                *group_labels
+            )
         group_summary_lines: list[str] = []
 
-        with nullcontext():
+        with parallel_group_scope:
             with ThreadPoolExecutor(max_workers = len(target_group)) as executor:
                 future_results: dict[Future[list[str]], dict[str, Path | str]] = {
                     executor.submit(
@@ -1253,7 +1264,7 @@ def run_test_target(
                         require_configured_keys = require_configured_keys,
                         load_signing_key_pair = load_signing_key_pair,
                         emit_output_line = emit_output_line,
-                        active_parallel_labels = active_parallel_labels,
+                        active_parallel_labels = group_labels,
                     ): target_run
                     for target_run in target_group
                 }

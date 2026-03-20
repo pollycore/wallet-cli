@@ -1148,6 +1148,8 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
         re.fullmatch(r"✅ Passed: 04-third \(\d+ ms, \d+% latency\)", line)
         for line in lines
     )
+    assert any(entry.startswith("enter:") for entry in lifecycle)
+    assert any(entry.startswith("update:") for entry in lifecycle)
     assert {
         entry
         for entry in lifecycle
@@ -1315,6 +1317,8 @@ def test_test_without_debug_runs_same_prefix_subfolders_in_parallel(
         re.fullmatch(r"✅ Passed: 04-gamma/c \(\d+ ms, \d+% latency\)", line)
         for line in lines
     )
+    assert any(entry.startswith("enter:") for entry in lifecycle)
+    assert any(entry.startswith("update:") for entry in lifecycle)
     assert {
         entry
         for entry in lifecycle
