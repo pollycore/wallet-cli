@@ -7,7 +7,7 @@ This folder is organized by CLI feature so future changes can stay local:
 - `test_config.py`: `pw config` and config persistence behavior
 - `test_bind.py`: `pw bind`, bind storage, and bind-network error handling
 - `test_msg_command.py`: `pw msg` input parsing and wallet-backed sending
-- `test_test_command.py`: `pw test` fixture loading, placeholder resolution, subset assertions, and default `pw-tests` directory discovery
+- `test_test_command.py`: `pw test`
 - `test_echo.py`: `pw echo` transport and response verification
 - `test_shell.py`: `pw shell`, shell argument parsing, and shell response rendering
 - `test_sync.py`: `pw sync` and sync file map generation
@@ -20,6 +20,5 @@ This folder is organized by CLI feature so future changes can stay local:
 - Add new tests to the narrowest existing feature file instead of growing a catch-all module.
 - If multiple files need the same fake object or setup routine, move that helper into `cli_test_helpers.py` rather than copying it.
 - Keep behavior-specific assertions close to the command they cover. Avoid centralizing unrelated assertions in a shared file.
-- Preserve the checked-in fixture coverage rule for `test-msgs`: changes to `pw test` should keep the parameterized fixture sweep in `test_test_command.py`.
 - When splitting or renaming tests, run the full suite to catch fixture-discovery and import issues, especially around `conftest.py`.
 - Prefer names shaped like `test_<command>_<behavior>` so failures stay easy to scan.
