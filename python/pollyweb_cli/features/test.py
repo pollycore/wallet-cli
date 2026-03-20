@@ -177,6 +177,25 @@ class ParallelTestLiveDisplay:
         return bool(self._live.__exit__(exc_type, exc, tb))
 
 
+def normalize_parallel_test_status_message(
+    message: str,
+    previous_message: str | None
+) -> str:
+    """Pad status lines so later shorter renders fully overwrite earlier ones."""
+
+    current_lines = message.splitlines() or [""]
+    previous_lines = previous_message.splitlines() if previous_message else []
+    total_lines = max(len(current_lines), len(previous_lines))
+    normalized_lines: list[str] = []
+
+    for index in range(total_lines):
+        current_line = current_lines[index] if index < len(current_lines) else ""
+        previous_line = previous_lines[index] if index < len(previous_lines) else ""
+        normalized_lines.append(current_line.ljust(max(len(current_line), len(previous_line))))
+
+    return "\n".join(normalized_lines)
+
+
 class ParallelTestStatusRenderer:
     """Maintain one shared hierarchical Rich status for active parallel work."""
 
@@ -340,15 +359,19 @@ class ParallelTestStatusRenderer:
                         ],
                     )
                 )
-                if message != last_message:
+                normalized_message = normalize_parallel_test_status_message(
+                    message,
+                    last_message,
+                )
+                if normalized_message != last_message:
                     if status_context is None:
-                        status_context = open_parallel_test_status(message)
+                        status_context = open_parallel_test_status(normalized_message)
                         status_handle = status_context.__enter__()
                         self._render_started_event.set()
                     elif hasattr(status_handle, "update"):
-                        status_handle.update(message)
+                        status_handle.update(normalized_message)
 
-                    last_message = message
+                    last_message = normalized_message
 
                 if resolved_paths:
                     with self._lock:
