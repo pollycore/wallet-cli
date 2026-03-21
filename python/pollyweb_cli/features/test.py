@@ -157,6 +157,7 @@ ACTIVE_PARALLEL_TEST_STATUS_COUNT: ContextVar[int] = ContextVar(
     default = 0,
 )
 ERROR_STYLE = "\033[1;31m"
+PROCESSING_STYLE = "\033[38;5;208m"
 ERROR_STYLE_RESET = "\033[0m"
 
 # ISO-8601 UTC timestamp ending in Z, matching the pollyweb Zulu timestamp format.
@@ -219,6 +220,9 @@ def format_parallel_test_status_label(
 
     if label.startswith("❌ Failed:") and sys.stdout.isatty():
         return f"{ERROR_STYLE}{label}{ERROR_STYLE_RESET}"
+
+    if label.startswith("⏳ Processing:") and sys.stdout.isatty():
+        return f"{PROCESSING_STYLE}{label}{ERROR_STYLE_RESET}"
 
     return label
 
@@ -1025,6 +1029,43 @@ def extract_test_failure(
     return None
 
 
+class _ProcessingTestError(Exception):
+    """Raised when a test response contains Meta.Code=202 (still processing)."""
+    pass
+
+
+def extract_test_processing(
+    payload: str,
+    source_name: str
+) -> bool:
+    """Return True when the response indicates the request is still processing (Code 202)."""
+
+    normalized = normalize_test_response(
+        payload,
+        source_name)
+    candidates: list[dict[str, Any]] = []
+
+    if isinstance(normalized, dict):
+        candidates.append(normalized)
+
+        meta = normalized.get("Meta")
+        if isinstance(meta, dict):
+            candidates.append(meta)
+
+        wrapped_response = normalized.get("Response")
+        if isinstance(wrapped_response, dict):
+            wrapped_meta = wrapped_response.get("Meta")
+            if isinstance(wrapped_meta, dict):
+                candidates.append(wrapped_meta)
+
+    for candidate in candidates:
+        code = candidate.get("Code")
+        if not isinstance(code, bool) and isinstance(code, int) and code == 202:
+            return True
+
+    return False
+
+
 def assert_expected_subset(
     actual: Any,
     expected: Any,
@@ -1310,6 +1351,16 @@ def cmd_test(
             require_configured_keys = require_configured_keys,
             load_signing_key_pair = load_signing_key_pair,
             emit_output_line = print)
+    except _ProcessingTestError:
+        render_thread = PARALLEL_TEST_STATUS_RENDERER._render_thread
+        if render_thread is not None and render_thread.is_alive():
+            render_thread.join(timeout = 2)
+        processing_message = "Processing... wait then try again."
+        if sys.stdout.isatty():
+            print(f"{PROCESSING_STYLE}{processing_message}{ERROR_STYLE_RESET}")
+        else:
+            print(processing_message)
+        return 1
     except UserFacingError as exc:
         if getattr(exc, "parallel_failure_already_reported", False):
             render_thread = PARALLEL_TEST_STATUS_RENDERER._render_thread
@@ -1366,6 +1417,24 @@ def run_test_target(
                 emit_output_line(output_line)
                 return []
             return [output_line]
+        except _ProcessingTestError as exc:
+            if not getattr(exc, "parallel_failure_already_reported", False):
+                processing_label = f"⏳ Processing: {fixture_name}"
+                if sys.stdout.isatty():
+                    print(f"{PROCESSING_STYLE}{processing_label}{ERROR_STYLE_RESET}")
+                else:
+                    print(processing_label)
+            setattr(exc, "parallel_failure_display_name", fixture_name)
+            setattr(
+                exc,
+                "parallel_failure_already_reported",
+                active_parallel_labels or getattr(
+                    exc,
+                    "parallel_failure_already_reported",
+                    False,
+                ),
+            )
+            raise
         except Exception as exc:
             if not getattr(exc, "parallel_failure_already_reported", False):
                 print(f"❌ Failed: {fixture_name}")
@@ -1866,6 +1935,9 @@ def run_message_test_fixture(
                 failure_message
             ) from None
 
+        if extract_test_processing(response_payload, fixture_name):
+            raise _ProcessingTestError() from None
+
         expected_inbound = fixture.get("Inbound")
         if isinstance(expected_inbound, dict):
 
@@ -1893,6 +1965,15 @@ def run_message_test_fixture(
             )
             parallel_status_token = None
         return output_line
+    except _ProcessingTestError as exc:
+        if parallel_status_token is not None:
+            PARALLEL_TEST_STATUS_RENDERER.resolve(
+                parallel_status_token,
+                (*active_parallel_labels, f"⏳ Processing: {fixture_name}"),
+            )
+            parallel_status_token = None
+            setattr(exc, "parallel_failure_already_reported", True)
+        raise
     except Exception as exc:
         if parallel_status_token is not None:
             PARALLEL_TEST_STATUS_RENDERER.resolve(
