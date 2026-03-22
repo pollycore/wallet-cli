@@ -61,6 +61,7 @@ def _load_notifier_domain(config_path: Path) -> str | None:
 DEFAULT_BINDS_PATH = Path.home() / ".pollyweb" / "binds.yaml"
 DEFAULT_SEND_TIMEOUT_SECONDS = 100.0
 PROXY_DOMAIN_SUBJECT = "Proxy@Domain"
+LISTEN_NOTIFIER_SUBJECT = "Listen@Notifier"
 WALLET_SEND_LOCK = Lock()
 
 
@@ -374,6 +375,126 @@ def build_debug_http_error_payload(
     return parsed_payload
 
 
+def _extract_channel_from_response(response_payload: str) -> str:
+    """Extract the Channel UUID from a Listen@Notifier response payload."""
+
+    try:
+        data = json.loads(response_payload)
+    except Exception:
+        raise UserFacingError("Listen@Notifier returned an unreadable response.")
+
+    # Try wrapped sync envelope first: {"Response": {"Body": {"Channel": ...}}}
+    response_env = data.get("Response")
+    if isinstance(response_env, dict):
+        body = response_env.get("Body")
+        if isinstance(body, dict):
+            channel = body.get("Channel")
+            if isinstance(channel, str) and channel.strip():
+                return channel.strip()
+
+    # Fall back to bare top-level: {"Channel": ...}
+    channel = data.get("Channel")
+    if isinstance(channel, str) and channel.strip():
+        return channel.strip()
+
+    raise UserFacingError("Listen@Notifier response did not include a Channel UUID.")
+
+
+def _listen_for_channel(
+    notifier_domain: str,
+    wallet_id: str,
+    key_pair: KeyPair,
+    binds_path: Path | None,
+    config_path: Path | None
+) -> str:
+    """Call Listen@Notifier and return the Channel UUID for the new channel."""
+
+    # Send Listen@Notifier using the same wallet identity as the main message.
+    # This acquires and releases WALLET_SEND_LOCK internally; the outer call
+    # has not yet acquired it, so there is no deadlock.
+    response_payload, _req, _domain = send_wallet_message(
+        notifier_domain,
+        LISTEN_NOTIFIER_SUBJECT,
+        {},
+        key_pair,
+        from_value = wallet_id,
+        binds_path = binds_path,
+        config_path = config_path,
+    )
+
+    return _extract_channel_from_response(response_payload)
+
+
+def _open_notifier_connection(
+    notifier_domain: str,
+    wallet_id: str,
+    key_pair: KeyPair
+) -> object:
+    """Open and subscribe an AppSync WebSocket connection for the wallet channel."""
+
+    # Lazy import avoids a circular dependency: transport ← bind ← config ← chat.
+    from pollyweb_cli.features.chat import AppSyncConnection, build_auth_token  # noqa: PLC0415
+
+    # Build the signed auth token used for both connect and subscribe steps.
+    auth_token = build_auth_token(
+        key_pair,
+        notifier_domain,
+        wallet_id)
+
+    connection = AppSyncConnection(
+        notifier_domain,
+        wallet_id,
+        auth_token)
+
+    # Complete the AppSync Events handshake and subscribe to the wallet channel.
+    connection.connect()
+    connection.subscribe()
+
+    return connection
+
+
+def _extract_meta_code(response_payload: str) -> int | None:
+    """Return the Meta.Code integer from a response payload, or None."""
+
+    try:
+        data = json.loads(response_payload)
+        meta = data.get("Meta")
+        if not isinstance(meta, dict):
+            return None
+        code = meta.get("Code")
+        return int(code) if code is not None else None
+    except Exception:
+        return None
+
+
+def _receive_notifier_payload(
+    connection: object,
+    timeout_seconds: float
+) -> str:
+    """Wait for the real response from the AppSync WebSocket channel."""
+
+    # Apply the same timeout budget used for the HTTP send.
+    connection.set_timeout(timeout_seconds)
+
+    # receive_event() filters keepalives and raises on connection close or errors.
+    message = connection.receive_event()
+    if message is None:
+        raise UserFacingError("Notifier channel timed out waiting for the response.")
+
+    # AppSync events arrive as a list of JSON-encoded strings in the "event" key.
+    event_list = message.get("event")
+    if isinstance(event_list, list) and event_list:
+        raw_event = event_list[0]
+        if isinstance(raw_event, str):
+            # The event is already a JSON string; return it directly.
+            return raw_event
+        # If the event was pre-parsed by the websocket library, re-serialize it.
+        return json.dumps(raw_event, separators = (",", ":"))
+
+    # Fallback: re-serialize whatever was received.
+    return json.dumps(message, separators = (",", ":"))
+
+
 def send_wallet_message(
     domain: str,
     subject: str,
@@ -421,6 +542,39 @@ def send_wallet_message(
     notifier_domain = _load_notifier_domain(effective_config_path)
     if notifier_domain:
         request_message = replace(request_message, Notifier=notifier_domain)
+
+    # Resolve the effective wallet identity so we know whether the sender is
+    # a real wallet UUID (eligible for async channel setup) or Anonymous.
+    effective_binds_path = DEFAULT_BINDS_PATH if binds_path is None else binds_path
+    wallet_id = _resolve_wallet_sender(
+        normalized_domain,
+        from_value,
+        effective_binds_path,
+        anonymous = anonymous)
+
+    # Open a notifier channel before signing the message so the Channel UUID
+    # is cryptographically bound alongside the Notifier domain.
+    # Skip for Listen@Notifier itself (avoids infinite recursion) and for
+    # anonymous senders (the server requires a registered wallet).
+    notifier_connection = None
+    if (notifier_domain
+            and wallet_id
+            and subject != LISTEN_NOTIFIER_SUBJECT):
+        channel_id = _listen_for_channel(
+            notifier_domain,
+            wallet_id,
+            key_pair,
+            binds_path,
+            config_path)
+
+        notifier_connection = _open_notifier_connection(
+            notifier_domain,
+            wallet_id,
+            key_pair)
+
+        request_message = replace(
+            request_message,
+            Channel = channel_id)
 
     outbound_message = build_wallet_outbound_message(
         wallet,
@@ -563,8 +717,24 @@ def send_wallet_message(
                 debug_printer = print_debug_json_payload if debug_json else print_debug_payload
                 debug_printer("Inbound payload", parse_debug_payload(response_payload))
 
+            # When the server replies with Meta.Code 202 (processing), the real
+            # response will arrive asynchronously over the notifier WebSocket.
+            if notifier_connection is not None and _extract_meta_code(response_payload) == 202:
+                response_payload = _receive_notifier_payload(
+                    notifier_connection,
+                    timeout_seconds = DEFAULT_SEND_TIMEOUT_SECONDS)
+
+                if debug:
+                    debug_printer = print_debug_json_payload if debug_json else print_debug_payload
+                    debug_printer(
+                        "Notifier payload",
+                        parse_debug_payload(response_payload))
+
             return response_payload, request_message, normalized_domain
         finally:
+            if notifier_connection is not None:
+                notifier_connection.close()
+                notifier_connection = None
             if transport_metadata is not None:
                 pollyweb_transport._HTTPS_CONNECTION_POOL.post = original_pool_post
                 pollyweb_msg.post_json_bytes = original_post

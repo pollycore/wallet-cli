@@ -95,6 +95,7 @@ def isolate_profile_paths(
     monkeypatch.setattr(cli, "HISTORY_DIR", history_dir)
     monkeypatch.setattr(cli, "SYNC_DIR", sync_dir)
     monkeypatch.setattr(transport_tools, "DEFAULT_BINDS_PATH", binds_path)
+    monkeypatch.setattr(transport_tools, "DEFAULT_CONFIG_PATH", config_path)
 
 
 @pytest.fixture(autouse = True)
