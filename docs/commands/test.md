@@ -33,6 +33,8 @@ If a fixture needs a stored bind value, any string field may use the placeholder
 
 Use `--anonymous` to ignore any stored bind and force `From: Anonymous`. Use `--unsigned` to keep the selected sender but remove `Hash` and `Signature` before sending.
 
+When a Notifier is configured and the sender is a bound wallet, `pw test` automatically sets up an async response channel before each send — the same as `pw msg`. If the server replies with `Meta.Code: 202`, the CLI waits for the real response over the WebSocket before evaluating the `Inbound` assertions. The fixture outcome always reflects the final settled response.
+
 This makes wrapped fixtures useful for end-to-end checks where you want one file to describe both the request and the expected response.
 
 If the target PollyWeb inbox host has no DNS entry, `pw test` reports that directly as `No DNS entry found for domain <domain>.` and includes an MXToolbox A-record lookup link for `pw.<domain>` so you can confirm the missing record outside the CLI.

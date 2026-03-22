@@ -35,6 +35,8 @@ Because the command follows wallet semantics end-to-end, `From` must be omitted,
 
 Use `--anonymous` to ignore any stored bind and force `From: Anonymous` for the outbound request. Use `--unsigned` to keep the selected sender but remove `Hash` and `Signature` before sending.
 
+When a Notifier is configured in `~/.pollyweb/config.yaml` and the sender is a bound wallet (non-anonymous), the CLI automatically sets up an async response channel before sending. It calls `Listen@Notifier` to obtain a `Channel` UUID, opens an AppSync WebSocket subscribed to the wallet channel, and attaches `Channel` to the signed message header alongside `Notifier`. If the server replies with `Meta.Code: 202` (processing), the CLI waits for the real response to arrive over the WebSocket instead of returning the 202 immediately. This is transparent — the final printed response is always the settled reply, regardless of whether it arrived synchronously or asynchronously.
+
 Use `--json` when you want the raw synchronous response instead of the default YAML formatting. On an interactive terminal, those JSON payloads keep the same raw structure but add JSON syntax colors; redirected or scripted output stays plain compact JSON. When you combine `--debug --json`, the debug payloads also print as raw JSON instead of the default YAML-style rendering.
 
 Print the outbound payload, the full inbox URL the POST is sent to, and the inbound response body as colorized, indented YAML:
