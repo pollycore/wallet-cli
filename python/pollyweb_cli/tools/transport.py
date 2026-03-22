@@ -28,7 +28,36 @@ from pollyweb_cli.tools.debug import (
 )
 
 
+DEFAULT_CONFIG_PATH = Path.home() / ".pollyweb" / "config.yaml"
 DEFAULT_SCHEMA = "pollyweb.org/MSG:1.0"
+_DEFAULT_NOTIFIER_DOMAIN = "any-notifier.pollyweb.org"
+
+
+def _load_notifier_domain(config_path: Path) -> str | None:
+    """Return the Notifier domain from the wallet config file, or None."""
+
+    if not config_path.exists():
+        return None
+
+    try:
+        config_payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return None
+
+    if not isinstance(config_payload, dict):
+        return None
+
+    helpers = config_payload.get("Helpers")
+    if not isinstance(helpers, dict):
+        return None
+
+    notifier = helpers.get("Notifier")
+    if isinstance(notifier, str) and notifier.strip():
+        return notifier.strip()
+
+    return None
+
+
 DEFAULT_BINDS_PATH = Path.home() / ".pollyweb" / "binds.yaml"
 DEFAULT_SEND_TIMEOUT_SECONDS = 100.0
 PROXY_DOMAIN_SUBJECT = "Proxy@Domain"
@@ -358,7 +387,8 @@ def send_wallet_message(
     unsigned: bool = False,
     debug_json: bool = False,
     timing: dict[str, float] | None = None,
-    transport_metadata: dict[str, object] | None = None
+    transport_metadata: dict[str, object] | None = None,
+    config_path: Path | None = None
 ) -> tuple[str, Msg, str]:
     """Send one wallet-backed PollyWeb message and return the raw response."""
 
@@ -386,6 +416,11 @@ def send_wallet_message(
                 request_message,
                 unsigned = unsigned),
         )
+
+    effective_config_path = DEFAULT_CONFIG_PATH if config_path is None else config_path
+    notifier_domain = _load_notifier_domain(effective_config_path)
+    if notifier_domain:
+        request_message = replace(request_message, Notifier=notifier_domain)
 
     outbound_message = build_wallet_outbound_message(
         wallet,
