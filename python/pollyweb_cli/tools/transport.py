@@ -30,11 +30,11 @@ from pollyweb_cli.tools.debug import (
 
 DEFAULT_CONFIG_PATH = Path.home() / ".pollyweb" / "config.yaml"
 DEFAULT_SCHEMA = "pollyweb.org/MSG:1.0"
-_DEFAULT_NOTIFIER_DOMAIN = "any-buffer.pollyweb.org"
+_DEFAULT_NOTIFIER_DOMAIN = "any-notifier.pollyweb.org"
 
 
-def _load_buffer_domain(config_path: Path) -> str | None:
-    """Return the Buffer domain from the wallet config file, or None."""
+def _load_notifier_domain(config_path: Path) -> str | None:
+    """Return the Notifier domain from the wallet config file, or None."""
 
     if not config_path.exists():
         return None
@@ -51,9 +51,9 @@ def _load_buffer_domain(config_path: Path) -> str | None:
     if not isinstance(helpers, dict):
         return None
 
-    buffer = helpers.get("Buffer")
-    if isinstance(buffer, str) and buffer.strip():
-        return buffer.strip()
+    notifier = helpers.get("Notifier")
+    if isinstance(notifier, str) and notifier.strip():
+        return notifier.strip()
 
     return None
 
@@ -418,9 +418,9 @@ def send_wallet_message(
         )
 
     effective_config_path = DEFAULT_CONFIG_PATH if config_path is None else config_path
-    buffer_domain = _load_buffer_domain(effective_config_path)
-    if buffer_domain:
-        request_message = replace(request_message, Buffer=buffer_domain)
+    notifier_domain = _load_notifier_domain(effective_config_path)
+    if notifier_domain:
+        request_message = replace(request_message, Notifier=notifier_domain)
 
     outbound_message = build_wallet_outbound_message(
         wallet,

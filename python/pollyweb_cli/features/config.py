@@ -29,7 +29,7 @@ def write_config_file(
     # Store the notifier helper in YAML so later commands can reuse it.
     config_payload = {
         "Helpers": {
-            "Buffer": NOTIFIER_DOMAIN,
+            "Notifier": NOTIFIER_DOMAIN,
         }
     }
     config_path.write_text(
@@ -97,7 +97,7 @@ def load_notifier_domain(
     if not isinstance(helpers, dict):
         return NOTIFIER_DOMAIN
 
-    notifier_domain = helpers.get("Buffer")
+    notifier_domain = helpers.get("Notifier")
     if not isinstance(notifier_domain, str) or not notifier_domain:
         return NOTIFIER_DOMAIN
 

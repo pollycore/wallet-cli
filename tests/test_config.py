@@ -54,7 +54,7 @@ def test_config_creates_keypair_files(monkeypatch, tmp_path, capsys):
     assert private_key_path.read_text().startswith("-----BEGIN PRIVATE KEY-----")
     assert public_key_path.read_text().startswith("-----BEGIN PUBLIC KEY-----")
     assert cli.yaml.safe_load(config_path.read_text()) == {
-        "Helpers": {"Buffer": "any-notifier.pollyweb.org"}
+        "Helpers": {"Notifier": "any-notifier.pollyweb.org"}
     }
 
     captured = capsys.readouterr()
@@ -70,7 +70,7 @@ def test_config_is_idempotent_when_keys_already_exist(monkeypatch, tmp_path, cap
     config_path = config_dir / "config.yaml"
     private_key_path.write_text("existing-private")
     public_key_path.write_text("existing-public")
-    config_path.write_text("Helpers:\n  Buffer: any-notifier.pollyweb.org\n")
+    config_path.write_text("Helpers:\n  Notifier: any-notifier.pollyweb.org\n")
     monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
@@ -81,7 +81,7 @@ def test_config_is_idempotent_when_keys_already_exist(monkeypatch, tmp_path, cap
     assert exit_code == 0
     assert private_key_path.read_text() == "existing-private"
     assert public_key_path.read_text() == "existing-public"
-    assert config_path.read_text() == "Helpers:\n  Buffer: any-notifier.pollyweb.org\n"
+    assert config_path.read_text() == "Helpers:\n  Notifier: any-notifier.pollyweb.org\n"
 
     captured = capsys.readouterr()
     assert str(private_key_path) in captured.out
@@ -138,7 +138,7 @@ def test_config_force_overwrites_existing_keys(monkeypatch, tmp_path):
     assert private_key_path.read_text() != "existing-private"
     assert public_key_path.read_text() != "existing-public"
     assert cli.yaml.safe_load(config_path.read_text()) == {
-        "Helpers": {"Buffer": "any-notifier.pollyweb.org"}
+        "Helpers": {"Notifier": "any-notifier.pollyweb.org"}
     }
 
 def test_config_sets_expected_permissions(monkeypatch, tmp_path):
@@ -248,7 +248,7 @@ def test_cmd_config_persists_onboard_response_in_config(monkeypatch, tmp_path):
     assert exit_code == 0
     assert cli.yaml.safe_load(config_path.read_text()) == {
         "Helpers": {
-            "Buffer": "any-notifier.pollyweb.org",
+            "Notifier": "any-notifier.pollyweb.org",
             "Broker": "any-broker.pollyweb.org",
         },
         "Wallet": "wallet-xyz-999",
@@ -281,7 +281,7 @@ def test_cmd_config_silently_ignores_onboard_network_error(monkeypatch, tmp_path
     assert "Wallet" not in captured.out
     assert captured.err == ""
     assert cli.yaml.safe_load(config_path.read_text()) == {
-        "Helpers": {"Buffer": "any-notifier.pollyweb.org"}
+        "Helpers": {"Notifier": "any-notifier.pollyweb.org"}
     }
 
 def test_cmd_config_silently_ignores_onboard_value_error(monkeypatch, tmp_path, capsys):
