@@ -58,6 +58,27 @@ def _load_notifier_domain(config_path: Path) -> str | None:
     return None
 
 
+def _load_wallet_id_from_config(config_path: Path) -> str | None:
+    """Return the main Wallet UUID from the wallet config file, or None."""
+
+    if not config_path.exists():
+        return None
+
+    try:
+        config_payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return None
+
+    if not isinstance(config_payload, dict):
+        return None
+
+    wallet = config_payload.get("Wallet")
+    if isinstance(wallet, str) and wallet.strip():
+        return wallet.strip()
+
+    return None
+
+
 DEFAULT_BINDS_PATH = Path.home() / ".pollyweb" / "binds.yaml"
 DEFAULT_SEND_TIMEOUT_SECONDS = 100.0
 PROXY_DOMAIN_SUBJECT = "Proxy@Domain"
@@ -392,6 +413,11 @@ def _extract_channel_from_response(response_payload: str) -> str:
             if isinstance(channel, str) and channel.strip():
                 return channel.strip()
 
+        # Also try {"Response": {"Channel": ...}} without a Body wrapper.
+        channel = response_env.get("Channel")
+        if isinstance(channel, str) and channel.strip():
+            return channel.strip()
+
     # Fall back to bare top-level: {"Channel": ...}
     channel = data.get("Channel")
     if isinstance(channel, str) and channel.strip():
@@ -560,16 +586,27 @@ def send_wallet_message(
     if (notifier_domain
             and wallet_id
             and subject != LISTEN_NOTIFIER_SUBJECT):
+        # Use the notifier-specific bind when available; fall back to the
+        # main wallet UUID from config rather than the target-domain bind.
+        # The target-domain bind UUID is not registered with the notifier.
+        notifier_wallet_id = _load_first_bind_for_domain(
+            notifier_domain,
+            effective_binds_path)
+        if notifier_wallet_id is None:
+            notifier_wallet_id = _load_wallet_id_from_config(
+                effective_config_path)
+        if notifier_wallet_id is None:
+            notifier_wallet_id = wallet_id
         channel_id = _listen_for_channel(
             notifier_domain,
-            wallet_id,
+            notifier_wallet_id,
             key_pair,
             binds_path,
             config_path)
 
         notifier_connection = _open_notifier_connection(
             notifier_domain,
-            wallet_id,
+            notifier_wallet_id,
             key_pair)
 
         request_message = replace(
