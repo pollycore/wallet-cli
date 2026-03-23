@@ -1776,6 +1776,11 @@ def run_message_test_fixture(
             config_dir / "public.pem")
         wait_seconds = float(fixture.get("Wait", 0))
 
+        # Always print the outbound message in debug mode
+        if debug:
+            from pollyweb_cli.tools.debug import print_debug_payload
+            print_debug_payload("Outbound message", fixture["Outbound"])
+
         request, _ = parse_message_request(
             [json.dumps(fixture["Outbound"])])
 
