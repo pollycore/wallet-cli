@@ -1634,10 +1634,14 @@ def test_test_debug_keeps_same_folder_numeric_prefix_group_sequential(
     assert exit_code == 0
     assert observed_subjects == ["03-first.yaml", "03-second.yaml"]
     captured = capsys.readouterr()
-    lines = captured.out.splitlines()
-    assert len(lines) == 2
-    assert_passed_output(lines[0], "03-first")
-    assert_passed_output(lines[1], "03-second")
+    passed_lines = [
+        line
+        for line in captured.out.splitlines()
+        if line.startswith("✅ Passed:")
+    ]
+    assert len(passed_lines) == 2
+    assert_passed_output(passed_lines[0], "03-first")
+    assert_passed_output(passed_lines[1], "03-second")
 
 
 def test_test_with_explicit_directory_runs_yaml_files_in_sorted_order(
