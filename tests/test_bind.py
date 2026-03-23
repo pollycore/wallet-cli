@@ -378,7 +378,7 @@ def test_bind_debug_prints_outbound_and_inbound_payloads(monkeypatch, tmp_path, 
     outbound = captured.out.split("\n\nInbound payload:\n", 1)[0]
     assert "Hash:" not in outbound
     assert "Signature:" not in outbound
-    assert "\n\nInbound payload:\n" in captured.out
+    assert "\nInbound payload:\n" in captured.out
     assert "Inbound payload:" in captured.out
     assert "Body:" in captured.out
     assert bind_value in captured.out
@@ -715,6 +715,63 @@ def test_bind_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
     captured = capsys.readouterr()
     assert (
         "Could not resolve PollyWeb inbox host pw.any-host.pollyweb.org"
+        in captured.err
+    )
+
+
+def test_bind_debug_shows_http_error_details(monkeypatch, tmp_path, capsys):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    binds_path = config_dir / "binds.yaml"
+    config_dir.mkdir()
+    key_pair = cli.KeyPair()
+    private_key_path.write_bytes(key_pair.private_pem_bytes())
+    public_key_path.write_bytes(key_pair.public_pem_bytes())
+
+    def raise_http_error(**kwargs):
+        error = urllib.error.HTTPError(
+            "https://pw.any-domain.pollyweb.org/inbox",
+            502,
+            "Bad Gateway",
+            hdrs = None,
+            fp = None)
+        setattr(
+            error,
+            "pollyweb_error_body",
+            cli.json.dumps(
+                {
+                    "error": (
+                        "Bind@Vault failed: "
+                        "{\"Code\":502,\"Message\":\"Bad Gateway\","
+                        "\"Details\":\"upstream timeout\"}"
+                    ),
+                    "Meta": {
+                        "Code": 502,
+                        "Message": "Bad Gateway",
+                    },
+                }
+            ),
+        )
+        raise error
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
+    monkeypatch.setattr(cli.bind_feature, "send_wallet_message", raise_http_error)
+
+    exit_code = cli.main(["bind", "--debug", "any-domain.dom"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "\nInbound payload:\n" in captured.out
+    assert "Code: 502" in captured.out
+    assert "Message: Bad Gateway" in captured.out
+    assert "Details: upstream timeout" in captured.out
+    assert (
+        "Could not bind any-domain.dom. The server returned HTTP 502. "
+        "Bind@Vault failed:"
         in captured.err
     )
 

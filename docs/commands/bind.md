@@ -20,7 +20,7 @@ Each effective `pw bind` write also appends a wallet-managed audit entry to `~/.
 
 Use `--anonymous` to ignore any stored bind and force `From: Anonymous`. Use `--unsigned` to remove `Hash` and `Signature` before sending.
 
-Print the outbound request payload, the full inbox URL the POST is sent to, and the inbound response body during bind as colorized, indented YAML:
+Print the outbound request payload, the full inbox URL the POST is sent to, and the inbound response body during bind as colorized, indented YAML. When the inbox returns an HTTP error and includes a response body, `--debug` should still show that inbound error payload, and the final error line should append the server's reported `error` detail when one is present:
 
 ```bash
 pw bind --debug vault.example.com

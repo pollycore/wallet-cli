@@ -373,27 +373,25 @@ def build_debug_http_error_payload(
         return parsed_payload
 
     nested_error = embedded_payload.get("error")
+    debug_message_payload = dict(embedded_payload)
+    concise_error = rewrite_backend_validation_error(error_value)
+
     if isinstance(nested_error, str) and nested_error.strip():
-        rewritten_nested_error = rewrite_backend_validation_error(nested_error)
+        concise_error = rewrite_backend_validation_error(nested_error)
+        debug_message_payload["error"] = concise_error
 
-        # Keep the server's returned message visible before the concise error
-        # line so debug runs can show the full inbound payload and the final
-        # extracted verification failure side by side.
-        debug_payload = {
-            "Message": {
-                **embedded_payload,
-                "error": rewritten_nested_error,
-            },
-            **{
-                key: value
-                for key, value in parsed_payload.items()
-                if key != "error"
-            },
-            "error": rewritten_nested_error,
-        }
-        return debug_payload
-
-    return parsed_payload
+    # Keep the server's returned message visible before the concise error
+    # line so debug runs can show the full inbound payload and the final
+    # extracted error detail side by side.
+    return {
+        "Message": debug_message_payload,
+        **{
+            key: value
+            for key, value in parsed_payload.items()
+            if key != "error"
+        },
+        "error": concise_error,
+    }
 
 
 def _extract_channel_from_response(response_payload: str) -> str:
@@ -734,6 +732,7 @@ def send_wallet_message(
                         debug_printer(
                             "Inbound payload",
                             build_debug_http_error_payload(error_body))
+                        setattr(exc, "pollyweb_debug_error_payload_printed", True)
                     except Exception:
                         pass
                 raise

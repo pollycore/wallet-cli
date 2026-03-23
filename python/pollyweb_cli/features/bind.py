@@ -17,8 +17,17 @@ import yaml
 from pollyweb import KeyPair, Msg, MsgValidationError, normalize_domain_name
 
 from pollyweb_cli.errors import UserFacingError
-from pollyweb_cli.tools.debug import parse_debug_payload, print_yaml_payload
-from pollyweb_cli.tools.transport import send_wallet_message
+from pollyweb_cli.tools.debug import (
+    parse_debug_payload,
+    print_debug_json_payload,
+    print_debug_payload,
+    print_yaml_payload,
+)
+from pollyweb_cli.tools.transport import (
+    build_debug_http_error_payload,
+    rewrite_backend_validation_error,
+    send_wallet_message,
+)
 
 
 BIND_SUBJECT = "Bind@Vault"
@@ -507,6 +516,31 @@ def describe_bind_network_error(
     return repr(reason)
 
 
+def describe_http_bind_error(exc: urllib.error.HTTPError) -> str:
+    """Build the user-facing HTTP failure message for `pw bind`."""
+
+    message = f"The server returned HTTP {exc.code}."
+    error_body = getattr(exc, "pollyweb_error_body", None)
+
+    if not isinstance(error_body, str) or not error_body.strip():
+        return message
+
+    try:
+        parsed_body = parse_debug_payload(error_body)
+    except Exception:
+        parsed_body = None
+
+    if isinstance(parsed_body, dict):
+        error_value = parsed_body.get("error")
+        if isinstance(error_value, str) and error_value.strip():
+            return (
+                f"{message} "
+                f"{rewrite_backend_validation_error(error_value)}"
+            )
+
+    return message
+
+
 def cmd_bind(
     domain: str,
     *,
@@ -561,8 +595,24 @@ def cmd_bind(
             f"Missing PollyWeb keys in {config_dir}. Run `pw config` first."
         ) from None
     except urllib.error.HTTPError as exc:
+        error_body = getattr(exc, "pollyweb_error_body", None)
+        debug_payload_was_printed = bool(
+            getattr(exc, "pollyweb_debug_error_payload_printed", False)
+        )
+
+        if (
+            debug
+            and not debug_payload_was_printed
+            and isinstance(error_body, str)
+            and error_body.strip()
+        ):
+            debug_printer = print_debug_json_payload if json_output else print_debug_payload
+            debug_printer(
+                "Inbound payload",
+                build_debug_http_error_payload(error_body))
+
         raise UserFacingError(
-            f"Could not bind {domain}. The server returned HTTP {exc.code}."
+            f"Could not bind {domain}. {describe_http_bind_error(exc)}"
         ) from None
 
     if json_output:
