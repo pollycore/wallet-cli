@@ -1,5 +1,6 @@
 # Lessons
 
+- When removing a wallet-side notifier feature, split the concerns cleanly: delete notifier send/onboarding logic from shared wallet transport and `pw config`, but keep the read-only `Helpers.Notifier` config loader when `pw chat` still depends on it.
 - For `pw bind --debug`, preserve HTTP error bodies the same way as the shared wallet transport: show the inbound error payload in the debug output and append any server `error` detail to the final `Could not bind ...` message so 5xx failures are actionable without a traceback.
 - For `pw test` HTTP transport errors, do not fail immediately when the fixture explicitly expects the same status in `Inbound.Meta.Code`; treat the HTTP error body as the response payload and run the normal inbound subset matcher so expected `404`-style error responses can pass.
 - For `pw test` timeout failures, label them as client-side timeouts and print both the configured client timeout budget and the measured send duration; if no reply arrived, say server timing is unavailable, and keep any fixture `Wait` time separate so users do not mistake pre-send delay for the transport timeout.

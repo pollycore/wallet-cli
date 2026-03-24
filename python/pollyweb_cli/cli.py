@@ -49,11 +49,7 @@ from pollyweb_cli.features.chat import (
 from pollyweb_cli.features.config import (
     cmd_config as _cmd_config,
     load_signing_key_pair as _load_signing_key_pair,
-    NOTIFIER_DOMAIN,
-    NOTIFIER_LANGUAGE,
-    NOTIFIER_SUBJECT,
     require_configured_keys as _require_configured_keys,
-    send_onboard_message as _send_onboard_message_impl,
 )
 from pollyweb_cli.tools.debug import (
     DEBUG_CONSOLE,
@@ -140,7 +136,6 @@ def _sync_runtime_dependencies() -> None:
     debug_tools.DEBUG_CONSOLE = DEBUG_CONSOLE
     debug_tools.SHELL_CONSOLE = SHELL_CONSOLE
     bind_feature.yaml = yaml
-    config_feature.send_onboard_message = send_onboard_message
 
 
 def print_error(message: str) -> None:
@@ -488,22 +483,6 @@ def print_echo_response(payload: str) -> None:
     debug_tools.print_echo_response(payload)
 
 
-def send_onboard_message(
-    key_pair: KeyPair,
-    public_key: bytes,
-    notifier_domain: str,
-    debug: bool = False
-) -> dict[str, object]:
-    """Send the onboarding request using the compatibility facade."""
-
-    return _send_onboard_message_impl(
-        key_pair,
-        public_key,
-        notifier_domain,
-        debug=debug,
-    )
-
-
 def build_sync_files_map(domain: str) -> dict[str, dict[str, str]]:
     """Build the sync file map using the configured sync directory."""
 
@@ -511,15 +490,13 @@ def build_sync_files_map(domain: str) -> dict[str, dict[str, str]]:
 
 
 def cmd_config(
-    force: bool,
-    debug: bool = False
+    force: bool
 ) -> int:
     """Run the configuration command with the current filesystem paths."""
 
     _sync_runtime_dependencies()
     return _cmd_config(
         force=force,
-        debug=debug,
         config_dir=CONFIG_DIR,
         private_key_path=PRIVATE_KEY_PATH,
         public_key_path=PUBLIC_KEY_PATH,
@@ -711,7 +688,6 @@ def _run_main(
         if args.command == "config":
             return cmd_config(
                 force=args.force,
-                debug=args.debug,
             )
         if args.command == "bind":
             return cmd_bind(

@@ -811,7 +811,6 @@ def test_send_wallet_message_serializes_concurrent_library_sends(monkeypatch):
 
     assert concurrent_entries == [1, 1]
     assert results == ['{"ok":true}', '{"ok":true}']
-
 def test_msg_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
