@@ -1,5 +1,6 @@
 # Lessons
 
+- For `pw config`, keep notifier onboarding idempotent: rerunning `Onboard@Notifier` for the same key pair must return the same wallet UUID, and any mismatch with the stored `Wallet` value should raise a drift error instead of silently rewriting `config.yaml`.
 - For `pw bind`, derive `Body.Algorithm` from the configured wallet key internally; the CLI should accept only the target domain and must not ask the user for the signing algorithm.
 - When `pollyweb` removes `Msg.Header` fields, sweep wallet-cli transport builders, inbound matcher fixtures, docs, and dependency floors together; this repo still uses `Body.Algorithm` for `pw bind`, but `Header.Algorithm`, `Header.Notifier`, and `Header.Channel` must stay gone.
 - When removing a CLI feature, sweep parser registration, dispatch wrappers, compatibility re-exports, docs, and focused tests together; in this repo, `pw shell` also left a tiny sender-normalization helper behind that `pw sync` still needed.

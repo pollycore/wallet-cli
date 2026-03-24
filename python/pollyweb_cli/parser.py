@@ -48,6 +48,11 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         action="store_true",
         help="Overwrite an existing key pair.",
     )
+    config_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print traceback details for unexpected config failures.",
+    )
 
     bind_parser = subparsers.add_parser(
         "bind",

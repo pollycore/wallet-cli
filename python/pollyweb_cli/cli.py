@@ -429,13 +429,15 @@ def print_echo_response(payload: str) -> None:
 
 
 def cmd_config(
-    force: bool
+    force: bool,
+    debug: bool = False
 ) -> int:
     """Run the configuration command with the current filesystem paths."""
 
     _sync_runtime_dependencies()
     return _cmd_config(
         force=force,
+        debug=debug,
         config_dir=CONFIG_DIR,
         private_key_path=PRIVATE_KEY_PATH,
         public_key_path=PUBLIC_KEY_PATH,
@@ -582,6 +584,7 @@ def _run_main(
         if args.command == "config":
             return cmd_config(
                 force=args.force,
+                debug=args.debug,
             )
         if args.command == "bind":
             return cmd_bind(
