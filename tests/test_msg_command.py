@@ -27,7 +27,6 @@ from tests.cli_test_helpers import (
     DummyResponse,
     FakeChatConnection,
     FakeReadline,
-    _setup_sync_env,
     make_echo_response_payload,
 )
 

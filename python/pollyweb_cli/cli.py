@@ -28,7 +28,6 @@ import pollyweb_cli.features.chat as chat_feature
 import pollyweb_cli.features.config as config_feature
 import pollyweb_cli.tools.debug as debug_tools
 import pollyweb_cli.features.echo as echo_feature
-import pollyweb_cli.features.sync as sync_feature
 import pollyweb_cli.features.test as test_feature
 from pollyweb_cli.features.bind import (
     BIND_PATTERN,
@@ -76,12 +75,6 @@ from pollyweb_cli.features.test import (
 )
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.parser import build_parser as _build_parser
-from pollyweb_cli.features.sync import (
-    SYNC_SUBJECT,
-    build_sync_files_map as _build_sync_files_map,
-    cmd_sync as _cmd_sync,
-)
-
 try:
     import readline
 except ImportError:  # pragma: no cover - platform-dependent fallback
@@ -94,7 +87,6 @@ PUBLIC_KEY_PATH = CONFIG_DIR / "public.pem"
 CONFIG_PATH = CONFIG_DIR / "config.yaml"
 BINDS_PATH = CONFIG_DIR / "binds.yaml"
 HISTORY_DIR = CONFIG_DIR / "history"
-SYNC_DIR = CONFIG_DIR / "sync"
 ERROR_STYLE = "\033[1;31m"
 ERROR_STYLE_RESET = "\033[0m"
 PACKAGE_NAME = "pollyweb-cli"
@@ -436,12 +428,6 @@ def print_echo_response(payload: str) -> None:
     debug_tools.print_echo_response(payload)
 
 
-def build_sync_files_map(domain: str) -> dict[str, dict[str, str]]:
-    """Build the sync file map using the configured sync directory."""
-
-    return _build_sync_files_map(domain, SYNC_DIR)
-
-
 def cmd_config(
     force: bool
 ) -> int:
@@ -571,28 +557,6 @@ def cmd_chat(
     )
 
 
-def cmd_sync(
-    domain: str,
-    debug: bool = False,
-    unsigned: bool = False,
-    anonymous: bool = False
-) -> int:
-    """Run the sync command with the current filesystem paths."""
-
-    _sync_runtime_dependencies()
-    return _cmd_sync(
-        domain,
-        debug=debug,
-        config_dir=CONFIG_DIR,
-        binds_path=BINDS_PATH,
-        sync_dir=SYNC_DIR,
-        unsigned=unsigned,
-        anonymous=anonymous,
-        require_configured_keys=require_configured_keys,
-        load_signing_key_pair=load_signing_key_pair,
-    )
-
-
 def _run_main(
     argv: list[str] | None = None,
     *,
@@ -656,12 +620,6 @@ def _run_main(
                 domain = args.domain,
                 debug = args.debug,
                 test = args.test,
-                unsigned = args.unsigned,
-                anonymous = args.anonymous)
-        if args.command == "sync":
-            return cmd_sync(
-                domain = args.domain,
-                debug = args.debug,
                 unsigned = args.unsigned,
                 anonymous = args.anonymous)
     except UserFacingError as exc:

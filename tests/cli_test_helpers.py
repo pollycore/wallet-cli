@@ -8,8 +8,6 @@ from pathlib import Path
 
 from pollyweb._crypto import encode_signature, sign_message, signature_algorithm_for_private_key
 
-from pollyweb_cli import cli
-
 
 VALID_BIND = "Bind:123e4567-e89b-12d3-a456-426614174000"
 VALID_WALLET_ID = "123e4567-e89b-12d3-a456-426614174000"
@@ -146,32 +144,3 @@ class FakeChatConnection:
         """Record connection shutdown."""
 
         self.calls.append("close")
-
-
-def _setup_sync_env(
-    monkeypatch,
-    tmp_path
-):
-    """Create keys, binds, and sync paths for sync command tests."""
-
-    config_dir = tmp_path / ".pollyweb"
-    private_key_path = config_dir / "private.pem"
-    public_key_path = config_dir / "public.pem"
-    binds_path = config_dir / "binds.yaml"
-    sync_dir = config_dir / "sync"
-
-    config_dir.mkdir()
-    key_pair = cli.KeyPair()
-    private_key_path.write_bytes(key_pair.private_pem_bytes())
-    public_key_path.write_bytes(key_pair.public_pem_bytes())
-    binds_path.write_text(
-        cli.yaml.safe_dump([{"Bind": VALID_BIND, "Domain": "vault.example.com"}]),
-        encoding = "utf-8",
-    )
-
-    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
-    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
-    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
-    monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
-    monkeypatch.setattr(cli, "SYNC_DIR", sync_dir)
-    return config_dir, sync_dir

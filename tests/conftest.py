@@ -76,11 +76,8 @@ def isolate_profile_paths(
     config_path = config_dir / "config.yaml"
     binds_path = config_dir / "binds.yaml"
     history_dir = config_dir / "history"
-    sync_dir = config_dir / "sync"
-
     config_dir.mkdir(parents = True, exist_ok = True)
     history_dir.mkdir(parents = True, exist_ok = True)
-    sync_dir.mkdir(parents = True, exist_ok = True)
 
     # Keep any code that consults the process home directory away from the
     # real user profile during tests and pre-push runs.
@@ -93,7 +90,6 @@ def isolate_profile_paths(
     monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
     monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
     monkeypatch.setattr(cli, "HISTORY_DIR", history_dir)
-    monkeypatch.setattr(cli, "SYNC_DIR", sync_dir)
     monkeypatch.setattr(transport_tools, "DEFAULT_BINDS_PATH", binds_path)
 
 

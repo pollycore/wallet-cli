@@ -9,7 +9,6 @@ This folder is organized by CLI feature so future changes can stay local:
 - `test_msg_command.py`: `pw msg` input parsing and wallet-backed sending
 - `test_test_command.py`: `pw test`
 - `test_echo.py`: `pw echo` transport and response verification
-- `test_sync.py`: `pw sync` and sync file map generation
 - `test_onboard.py`: notifier onboarding helpers used by `pw config`
 - `cli_test_helpers.py`: shared constants, fake transport objects, and setup helpers
 - `conftest.py`: repo-wide pytest setup and the autouse upgrade-check skip fixture

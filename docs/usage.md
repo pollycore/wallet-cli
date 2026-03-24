@@ -8,7 +8,6 @@ Command-specific guides:
 - [commands/msg.md](commands/msg.md) for `pw msg`
 - [commands/test.md](commands/test.md) for `pw test`
 - [commands/chat.md](commands/chat.md) for `pw chat`
-- [commands/sync.md](commands/sync.md) for `pw sync`
 
 Quick examples:
 
@@ -23,5 +22,4 @@ pw msg To:any-domain.org Subject:topic@role DynamicBodyProperty:123
 pw test ./test.yaml
 pw test
 pw chat
-pw sync vault.example.com
 ```

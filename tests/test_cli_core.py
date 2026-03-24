@@ -28,7 +28,6 @@ from tests.cli_test_helpers import (
     DummyResponse,
     FakeChatConnection,
     FakeReadline,
-    _setup_sync_env,
     make_echo_response_payload,
 )
 
@@ -61,6 +60,13 @@ def test_autouse_fixture_isolates_cli_profile_paths(tmp_path):
     assert cli.BINDS_PATH == fake_home / ".pollyweb" / "binds.yaml"
     assert transport_tools.DEFAULT_BINDS_PATH == fake_home / ".pollyweb" / "binds.yaml"
     assert Path(os.environ["HOME"]) == fake_home
+
+
+def test_parser_no_longer_exposes_sync_command():
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["sync", "vault.example.com"])
 
 def test_version_command_prints_installed_version(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_maybe_upgrade_before_command", lambda argv: None)

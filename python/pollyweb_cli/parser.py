@@ -150,19 +150,4 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
     )
     add_wallet_send_flags(chat_parser)
 
-    sync_parser = subparsers.add_parser(
-        "sync",
-        help="Sync files from ~/.pollyweb/sync/{domain} to a domain.",
-    )
-    sync_parser.add_argument(
-        "domain",
-        help="Domain that will receive the sync request.",
-    )
-    sync_parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Print outbound and inbound sync payloads.",
-    )
-    add_wallet_send_flags(sync_parser)
-
     return parser
