@@ -55,10 +55,6 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
     )
     bind_parser.add_argument("domain", help="Domain that will receive the bind request.")
     bind_parser.add_argument(
-        "algorithm",
-        help="Algorithm name to send in Body.Algorithm for Bind@Vault.",
-    )
-    bind_parser.add_argument(
         "--debug",
         action="store_true",
         help="Print outbound and inbound bind payloads.",

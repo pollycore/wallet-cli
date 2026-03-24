@@ -15,6 +15,7 @@ from pathlib import Path
 
 import yaml
 from pollyweb import KeyPair, Msg, MsgValidationError, normalize_domain_name
+from pollyweb._crypto import signature_algorithm_for_private_key
 
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.tools.debug import (
@@ -459,7 +460,6 @@ def get_first_bind_for_domain(
 
 def send_bind_message(
     domain: str,
-    algorithm: str,
     key_pair: KeyPair,
     public_key_path: Path,
     binds_path: Path,
@@ -471,6 +471,7 @@ def send_bind_message(
     """Send the bind request for a domain and parse the server response."""
 
     normalized_domain = normalize_bind_domain(domain)
+    algorithm = signature_algorithm_for_private_key(key_pair.PrivateKey)
     public_key = serialize_public_key_value(
         public_key_path.read_text(encoding="utf-8")
     )
@@ -546,7 +547,6 @@ def describe_http_bind_error(exc: urllib.error.HTTPError) -> str:
 def cmd_bind(
     domain: str,
     *,
-    algorithm: str,
     debug: bool,
     json_output: bool,
     config_dir: Path,
@@ -567,7 +567,6 @@ def cmd_bind(
         try:
             bind_entry, raw_payload = send_bind_message(
                 normalized_domain,
-                algorithm,
                 key_pair,
                 public_key_path,
                 binds_path,

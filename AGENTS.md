@@ -61,6 +61,7 @@
 - `pw bind` expects a bare UUID bind value in successful responses and stores that UUID in `~/.pollyweb/binds.yaml`; keep the legacy `Bind:<UUID>` parser path compatible so older hosts still work.
 - `pw bind` should validate the normalized target domain before loading keys or sending the request, and malformed domains should fail with a direct user-facing error instead of a generic command failure.
 - `pw bind` should also translate raw resolver `socket.gaierror` / `OSError` failures from wallet transport into the same human-readable inbox-host message used for `urllib.error.URLError`.
+- `pw bind` should derive `Body.Algorithm` from the configured wallet key internally and must not require an `algorithm` CLI argument from the user.
 - Persist bind domains in canonical form and normalize lookup input the same way, so `.dom` and `.pollyweb.org` refer to the same stored bind.
 - `pw bind` should append wallet-managed bind-change audit entries to `~/.pollyweb/binds.log` whenever it writes `~/.pollyweb/binds.yaml`, including the canonical domain plus the previous and new bind UUIDs for replacements.
 - `pw bind` should treat an unchanged canonical domain/schema bind UUID as a true no-op: do not rewrite `~/.pollyweb/binds.yaml`, do not append a normal bind log entry, and do not surface change notifications.

@@ -29,7 +29,7 @@ from tests.cli_test_helpers import (
     make_echo_response_payload,
 )
 
-TEST_BIND_ALGORITHM = "ed25519"
+TEST_BIND_ALGORITHM = "ed25519-sha256"
 
 
 def test_bind_sends_unsigned_anonymous_message_and_stores_bind(
@@ -57,7 +57,7 @@ def test_bind_sends_unsigned_anonymous_message_and_stores_bind(
     monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
 
-    exit_code = cli.main(["bind", "vault.example.com", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "vault.example.com"])
 
     assert exit_code == 0
     assert binds_path.exists()
@@ -111,7 +111,7 @@ def test_bind_normalizes_dom_alias_when_using_wallet_send(
     monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
 
-    exit_code = cli.main(["bind", "any-hoster.dom", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "any-hoster.dom"])
 
     assert exit_code == 0
     assert cli.yaml.safe_load(binds_path.read_text()) == [
@@ -159,7 +159,7 @@ def test_bind_anonymous_flag_ignores_stored_bind(
     monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
 
-    exit_code = cli.main(["bind", "--anonymous", "vault.example.com", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "--anonymous", "vault.example.com"])
 
     assert exit_code == 0
     captured = capsys.readouterr()
@@ -188,7 +188,7 @@ def test_bind_logs_created_bind_entry(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
 
-    exit_code = cli.main(["bind", "any-hoster.pollyweb.org", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "any-hoster.pollyweb.org"])
 
     assert exit_code == 0
     assert log_path.exists()
@@ -368,7 +368,7 @@ def test_bind_debug_prints_outbound_and_inbound_payloads(monkeypatch, tmp_path, 
     monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
 
-    exit_code = cli.main(["bind", "--debug", "vault.example.com", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "--debug", "vault.example.com"])
 
     assert exit_code == 0
     captured = capsys.readouterr()
@@ -412,7 +412,7 @@ def test_bind_appends_without_overwriting_existing_binds(monkeypatch, tmp_path):
         cli.urllib.request, "urlopen", lambda request: DummyResponse(bind_value.encode())
     )
 
-    exit_code = cli.main(["bind", "vault.example.com", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "vault.example.com"])
 
     assert exit_code == 0
     assert cli.yaml.safe_load(binds_path.read_text()) == [
@@ -447,7 +447,7 @@ def test_bind_rejects_existing_bind_for_same_domain(monkeypatch, tmp_path, capsy
         lambda command, check, stdout, stderr: subprocess.CompletedProcess(command, 0),
     )
 
-    exit_code = cli.main(["bind", "vault.example.com", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "vault.example.com"])
 
     assert exit_code == 1
     captured = capsys.readouterr()
@@ -491,7 +491,7 @@ def test_bind_keeps_distinct_schema_entries_for_same_domain(monkeypatch, tmp_pat
         ),
     )
 
-    exit_code = cli.main(["bind", "vault.example.com", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "vault.example.com"])
 
     assert exit_code == 0
     assert cli.yaml.safe_load(binds_path.read_text()) == [
@@ -541,7 +541,7 @@ def test_bind_rejects_existing_bind_with_matching_schema(monkeypatch, tmp_path, 
         ),
     )
 
-    exit_code = cli.main(["bind", "vault.example.com", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "vault.example.com"])
 
     assert exit_code == 1
     captured = capsys.readouterr()
@@ -565,7 +565,7 @@ def test_bind_requires_existing_keys(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
     monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
 
-    exit_code = cli.main(["bind", "vault.example.com", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "vault.example.com"])
 
     captured = capsys.readouterr()
     assert exit_code == 1
@@ -592,7 +592,7 @@ def test_bind_requires_bind_token_in_response(monkeypatch, tmp_path, capsys):
         cli.urllib.request, "urlopen", lambda request: DummyResponse(b'{"ok":true}')
     )
 
-    exit_code = cli.main(["bind", "vault.example.com", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "vault.example.com"])
 
     captured = capsys.readouterr()
     assert exit_code == 1
@@ -625,7 +625,7 @@ def test_bind_accepts_json_bind_value_without_prefix(
         ),
     )
 
-    exit_code = cli.main(["bind", "any-hoster.pollyweb.org", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "any-hoster.pollyweb.org"])
 
     assert exit_code == 0
     assert cli.yaml.safe_load(binds_path.read_text()) == [
@@ -679,7 +679,7 @@ def test_bind_accepts_wrapped_sync_response_shape(
         ),
     )
 
-    exit_code = cli.main(["bind", "any-listener.dom", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "any-listener.dom"])
 
     assert exit_code == 0
     assert cli.yaml.safe_load(binds_path.read_text()) == [
@@ -714,7 +714,7 @@ def test_bind_reports_unresolved_inbox_host(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
 
-    exit_code = cli.main(["bind", "any-host.dom", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "any-host.dom"])
 
     assert exit_code == 1
     captured = capsys.readouterr()
@@ -766,7 +766,7 @@ def test_bind_debug_shows_http_error_details(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
     monkeypatch.setattr(cli.bind_feature, "send_wallet_message", raise_http_error)
 
-    exit_code = cli.main(["bind", "--debug", "any-domain.dom", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "--debug", "any-domain.dom"])
 
     assert exit_code == 1
     captured = capsys.readouterr()
@@ -804,7 +804,7 @@ def test_bind_reports_raw_dns_resolution_failures_from_wallet_send(
     monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
     monkeypatch.setattr(cli.bind_feature, "send_wallet_message", fake_send_wallet_message)
 
-    exit_code = cli.main(["bind", "any-listenerj.dom", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "any-listenerj.dom"])
 
     assert exit_code == 1
     captured = capsys.readouterr()
@@ -832,7 +832,7 @@ def test_bind_rejects_invalid_domain_before_loading_keys(
     monkeypatch.setattr(cli, "BINDS_PATH", binds_path)
     monkeypatch.setattr(cli, "require_configured_keys", fake_require_keys)
 
-    exit_code = cli.main(["bind", "bad domain.com", TEST_BIND_ALGORITHM])
+    exit_code = cli.main(["bind", "bad domain.com"])
 
     assert exit_code == 1
     assert require_calls == []

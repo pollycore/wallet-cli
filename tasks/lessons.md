@@ -1,6 +1,6 @@
 # Lessons
 
-- For `pw bind`, treat the bind algorithm as explicit request data: require it on the CLI and send it in `Body.Algorithm` on every `Bind@Vault` request instead of relying on server defaults.
+- For `pw bind`, derive `Body.Algorithm` from the configured wallet key internally; the CLI should accept only the target domain and must not ask the user for the signing algorithm.
 - When `pollyweb` removes `Msg.Header` fields, sweep wallet-cli transport builders, inbound matcher fixtures, docs, and dependency floors together; this repo still uses `Body.Algorithm` for `pw bind`, but `Header.Algorithm`, `Header.Notifier`, and `Header.Channel` must stay gone.
 - When removing a CLI feature, sweep parser registration, dispatch wrappers, compatibility re-exports, docs, and focused tests together; in this repo, `pw shell` also left a tiny sender-normalization helper behind that `pw sync` still needed.
 - When removing a wallet-side notifier feature, split the concerns cleanly: delete notifier send/onboarding logic from shared wallet transport and `pw config`, but keep the read-only `Helpers.Notifier` config loader when `pw chat` still depends on it.

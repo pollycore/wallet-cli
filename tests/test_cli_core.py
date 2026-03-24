@@ -454,8 +454,8 @@ def test_main_checks_for_upgrade_before_running_command(monkeypatch):
 
     monkeypatch.setattr(cli, "_maybe_upgrade_before_command", fake_preflight)
 
-    assert cli.main(["bind", "vault.example.com", "ed25519"]) == 0
-    assert calls == [["bind", "vault.example.com", "ed25519"]]
+    assert cli.main(["bind", "vault.example.com"]) == 0
+    assert calls == [["bind", "vault.example.com"]]
 
 def test_main_upgrade_command_skips_preflight_and_runs_upgrade(monkeypatch):
     called = {"preflight": False, "upgrade": False}
@@ -648,7 +648,7 @@ def test_main_renders_bind_errors_in_red(monkeypatch):
     monkeypatch.setattr(
         cli,
         "cmd_bind",
-        lambda domain, algorithm, debug, json_output = False, unsigned = False, anonymous = False: (_ for _ in ()).throw(
+        lambda domain, debug, json_output = False, unsigned = False, anonymous = False: (_ for _ in ()).throw(
             cli.UserFacingError(
                 f"Could not bind {domain}. The server returned HTTP 500."
             )
@@ -661,7 +661,7 @@ def test_main_renders_bind_errors_in_red(monkeypatch):
 
     monkeypatch.setattr(builtins, "print", fake_print)
 
-    exit_code = cli.main(["bind", "any-hoster.pollyweb.org", "ed25519"])
+    exit_code = cli.main(["bind", "any-hoster.pollyweb.org"])
 
     assert exit_code == 1
     assert printed == [
