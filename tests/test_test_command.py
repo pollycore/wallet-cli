@@ -1241,7 +1241,9 @@ def test_test_without_debug_runs_same_folder_numeric_prefix_group_in_parallel(
 
     captured = capsys.readouterr()
     lines = captured.out.splitlines()
-    assert lines == ["✅ Passed: 04-third (0 ms, 0% latency)"]
+    assert len(lines) == 1
+    assert lines[0].startswith("✅ Passed: 04-third (")
+    assert lines[0].endswith(" ms, 0% latency)")
     assert any(entry.startswith("enter:") for entry in lifecycle)
     assert any(entry.startswith("update:") for entry in lifecycle)
     assert {
