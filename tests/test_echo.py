@@ -475,6 +475,20 @@ def test_echo_textual_app_toggle_switches_payload_sections():
     assert app._current_sections()[0].title == "YAML section"
 
 
+def test_echo_success_metrics_subtracts_message_total_from_latency_share():
+    response_metadata = {
+        "TotalMs": 670,
+    }
+
+    metrics = echo_feature._format_echo_success_metrics(
+        total_seconds = 1.314,
+        network_seconds = 1.145,
+        response_metadata = response_metadata,
+    )
+
+    assert metrics == "✅ Verified echo response (1314 ms, 36% latency)"
+
+
 def test_echo_textual_app_builds_sections_lazily_and_caches_each_view():
     calls: list[str] = []
 
@@ -1525,7 +1539,7 @@ def test_echo_debug_prints_wrapped_sync_meta_timing_details(
         lambda **kwargs: (
             kwargs["timing"].update(
                 {
-                    "network_seconds": 0.04,
+                    "network_seconds": 0.12,
                     "client_timeout_seconds": 100.0,
                 }
             ),
@@ -1558,8 +1572,8 @@ def test_echo_debug_prints_wrapped_sync_meta_timing_details(
     captured = capsys.readouterr()
     assert "\nNetwork timing:\n" in captured.out
     assert " - Total duration: 100 ms" in captured.out
-    assert " - Latency share: 40% (40 ms)" in captured.out
-    assert " - Client overhead: 60 ms" in captured.out
+    assert " - Latency share: 30% (30 ms)" in captured.out
+    assert " - Client overhead: 0 ms" in captured.out
     assert " - Client timeout budget: 100.0 s" in captured.out
     assert " - Remote latency: 12 ms" in captured.out
     assert " - Cold start: 18 ms" in captured.out

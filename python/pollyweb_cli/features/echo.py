@@ -244,7 +244,8 @@ def cmd_echo(
         print(
             _format_echo_success_metrics(
                 total_seconds = resolved.total_seconds,
-                network_seconds = resolved.network_seconds)
+                network_seconds = resolved.network_seconds,
+                response_metadata = resolved.response_metadata)
         )
         return 0
 

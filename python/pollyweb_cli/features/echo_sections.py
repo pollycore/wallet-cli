@@ -15,6 +15,8 @@ from pollyweb_cli.features.echo_rendering import (
     _json_debug_copy_text,
     _raw_json_debug_text,
     _render_labeled_lines,
+    _resolve_echo_latency_milliseconds,
+    _resolve_echo_latency_share,
     _yaml_debug_renderable,
 )
 from pollyweb_cli.features.echo_textual import _EchoTextualApp, _EchoTextualSection, _should_use_textual_echo_view
@@ -182,13 +184,26 @@ def _build_echo_timing_lines(
     """Collect timing details for display."""
 
     total_milliseconds = max(0, round(total_seconds * 1000))
-    network_milliseconds = max(0, round(network_seconds * 1000))
-    client_overhead_milliseconds = max(0, total_milliseconds - network_milliseconds)
+    send_phase_milliseconds = max(0, round(network_seconds * 1000))
+    network_milliseconds = _resolve_echo_latency_milliseconds(
+        network_seconds = network_seconds,
+        response_metadata = response_metadata,
+    )
+    client_overhead_milliseconds = max(
+        0,
+        total_milliseconds - send_phase_milliseconds,
+    )
     lines = {"Total duration": f"{total_milliseconds} ms"}
+
+    latency_share = _resolve_echo_latency_share(
+        total_seconds = total_seconds,
+        network_seconds = network_seconds,
+        response_metadata = response_metadata,
+    )
 
     if total_seconds > 0:
         lines["Latency share"] = (
-            f"{(network_seconds / total_seconds) * 100:.0f}% "
+            f"{latency_share:.0f}% "
             f"({network_milliseconds} ms)"
         )
     else:

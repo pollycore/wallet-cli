@@ -78,6 +78,7 @@ def _build_echo_footer_panel(
     *,
     total_seconds: float,
     network_seconds: float,
+    response_metadata: object | None = None,
     dkim_and_dnssec_verified: bool,
     cdn_distribution_detected: bool
 ) -> Panel:
@@ -86,10 +87,11 @@ def _build_echo_footer_panel(
     accent_style = "bold #d7875f"
     body_style = "bold white"
     total_milliseconds = max(0, round(total_seconds * 1000))
-    latency_share = 0.0
-
-    if total_seconds > 0:
-        latency_share = (network_seconds / total_seconds) * 100
+    latency_share = _resolve_echo_latency_share(
+        total_seconds = total_seconds,
+        network_seconds = network_seconds,
+        response_metadata = response_metadata,
+    )
 
     summary = Table.grid(expand = True)
     summary.add_column(ratio = 1)
@@ -127,17 +129,19 @@ def _build_echo_footer_panel(
 def _build_echo_error_footer_panel(
     *,
     total_seconds: float,
-    network_seconds: float
+    network_seconds: float,
+    response_metadata: object | None = None
 ) -> Panel:
     """Build the bottom summary panel for a failed echo debug run."""
 
     accent_style = "bold #d7875f"
     body_style = "bold white"
     total_milliseconds = max(0, round(total_seconds * 1000))
-    latency_share = 0.0
-
-    if total_seconds > 0:
-        latency_share = (network_seconds / total_seconds) * 100
+    latency_share = _resolve_echo_latency_share(
+        total_seconds = total_seconds,
+        network_seconds = network_seconds,
+        response_metadata = response_metadata,
+    )
 
     summary = Table.grid(expand = True)
     summary.add_column(ratio = 1)
@@ -246,17 +250,66 @@ def _render_labeled_lines(values: dict[str, object]) -> Text:
 def _format_echo_success_metrics(
     *,
     total_seconds: float,
-    network_seconds: float
+    network_seconds: float,
+    response_metadata: object | None = None
 ) -> str:
     """Format the echo success metrics for concise terminal output."""
 
     total_milliseconds = max(0, round(total_seconds * 1000))
-    network_share = 0.0
-
-    if total_seconds > 0:
-        network_share = (network_seconds / total_seconds) * 100
+    network_share = _resolve_echo_latency_share(
+        total_seconds = total_seconds,
+        network_seconds = network_seconds,
+        response_metadata = response_metadata,
+    )
 
     return (
         f"✅ Verified echo response ({total_milliseconds} ms, "
         f"{network_share:.0f}% latency)"
+    )
+
+
+def _resolve_echo_latency_share(
+    *,
+    total_seconds: float,
+    network_seconds: float,
+    response_metadata: object | None = None
+) -> float:
+    """Return the transport-latency percentage shown in echo timing output."""
+
+    total_milliseconds = max(0, round(total_seconds * 1000))
+
+    if total_milliseconds <= 0:
+        return 0.0
+
+    latency_milliseconds = _resolve_echo_latency_milliseconds(
+        network_seconds = network_seconds,
+        response_metadata = response_metadata,
+    )
+    return (latency_milliseconds / total_milliseconds) * 100
+
+
+def _resolve_echo_latency_milliseconds(
+    *,
+    network_seconds: float,
+    response_metadata: object | None = None
+) -> int:
+    """Return the estimated transport-only latency in milliseconds."""
+
+    send_phase_milliseconds = max(0, round(network_seconds * 1000))
+    if response_metadata is None or not hasattr(response_metadata, "get"):
+        return send_phase_milliseconds
+
+    message_total_milliseconds = response_metadata.get("TotalMs")
+    if not isinstance(message_total_milliseconds, int):
+        return send_phase_milliseconds
+
+    # When the reply reports its own end-to-end message time, subtract that
+    # server-side work from the measured send phase so "latency" reflects the
+    # remaining transport time rather than double-counting server execution.
+    return max(
+        0,
+        send_phase_milliseconds - min(
+            send_phase_milliseconds,
+            message_total_milliseconds,
+        ),
     )

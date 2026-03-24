@@ -219,6 +219,7 @@ def _build_echo_failure_result(
         footer_panel = _build_echo_error_footer_panel(
             total_seconds = total_seconds,
             network_seconds = network_seconds,
+            response_metadata = response_metadata,
         ),
     )
 
@@ -523,6 +524,7 @@ def _resolve_echo_command(
         footer_panel = _build_echo_footer_panel(
             total_seconds = total_seconds,
             network_seconds = network_seconds,
+            response_metadata = response_metadata,
             dkim_and_dnssec_verified = verification.dns_lookup_used and dnssec_verified,
             cdn_distribution_detected = cdn_detected)
 
