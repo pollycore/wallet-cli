@@ -9,12 +9,10 @@ import textwrap
 import yaml
 from rich.console import Console
 from rich.syntax import Syntax
-from rich.markdown import Markdown
 from rich.text import Text
 
 
 DEBUG_CONSOLE = Console()
-SHELL_CONSOLE = Console()
 DEBUG_WRAP_WIDTH = 64
 DEBUG_LITERAL_KEYS = frozenset({"PublicKey", "Signature", "Hash"})
 DEBUG_KEY_STYLE = "bold #0f62fe"
@@ -23,13 +21,6 @@ DEBUG_LITERAL_STYLE = "#08bdba"
 DEBUG_PUNCTUATION_STYLE = "dim"
 DEBUG_SECTION_TITLE_STYLE = "bold white"
 DEBUG_CODE_BACKGROUND_STYLE = "on #262620"
-HTTP_CODE_STYLES = {
-    1: "cyan",
-    2: "green",
-    3: "blue",
-    4: "yellow",
-    5: "bold red",
-}
 
 
 class _LiteralDebugString(str):
@@ -59,72 +50,6 @@ def parse_debug_payload(payload: str) -> object:
         return json.loads(payload)
     except json.JSONDecodeError:
         return {"Body": payload}
-
-
-def extract_http_code(payload: str) -> int | None:
-    """Extract a numeric HTTP-style code from a JSON payload when present."""
-
-    try:
-        parsed = json.loads(payload)
-    except json.JSONDecodeError:
-        return None
-
-    if not isinstance(parsed, dict):
-        return None
-
-    code_value = parsed.get("Code")
-    if isinstance(code_value, int):
-        return code_value
-    if isinstance(code_value, str) and code_value.isdigit():
-        return int(code_value)
-    return None
-
-
-def get_http_code_style(code: int) -> str | None:
-    """Map a numeric code to the shell output style for its class."""
-
-    return HTTP_CODE_STYLES.get(code // 100)
-
-
-def parse_shell_response_body(payload: str) -> tuple[str | None, str | None]:
-    """Extract rendered shell markdown and an optional style from a payload."""
-
-    try:
-        parsed = json.loads(payload)
-    except json.JSONDecodeError:
-        return None, None
-
-    if not isinstance(parsed, dict):
-        return None, None
-
-    rendered_text = parsed.get("Body")
-    if not isinstance(rendered_text, str):
-        rendered_text = parsed.get("Message")
-    if not isinstance(rendered_text, str):
-        return None, None
-
-    code = parsed.get("Code")
-    if isinstance(code, int):
-        return rendered_text, get_http_code_style(code)
-    if isinstance(code, str) and code.isdigit():
-        return rendered_text, get_http_code_style(int(code))
-    return rendered_text, None
-
-
-def print_shell_response(payload: str) -> None:
-    """Render a shell command response with optional markdown and status styling."""
-
-    body, body_style = parse_shell_response_body(payload)
-    if body is not None:
-        SHELL_CONSOLE.print(Markdown(body), style=body_style)
-        return
-
-    code = extract_http_code(payload)
-    style = get_http_code_style(code) if code is not None else None
-    if style is None:
-        print(payload)
-        return
-    SHELL_CONSOLE.print(payload, style=style)
 
 
 def print_echo_response(payload: str) -> None:

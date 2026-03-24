@@ -7,9 +7,12 @@ import json
 import urllib.error
 from pathlib import Path
 
-from pollyweb_cli.features.bind import get_first_bind_for_domain, load_binds
+from pollyweb_cli.features.bind import (
+    get_first_bind_for_domain,
+    load_binds,
+    normalize_bind_value,
+)
 from pollyweb_cli.errors import UserFacingError
-from pollyweb_cli.features.shell import get_shell_from_value
 from pollyweb_cli.tools.transport import send_wallet_message
 
 
@@ -63,7 +66,7 @@ def cmd_sync(
         raise UserFacingError(
             f"No bind stored for {domain}. Run `pw bind {domain}` first."
         ) from None
-    from_value = "Anonymous" if anonymous else get_shell_from_value(bind_value)
+    from_value = "Anonymous" if anonymous else normalize_bind_value(bind_value)
     files = build_sync_files_map(domain, sync_dir)
 
     try:

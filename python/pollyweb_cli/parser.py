@@ -129,21 +129,6 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
     )
     add_wallet_send_flags(test_parser)
 
-    shell_parser = subparsers.add_parser(
-        "shell",
-        help="Open an interactive shell against a domain.",
-    )
-    shell_parser.add_argument(
-        "domain",
-        help="Domain that will receive shell commands.",
-    )
-    shell_parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Print outbound and inbound shell payloads.",
-    )
-    add_wallet_send_flags(shell_parser)
-
     chat_parser = subparsers.add_parser(
         "chat",
         help="Listen for notifier chat events on the configured wallet channel.",

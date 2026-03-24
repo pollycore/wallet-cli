@@ -45,5 +45,5 @@ After installation, confirm the CLI is available:
 
 ```bash
 pw --help
-pw shell --help
+pw echo --help
 ```

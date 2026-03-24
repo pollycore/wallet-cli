@@ -22,8 +22,6 @@ import yaml
 from pollyweb import KeyPair, Msg, MsgValidationError
 import pollyweb.msg as pollyweb_msg
 from rich.console import Console
-from rich.markdown import Markdown
-from rich.text import Text
 
 import pollyweb_cli.features.bind as bind_feature
 import pollyweb_cli.features.chat as chat_feature
@@ -39,6 +37,7 @@ from pollyweb_cli.features.bind import (
     cmd_bind as _cmd_bind,
     get_first_bind_for_domain,
     load_binds,
+    normalize_bind_value,
     save_bind,
     send_bind_message,
     serialize_public_key_value,
@@ -59,16 +58,10 @@ from pollyweb_cli.tools.debug import (
     DEBUG_PUNCTUATION_STYLE,
     DEBUG_VALUE_STYLE,
     DEBUG_WRAP_WIDTH,
-    HTTP_CODE_STYLES,
-    SHELL_CONSOLE,
-    extract_http_code as _extract_http_code_impl,
-    get_http_code_style as _get_http_code_style_impl,
     parse_debug_payload as _parse_debug_payload_impl,
-    parse_shell_response_body as _parse_shell_response_body_impl,
     print_debug_payload,
     print_echo_response,
     print_yaml_payload,
-    print_shell_response,
     render_debug_yaml as _render_debug_yaml_impl,
 )
 from pollyweb_cli.features.echo import (
@@ -83,20 +76,6 @@ from pollyweb_cli.features.test import (
 )
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.parser import build_parser as _build_parser
-from pollyweb_cli.features.shell import (
-    SHELL_HISTORY_LIMIT,
-    SHELL_SUBJECT,
-    build_shell_arguments,
-    cmd_shell as _cmd_shell,
-    configure_shell_history,
-    get_shell_from_value,
-    get_shell_history_path,
-    is_shell_exit_command,
-    load_shell_history,
-    parse_shell_command,
-    record_shell_history,
-    save_shell_history,
-)
 from pollyweb_cli.features.sync import (
     SYNC_SUBJECT,
     build_sync_files_map as _build_sync_files_map,
@@ -134,7 +113,6 @@ def _sync_runtime_dependencies() -> None:
     """Propagate facade-level monkeypatches into the split feature modules."""
 
     debug_tools.DEBUG_CONSOLE = DEBUG_CONSOLE
-    debug_tools.SHELL_CONSOLE = SHELL_CONSOLE
     bind_feature.yaml = yaml
 
 
@@ -445,35 +423,10 @@ def _parse_debug_payload(payload: str) -> object:
     return _parse_debug_payload_impl(payload)
 
 
-def _extract_http_code(payload: str) -> int | None:
-    """Compatibility wrapper for HTTP-style code extraction."""
-
-    return _extract_http_code_impl(payload)
-
-
-def _get_http_code_style(code: int) -> str | None:
-    """Compatibility wrapper for code-style mapping."""
-
-    return _get_http_code_style_impl(code)
-
-
-def _parse_shell_response_body(payload: str) -> tuple[str | None, str | None]:
-    """Compatibility wrapper for shell response parsing."""
-
-    return _parse_shell_response_body_impl(payload)
-
-
 def _render_debug_yaml(yaml_payload: str):
     """Compatibility wrapper for debug YAML rendering."""
 
     return _render_debug_yaml_impl(yaml_payload)
-
-
-def print_shell_response(payload: str) -> None:
-    """Render a shell response using the currently configured shell console."""
-
-    _sync_runtime_dependencies()
-    debug_tools.print_shell_response(payload)
 
 
 def print_echo_response(payload: str) -> None:
@@ -544,29 +497,6 @@ def cmd_echo(
         json_output=json_output,
         config_dir=CONFIG_DIR,
         binds_path=BINDS_PATH,
-        unsigned=unsigned,
-        anonymous=anonymous,
-        require_configured_keys=require_configured_keys,
-        load_signing_key_pair=load_signing_key_pair,
-    )
-
-
-def cmd_shell(
-    domain: str,
-    debug: bool = False,
-    unsigned: bool = False,
-    anonymous: bool = False
-) -> int:
-    """Run the interactive shell command with the current filesystem paths."""
-
-    _sync_runtime_dependencies()
-    return _cmd_shell(
-        domain,
-        debug=debug,
-        config_dir=CONFIG_DIR,
-        binds_path=BINDS_PATH,
-        history_dir=HISTORY_DIR,
-        readline=readline,
         unsigned=unsigned,
         anonymous=anonymous,
         require_configured_keys=require_configured_keys,
@@ -719,12 +649,6 @@ def _run_main(
                 path = args.path,
                 debug = args.debug,
                 json_output = args.json,
-                unsigned = args.unsigned,
-                anonymous = args.anonymous)
-        if args.command == "shell":
-            return cmd_shell(
-                domain = args.domain,
-                debug = args.debug,
                 unsigned = args.unsigned,
                 anonymous = args.anonymous)
         if args.command == "chat":
