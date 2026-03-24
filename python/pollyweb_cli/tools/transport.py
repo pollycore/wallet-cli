@@ -394,6 +394,19 @@ def send_wallet_message(
     original_transport_post = pollyweb_transport.post_json_bytes
     original_pool_post = pollyweb_transport._HTTPS_CONNECTION_POOL.post
 
+    def capture_post_json_bytes(
+        url: str,
+        body: bytes,
+        *,
+        timeout: float = DEFAULT_SEND_TIMEOUT_SECONDS
+    ) -> bytes:
+        """Force wallet-backed sends through the shared CLI timeout budget."""
+
+        return original_post(
+            url,
+            body,
+            timeout = timeout)
+
     def capture_pool_post(
         pool_self,
         url: str,
@@ -422,53 +435,52 @@ def send_wallet_message(
         if parsed.query:
             path = f"{path}?{parsed.query}"
 
-        for attempt in range(2):
-            connection = pool_self._get_connection(
-                host,
-                port,
-                timeout = timeout)
+        connection = pool_self._get_connection(
+            host,
+            port,
+            timeout = timeout)
 
-            try:
-                connection.request(
-                    "POST",
-                    path,
-                    body = body,
-                    headers = request_headers)
-                response = connection.getresponse()
-                raw = response.read()
+        try:
+            connection.request(
+                "POST",
+                path,
+                body = body,
+                headers = request_headers)
+            response = connection.getresponse()
+            raw = response.read()
 
-                if transport_metadata is not None:
-                    transport_metadata["http_status"] = response.status
-                    transport_metadata["http_reason"] = response.reason
-                    transport_metadata["request_url"] = url
-                    transport_metadata["response_headers"] = dict(response.headers.items())
+            if transport_metadata is not None:
+                transport_metadata["http_status"] = response.status
+                transport_metadata["http_reason"] = response.reason
+                transport_metadata["request_url"] = url
+                transport_metadata["response_headers"] = dict(response.headers.items())
 
-                if response.will_close:
-                    pool_self._drop_connection(host, port)
-
-                if response.status >= 400:
-                    raise urllib.error.HTTPError(
-                        url,
-                        response.status,
-                        response.reason,
-                        response.headers,
-                        io.BytesIO(raw))
-
-                return raw
-            except (
-                OSError,
-                http.client.HTTPException,
-            ) as exc:
+            if response.will_close:
                 pool_self._drop_connection(host, port)
-                if attempt == 1:
-                    raise urllib.error.URLError(exc) from exc
 
-        raise RuntimeError("Unreachable HTTPS transport retry state")
+            if response.status >= 400:
+                raise urllib.error.HTTPError(
+                    url,
+                    response.status,
+                    response.reason,
+                    response.headers,
+                    io.BytesIO(raw))
+
+            return raw
+        except (
+            OSError,
+            http.client.HTTPException,
+        ) as exc:
+            pool_self._drop_connection(host, port)
+            raise urllib.error.URLError(exc) from exc
 
     with WALLET_SEND_LOCK:
         try:
             if timing is not None:
                 timing["client_timeout_seconds"] = DEFAULT_SEND_TIMEOUT_SECONDS
+
+            pollyweb_msg.post_json_bytes = capture_post_json_bytes
+            pollyweb_transport.post_json_bytes = capture_post_json_bytes
 
             if transport_metadata is not None:
                 pollyweb_transport._HTTPS_CONNECTION_POOL.post = MethodType(

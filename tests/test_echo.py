@@ -1522,7 +1522,12 @@ def test_echo_debug_prints_wrapped_sync_meta_timing_details(
         echo_feature,
         "send_wallet_message",
         lambda **kwargs: (
-            kwargs["timing"].update({"network_seconds": 0.04}),
+            kwargs["timing"].update(
+                {
+                    "network_seconds": 0.04,
+                    "client_timeout_seconds": 100.0,
+                }
+            ),
             (
                 response_payload,
                 request_message,
@@ -1554,6 +1559,7 @@ def test_echo_debug_prints_wrapped_sync_meta_timing_details(
     assert " - Total duration: 100 ms" in captured.out
     assert " - Latency share: 40% (40 ms)" in captured.out
     assert " - Client overhead: 60 ms" in captured.out
+    assert " - Client timeout budget: 100.0 s" in captured.out
     assert " - Remote latency: 12 ms" in captured.out
     assert " - Cold start: 18 ms" in captured.out
     assert " - Message total: 90 ms" in captured.out

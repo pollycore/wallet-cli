@@ -26,6 +26,7 @@ class _EchoCommandSuccess:
     total_seconds: float
     network_seconds: float
     footer_panel: object | None
+    client_timeout_seconds: float | None = None
 
 
 @dataclass(frozen = True)
@@ -45,3 +46,4 @@ class _EchoCommandFailure:
     total_seconds: float
     network_seconds: float
     footer_panel: object
+    client_timeout_seconds: float | None = None

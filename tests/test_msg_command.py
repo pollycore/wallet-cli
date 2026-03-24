@@ -747,6 +747,41 @@ def test_send_wallet_message_uses_extended_default_transport_timeout(monkeypatch
     assert response_payload == '{"ok":true}'
 
 
+def test_send_wallet_message_forces_cli_timeout_through_msg_send_default(monkeypatch):
+    key_pair = cli.KeyPair()
+    observed: dict[str, float] = {}
+
+    def fake_post_json_bytes(
+        url,
+        body,
+        *,
+        timeout = 10.0
+    ):
+        """Capture the timeout forwarded through the wrapped transport call."""
+
+        observed["timeout"] = timeout
+        return b'{"ok":true}'
+
+    monkeypatch.setattr(
+        transport_tools.pollyweb_transport,
+        "post_json_bytes",
+        fake_post_json_bytes)
+    monkeypatch.setattr(
+        transport_tools.pollyweb_msg,
+        "post_json_bytes",
+        fake_post_json_bytes)
+
+    response_payload, _, _ = transport_tools.send_wallet_message(
+        domain = "any-hoster.dom",
+        subject = "Echo@Domain",
+        body = {"Ping": "pong"},
+        key_pair = key_pair,
+    )
+
+    assert observed["timeout"] == transport_tools.DEFAULT_SEND_TIMEOUT_SECONDS
+    assert response_payload == '{"ok":true}'
+
+
 def test_send_wallet_message_serializes_concurrent_library_sends(monkeypatch):
     key_pair = cli.KeyPair()
     first_send_started = threading.Event()

@@ -176,7 +176,8 @@ def _build_echo_timing_lines(
     *,
     total_seconds: float,
     network_seconds: float,
-    response_metadata: object | None = None
+    response_metadata: object | None = None,
+    client_timeout_seconds: float | None = None
 ) -> dict[str, str]:
     """Collect timing details for display."""
 
@@ -194,6 +195,9 @@ def _build_echo_timing_lines(
         lines["Latency share"] = f"0% ({network_milliseconds} ms)"
 
     lines["Client overhead"] = f"{client_overhead_milliseconds} ms"
+
+    if isinstance(client_timeout_seconds, (int, float)):
+        lines["Client timeout budget"] = f"{client_timeout_seconds:.1f} s"
 
     if response_metadata is not None and hasattr(response_metadata, "get"):
         latency_ms = response_metadata.get("LatencyMs")
@@ -300,7 +304,8 @@ def _build_echo_textual_sections(
     total_seconds: float,
     network_seconds: float,
     response_metadata: object | None,
-    transport_metadata: dict[str, object]
+    transport_metadata: dict[str, object],
+    client_timeout_seconds: float | None = None
 ) -> list[_EchoTextualSection]:
     """Build the section renderables shown in the Textual echo viewer."""
 
@@ -357,6 +362,7 @@ def _build_echo_textual_sections(
                         total_seconds = total_seconds,
                         network_seconds = network_seconds,
                         response_metadata = response_metadata,
+                        client_timeout_seconds = client_timeout_seconds,
                     )
                 ),
             )
@@ -398,7 +404,8 @@ def _build_echo_error_textual_sections(
     total_seconds: float,
     network_seconds: float,
     response_metadata: object | None,
-    transport_metadata: dict[str, object]
+    transport_metadata: dict[str, object],
+    client_timeout_seconds: float | None = None
 ) -> list[_EchoTextualSection]:
     """Build the error sections shown in the Textual echo viewer."""
 
@@ -469,6 +476,7 @@ def _build_echo_error_textual_sections(
                     total_seconds = total_seconds,
                     network_seconds = network_seconds,
                     response_metadata = response_metadata,
+                    client_timeout_seconds = client_timeout_seconds,
                 )
             ),
         )
@@ -525,7 +533,8 @@ def _print_echo_timing_details(
     *,
     total_seconds: float,
     network_seconds: float,
-    response_metadata: object | None = None
+    response_metadata: object | None = None,
+    client_timeout_seconds: float | None = None
 ) -> None:
     """Render the echo timing details as a dedicated debug section."""
 
@@ -536,6 +545,7 @@ def _print_echo_timing_details(
         total_seconds = total_seconds,
         network_seconds = network_seconds,
         response_metadata = response_metadata,
+        client_timeout_seconds = client_timeout_seconds,
     )
 
     print_labeled_value_lines(
@@ -578,6 +588,7 @@ def _render_debug_echo_failure(
     dns_link_context: tuple[str, str] | None,
     total_seconds: float,
     network_seconds: float,
+    client_timeout_seconds: float | None,
     response_metadata: object | None,
     transport_metadata: dict[str, object],
     header_panel
@@ -609,6 +620,7 @@ def _render_debug_echo_failure(
                 error_lines = error_lines,
                 total_seconds = total_seconds,
                 network_seconds = network_seconds,
+                client_timeout_seconds = client_timeout_seconds,
                 response_metadata = response_metadata,
                 transport_metadata = transport_metadata,
             ),
@@ -624,6 +636,7 @@ def _render_debug_echo_failure(
                 error_lines = error_lines,
                 total_seconds = total_seconds,
                 network_seconds = network_seconds,
+                client_timeout_seconds = client_timeout_seconds,
                 response_metadata = response_metadata,
                 transport_metadata = transport_metadata,
             ),
@@ -639,6 +652,7 @@ def _render_debug_echo_failure(
                 error_lines = error_lines,
                 total_seconds = total_seconds,
                 network_seconds = network_seconds,
+                client_timeout_seconds = client_timeout_seconds,
                 response_metadata = response_metadata,
                 transport_metadata = transport_metadata,
             ),
@@ -673,7 +687,8 @@ def _render_debug_echo_failure(
     _print_echo_timing_details(
         total_seconds = total_seconds,
         network_seconds = network_seconds,
-        response_metadata = response_metadata)
+        response_metadata = response_metadata,
+        client_timeout_seconds = client_timeout_seconds)
     _print_echo_edge_details(transport_metadata)
     print()
     DEBUG_CONSOLE.print(footer_panel)

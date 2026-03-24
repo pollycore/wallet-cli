@@ -230,6 +230,7 @@ def cmd_echo(
             dns_link_context = resolved.dns_link_context,
             total_seconds = resolved.total_seconds,
             network_seconds = resolved.network_seconds,
+            client_timeout_seconds = resolved.client_timeout_seconds,
             response_metadata = resolved.response_metadata,
             transport_metadata = resolved.transport_metadata,
             header_panel = _build_echo_header_panel(),
@@ -273,7 +274,8 @@ def cmd_echo(
     _print_echo_timing_details(
         total_seconds = resolved.total_seconds,
         network_seconds = resolved.network_seconds,
-        response_metadata = resolved.response_metadata)
+        response_metadata = resolved.response_metadata,
+        client_timeout_seconds = resolved.client_timeout_seconds)
     _print_echo_edge_details(resolved.transport_metadata)
     print()
     if resolved.footer_panel is not None:
