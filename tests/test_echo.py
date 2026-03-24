@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import io
 import json
 import socket
 import stat
@@ -2047,6 +2048,102 @@ def test_echo_debug_keeps_raw_dns_failure_details(
         "([Errno 8] nodename nor servname provided, or not known)"
     ) in captured.err
     assert "Could not resolve PollyWeb inbox host" not in captured.err
+
+
+def test_echo_debug_renders_http_error_response_details(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    http_error = urllib.error.HTTPError(
+        url = "https://pw.any-domain.pollyweb.org/inbox",
+        code = 502,
+        msg = "Bad Gateway",
+        hdrs = None,
+        fp = io.BytesIO(
+            b'{"error":"Upstream inbox failed","Meta":{"Code":502}}'
+        ),
+    )
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature,
+        "send_wallet_message",
+        lambda **_kwargs: (_ for _ in ()).throw(http_error),
+    )
+
+    exit_code = cli.main(["echo", "--debug", "any-domain.pollyweb.org"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "pw echo v" in captured.out
+    outbound = captured.out.split("\nInbound payload:\n", 1)[0]
+    assert "Subject: Echo@Domain" in outbound
+    assert "To: any-domain.pollyweb.org" in outbound
+    assert "\nInbound payload:\n" in captured.out
+    assert "error: Upstream inbox failed" in captured.out
+    assert "\nError summary:\n" in captured.out
+    assert " - Stage: transport" in captured.out
+    assert " - Error type: HTTPError" in captured.out
+    assert " - Error: The server returned HTTP 502. Upstream inbox failed" in captured.out
+    assert "Echo summary" in captured.out
+    assert captured.err == ""
+
+
+def test_echo_debug_renders_wrapped_http_error_response_details(
+    monkeypatch, tmp_path, capsys
+):
+    config_dir = tmp_path / ".pollyweb"
+    private_key_path = config_dir / "private.pem"
+    public_key_path = config_dir / "public.pem"
+    config_dir.mkdir()
+    local_key_pair = cli.KeyPair()
+    private_key_path.write_bytes(local_key_pair.private_pem_bytes())
+    public_key_path.write_bytes(local_key_pair.public_pem_bytes())
+
+    nested_http_error = urllib.error.HTTPError(
+        url = "https://pw.any-domain.pollyweb.org/inbox",
+        code = 502,
+        msg = "Bad Gateway",
+        hdrs = None,
+        fp = io.BytesIO(
+            b'{"error":"Wrapped upstream inbox failed","Meta":{"Code":502}}'
+        ),
+    )
+    wrapped_error = urllib.error.URLError(nested_http_error)
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cli, "PRIVATE_KEY_PATH", private_key_path)
+    monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
+    monkeypatch.setattr(
+        echo_feature,
+        "send_wallet_message",
+        lambda **_kwargs: (_ for _ in ()).throw(wrapped_error),
+    )
+
+    exit_code = cli.main(["echo", "--debug", "any-domain.pollyweb.org"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "pw echo v" in captured.out
+    outbound = captured.out.split("\nInbound payload:\n", 1)[0]
+    assert "Subject: Echo@Domain" in outbound
+    assert "To: any-domain.pollyweb.org" in outbound
+    assert "\nInbound payload:\n" in captured.out
+    assert "error: Wrapped upstream inbox failed" in captured.out
+    assert "\nError summary:\n" in captured.out
+    assert " - Stage: transport" in captured.out
+    assert " - Error type: HTTPError" in captured.out
+    assert " - Error: The server returned HTTP 502. Wrapped upstream inbox failed" in captured.out
+    assert captured.err == ""
 
 
 def test_echo_debug_shows_in_app_summary_for_request_validation_errors(

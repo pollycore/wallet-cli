@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import socket
+import urllib.error
 
 from pollyweb import Msg, MsgValidationError
 
@@ -279,3 +280,25 @@ def _describe_echo_network_error(
     return describe_bind_network_error(
         domain,
         reason)
+
+
+def _describe_http_echo_error(exc: urllib.error.HTTPError) -> str:
+    """Build the user-facing HTTP failure message for `pw echo`."""
+
+    message = f"The server returned HTTP {exc.code}."
+    error_body = getattr(exc, "pollyweb_error_body", None)
+
+    if not isinstance(error_body, str) or not error_body.strip():
+        return message
+
+    try:
+        parsed_body = parse_debug_payload(error_body)
+    except Exception:
+        parsed_body = None
+
+    if isinstance(parsed_body, dict):
+        error_value = parsed_body.get("error")
+        if isinstance(error_value, str) and error_value.strip():
+            return f"{message} {error_value}"
+
+    return message

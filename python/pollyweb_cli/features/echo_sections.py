@@ -661,6 +661,13 @@ def _render_debug_echo_failure(
         ).run()
         return 1
 
+    if outbound_payload is not None:
+        print_section_title(f"Outbound payload to https://pw.{domain}/inbox")
+        if debug_json:
+            print_debug_json_payload("Echo request", outbound_payload)
+        else:
+            DEBUG_CONSOLE.print(_yaml_debug_renderable(outbound_payload))
+
     if response_payload is not None:
         print_section_title("Inbound payload")
         if debug_json:

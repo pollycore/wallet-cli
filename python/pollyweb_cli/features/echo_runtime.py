@@ -14,6 +14,7 @@ from pollyweb_cli.features.echo_models import ECHO_SUBJECT, _EchoCommandFailure,
 from pollyweb_cli.features.echo_rendering import _build_echo_error_footer_panel, _build_echo_footer_panel
 from pollyweb_cli.features.echo_response import (
     _build_echo_failure_verification_lines,
+    _describe_http_echo_error,
     _describe_echo_network_error,
     _extract_echo_response_metadata,
     _parse_echo_response,
@@ -28,7 +29,12 @@ from pollyweb_cli.features.echo_sections import (
     _normalize_response_headers,
 )
 from pollyweb_cli.tools.debug import parse_debug_payload
-from pollyweb_cli.tools.transport import build_debug_outbound_payload, build_wallet_sender, send_wallet_message
+from pollyweb_cli.tools.transport import (
+    build_debug_outbound_payload,
+    build_wallet_request_message,
+    build_wallet_sender,
+    send_wallet_message,
+)
 
 
 def _initial_echo_payload_format(
@@ -246,6 +252,11 @@ def _resolve_echo_command(
     try:
         require_configured_keys()
         key_pair = load_signing_key_pair()
+        request_message, normalized_domain = build_wallet_request_message(
+            domain = domain,
+            subject = ECHO_SUBJECT,
+            body = {},
+        )
         response_payload, request_message, normalized_domain = send_wallet_message(
             domain = domain,
             subject = ECHO_SUBJECT,
@@ -331,10 +342,80 @@ def _resolve_echo_command(
             f"Missing PollyWeb keys in {config_dir}. Run `pw config` first."
         ) from None
     except urllib.error.HTTPError as exc:
-        raise UserFacingError(
-            f"Echo request to {domain} failed with HTTP {exc.code}."
-        ) from None
+        error_body = getattr(exc, "pollyweb_error_body", None)
+        if not isinstance(error_body, str):
+            try:
+                error_body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                error_body = None
+        setattr(exc, "pollyweb_error_body", error_body)
+
+        if not debug:
+            raise UserFacingError(
+                f"Echo request to {domain} failed: {_describe_http_echo_error(exc)}"
+            ) from None
+
+        return _build_echo_failure_result(
+            normalized_domain = normalized_domain,
+            error_lines = {
+                "Status": "failed",
+                "Error": _describe_http_echo_error(exc),
+                "Error type": exc.__class__.__name__,
+                "Stage": "transport",
+            },
+            request_message = request_message,
+            response_payload = error_body if isinstance(error_body, str) else None,
+            dns_diagnostics = dns_diagnostics,
+            dns_link_context = dns_link_context,
+            total_seconds = time.perf_counter() - started_at,
+            network_seconds = timing.get("network_seconds", 0.0),
+            client_timeout_seconds = timing.get("client_timeout_seconds"),
+            response_metadata = response_metadata,
+            transport_metadata = transport_metadata,
+            key_pair = key_pair,
+            binds_path = binds_path,
+            anonymous = anonymous,
+            unsigned = unsigned,
+        )
     except urllib.error.URLError as exc:
+        if isinstance(exc.reason, urllib.error.HTTPError):
+            nested_http_error = exc.reason
+            error_body = getattr(nested_http_error, "pollyweb_error_body", None)
+            if not isinstance(error_body, str):
+                try:
+                    error_body = nested_http_error.read().decode("utf-8", errors="replace")
+                except Exception:
+                    error_body = None
+            setattr(nested_http_error, "pollyweb_error_body", error_body)
+
+            if not debug:
+                raise UserFacingError(
+                    f"Echo request to {domain} failed: {_describe_http_echo_error(nested_http_error)}"
+                ) from None
+
+            return _build_echo_failure_result(
+                normalized_domain = normalized_domain,
+                error_lines = {
+                    "Status": "failed",
+                    "Error": _describe_http_echo_error(nested_http_error),
+                    "Error type": nested_http_error.__class__.__name__,
+                    "Stage": "transport",
+                },
+                request_message = request_message,
+                response_payload = error_body if isinstance(error_body, str) else None,
+                dns_diagnostics = dns_diagnostics,
+                dns_link_context = dns_link_context,
+                total_seconds = time.perf_counter() - started_at,
+                network_seconds = timing.get("network_seconds", 0.0),
+                client_timeout_seconds = timing.get("client_timeout_seconds"),
+                response_metadata = response_metadata,
+                transport_metadata = transport_metadata,
+                key_pair = key_pair,
+                binds_path = binds_path,
+                anonymous = anonymous,
+                unsigned = unsigned,
+            )
+
         reason = _describe_echo_network_error(
             domain,
             exc.reason,
