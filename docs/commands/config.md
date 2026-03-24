@@ -6,7 +6,7 @@ Create your PollyWeb key pair and register it with the notifier:
 pw config
 ```
 
-This creates a new `pollyweb.KeyPair`, calls `Onboard@Notifier`, and writes:
+This creates a new `pollyweb.KeyPair`, signs an `Onboard@Notifier` request, sends the compact public key in `Body.PublicKey`, includes the derived signing algorithm in `Body.Algorithm`, and writes:
 
 - `~/.pollyweb/private.pem`
 - `~/.pollyweb/public.pem`

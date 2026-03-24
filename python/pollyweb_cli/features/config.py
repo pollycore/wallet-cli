@@ -13,6 +13,7 @@ import uuid
 import yaml
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from pollyweb import KeyPair, normalize_domain_name
+from pollyweb._crypto import signature_algorithm_for_private_key
 
 from pollyweb_cli.errors import UserFacingError
 from pollyweb_cli.tools.debug import print_debug_payload
@@ -223,6 +224,7 @@ def onboard_wallet_with_notifier(
 ) -> dict[str, str]:
     """Register the wallet public key with the configured notifier."""
 
+    algorithm = signature_algorithm_for_private_key(key_pair.PrivateKey)
     public_key = serialize_public_key_value(
         public_key_path.read_text(encoding = "utf-8")
     )
@@ -230,10 +232,12 @@ def onboard_wallet_with_notifier(
         domain = notifier_domain,
         subject = NOTIFIER_ONBOARD_SUBJECT,
         body = {
+            "Algorithm": algorithm,
             "PublicKey": public_key,
         },
         key_pair = key_pair,
         debug = debug,
+        sign_anonymous = True,
     )
     onboard_entry = parse_onboard_response(response_payload)
     onboard_entry["Notifier"] = normalized_domain

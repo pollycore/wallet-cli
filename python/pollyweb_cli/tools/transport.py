@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 import http.client
 import io
 import json
@@ -18,6 +19,7 @@ import urllib.error
 from pollyweb import KeyPair, Msg, Wallet, normalize_domain_name
 import pollyweb._transport as pollyweb_transport
 import pollyweb.msg as pollyweb_msg
+from pollyweb._crypto import encode_signature, sign_message, signature_algorithm_for_private_key
 import yaml
 
 from pollyweb_cli.errors import UserFacingError
@@ -123,14 +125,16 @@ def build_debug_outbound_payload(
     wallet: Wallet,
     request_message: Msg,
     *,
-    unsigned: bool = False
+    unsigned: bool = False,
+    sign_anonymous: bool = False
 ) -> dict[str, object]:
     """Render the actual outbound payload shape used by `wallet.send()`."""
 
     outbound_message = build_wallet_outbound_message(
         wallet,
         request_message,
-        unsigned = unsigned)
+        unsigned = unsigned,
+        sign_anonymous = sign_anonymous)
 
     return outbound_message.to_dict()
 
@@ -139,7 +143,8 @@ def build_wallet_outbound_message(
     wallet: Wallet,
     request_message: Msg,
     *,
-    unsigned: bool = False
+    unsigned: bool = False,
+    sign_anonymous: bool = False
 ) -> Msg:
     """Build the concrete outbound message for the current wallet mode."""
 
@@ -152,6 +157,25 @@ def build_wallet_outbound_message(
             Signature = None)
 
     if wallet.ID == "Anonymous":
+        if sign_anonymous:
+            signed_request = replace(
+                request_message,
+                From = wallet.ID,
+                Selector = "")
+            signature_algorithm = signature_algorithm_for_private_key(
+                wallet.KeyPair.PrivateKey)
+            canonical = signed_request.canonical()
+            raw_signature = sign_message(
+                wallet.KeyPair.PrivateKey,
+                canonical,
+                signature_algorithm = signature_algorithm,
+            )[0]
+            return replace(
+                signed_request,
+                Hash = hashlib.sha256(canonical).hexdigest(),
+                Signature = encode_signature(raw_signature),
+            )
+
         return request_message
 
     return wallet.sign(request_message)
@@ -354,6 +378,7 @@ def send_wallet_message(
     binds_path: Path | None = None,
     anonymous: bool = False,
     unsigned: bool = False,
+    sign_anonymous: bool = False,
     debug_json: bool = False,
     timing: dict[str, float] | None = None,
     transport_metadata: dict[str, object] | None = None
@@ -382,13 +407,15 @@ def send_wallet_message(
             build_debug_outbound_payload(
                 wallet,
                 request_message,
-                unsigned = unsigned),
+                unsigned = unsigned,
+                sign_anonymous = sign_anonymous),
         )
 
     outbound_message = build_wallet_outbound_message(
         wallet,
         request_message,
-        unsigned = unsigned)
+        unsigned = unsigned,
+        sign_anonymous = sign_anonymous)
 
     original_post = pollyweb_msg.post_json_bytes
     original_transport_post = pollyweb_transport.post_json_bytes

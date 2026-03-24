@@ -6,8 +6,11 @@ import urllib.error
 
 from pollyweb_cli import cli
 from pollyweb_cli.features import config as config_feature
+from pollyweb_cli.tools import transport as transport_tools
 
 from tests.cli_test_helpers import VALID_WALLET_ID
+
+TEST_CONFIG_ALGORITHM = "ed25519-sha256"
 
 
 def _install_fake_onboard(
@@ -85,6 +88,7 @@ def test_config_creates_keypair_files_and_registers_wallet(monkeypatch, tmp_path
     }
     assert onboard_calls[0]["domain"] == "any-notifier.pollyweb.org"
     assert onboard_calls[0]["subject"] == "Onboard@Notifier"
+    assert onboard_calls[0]["body"]["Algorithm"] == TEST_CONFIG_ALGORITHM
     assert onboard_calls[0]["body"]["PublicKey"]
 
     captured = capsys.readouterr()
@@ -122,6 +126,7 @@ def test_config_rechecks_existing_wallet_registration_idempotently(monkeypatch, 
 
     assert exit_code == 0
     assert len(onboard_calls) == 1
+    assert onboard_calls[0]["body"]["Algorithm"] == TEST_CONFIG_ALGORITHM
     assert cli.yaml.safe_load(config_path.read_text()) == {
         "Helpers": {
             "Notifier": "any-notifier.pollyweb.org",
@@ -135,6 +140,35 @@ def test_config_rechecks_existing_wallet_registration_idempotently(monkeypatch, 
     assert str(config_path) in captured.out
     assert "✅ Registered with Notifier: any-notifier.pollyweb.org" in captured.out
     assert captured.err == ""
+
+
+def test_onboard_transport_signs_anonymous_requests():
+    """Notifier onboarding can opt into a signed Anonymous outbound message."""
+
+    key_pair = cli.KeyPair()
+    wallet, _ = transport_tools.build_wallet_sender(
+        "any-notifier.pollyweb.org",
+        key_pair)
+    request_message, _ = transport_tools.build_wallet_request_message(
+        "any-notifier.pollyweb.org",
+        "Onboard@Notifier",
+        {
+            "Algorithm": TEST_CONFIG_ALGORITHM,
+            "PublicKey": "abc123",
+        })
+
+    outbound_message = transport_tools.build_wallet_outbound_message(
+        wallet,
+        request_message,
+        sign_anonymous = True)
+
+    outbound_payload = outbound_message.to_dict()
+    assert outbound_payload["Header"]["From"] == "Anonymous"
+    assert "Algorithm" not in outbound_payload["Header"]
+    assert outbound_payload["Body"]["Algorithm"] == TEST_CONFIG_ALGORITHM
+    assert outbound_payload["Body"]["PublicKey"] == "abc123"
+    assert outbound_payload["Hash"]
+    assert outbound_payload["Signature"]
 
 
 def test_config_raises_drift_error_when_notifier_returns_different_wallet(monkeypatch, tmp_path, capsys):

@@ -816,11 +816,11 @@ def test_send_wallet_message_serializes_concurrent_library_sends(monkeypatch):
 
             return {"ok": True}
 
-    monkeypatch.setattr(
-        transport_tools,
-        "build_wallet_outbound_message",
-        lambda wallet, request_message, *, unsigned = False: FakeOutboundMessage(),
-    )
+        monkeypatch.setattr(
+            transport_tools,
+            "build_wallet_outbound_message",
+            lambda wallet, request_message, *, unsigned = False, sign_anonymous = False: FakeOutboundMessage(),
+        )
 
     def run_send():
         """Run one wallet-backed send through the shared transport helper."""
