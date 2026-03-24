@@ -1219,7 +1219,7 @@ def assert_expected_subset(
             # Treat empty expected scalar values as optional-presence checks.
             # A fixture can still assert an explicit empty value when the
             # response includes it, but omission is also accepted so callers
-            # can express "blank or absent" fields such as Header.Algorithm.
+            # can express "blank or absent" optional fields such as Header.Selector.
             if key not in actual and is_empty_value(expected_value):
                 continue
 

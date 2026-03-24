@@ -53,7 +53,7 @@ def make_echo_response_payload(
 ) -> bytes:
     """Build one signed echo response payload for CLI transport tests."""
 
-    # Domain-signed replies omit Header.Algorithm and let receivers infer it
+    # Domain-signed replies omit legacy algorithm headers and let receivers infer it
     # from DKIM, matching the published PollyWeb wire contract.
     header = {
         "Correlation": correlation,

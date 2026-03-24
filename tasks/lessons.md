@@ -1,6 +1,7 @@
 # Lessons
 
 - For `pw bind`, treat the bind algorithm as explicit request data: require it on the CLI and send it in `Body.Algorithm` on every `Bind@Vault` request instead of relying on server defaults.
+- When `pollyweb` removes `Msg.Header` fields, sweep wallet-cli transport builders, inbound matcher fixtures, docs, and dependency floors together; this repo still uses `Body.Algorithm` for `pw bind`, but `Header.Algorithm`, `Header.Notifier`, and `Header.Channel` must stay gone.
 - When removing a CLI feature, sweep parser registration, dispatch wrappers, compatibility re-exports, docs, and focused tests together; in this repo, `pw shell` also left a tiny sender-normalization helper behind that `pw sync` still needed.
 - When removing a wallet-side notifier feature, split the concerns cleanly: delete notifier send/onboarding logic from shared wallet transport and `pw config`, but keep the read-only `Helpers.Notifier` config loader when `pw chat` still depends on it.
 - For `pw bind --debug`, preserve HTTP error bodies the same way as the shared wallet transport: show the inbound error payload in the debug output and append any server `error` detail to the final `Could not bind ...` message so 5xx failures are actionable without a traceback.
@@ -109,7 +110,7 @@
 - For `pw test` inbound subset checks, treat the exact expected string `"<str>"` as "required non-empty string": the field must exist, be a string, and not be empty.
 - For `pw test` inbound subset checks, keep scalar wildcard behavior aligned across matcher code, docs, and tests: `"<uuid>"` accepts valid UUID strings, `"<str>"` requires a present non-empty string, and `"<int>"` requires an integer while still rejecting booleans.
 - For `pw test` inbound subset checks on arrays, treat any expected array item that contains `"<uuid>"`, `"<str>"`, or `"<int>"` as a repeatable template for the remaining actual items, while any expected array item without placeholders must still appear as an exact subset match somewhere in the actual array.
-- For domain-signed PollyWeb messages, do not serialize `Header.Algorithm`; signing still uses the DKIM-declared key type for the selected selector, and verification should infer that algorithm from DNS unless an explicit header is present and mismatched.
+- For domain-signed PollyWeb messages, do not reintroduce removed wire headers such as `Header.Algorithm`; signing still uses the DKIM-declared key type for the selected selector, and verification should infer that algorithm from DNS.
 - When adding default fixture discovery to `pw test`, make the path optional in the parser and keep batch execution deterministic by reading `./pw-tests/*.yaml` in alphabetical order.
 - For `pw test` fixture placeholders, resolve wallet-derived values such as `"<PublicKey>"` through the same helper used by the real command path so tests and bind requests serialize the public key identically.
 - For `pw test` success output, keep the non-debug path terse: print one `✅ Passed: <filename-without-extension> (<total-ms> ms, <latency>% latency)` line for each passing fixture, including default directory sweeps, and never dump the received message.

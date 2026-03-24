@@ -2213,7 +2213,7 @@ def test_test_accepts_missing_expected_inbound_key_when_fixture_value_is_empty(
             "  Subject: Echo@Domain\n"
             "Inbound:\n"
             "  Header:\n"
-            "    Algorithm: ''\n"
+            "    Selector: ''\n"
         ),
         encoding = "utf-8")
 
@@ -2241,7 +2241,7 @@ def test_test_accepts_present_empty_expected_inbound_key(
             "  Subject: Echo@Domain\n"
             "Inbound:\n"
             "  Header:\n"
-            "    Algorithm: ''\n"
+            "    Selector: ''\n"
         ),
         encoding = "utf-8")
 
@@ -2251,7 +2251,7 @@ def test_test_accepts_present_empty_expected_inbound_key(
         test_feature,
         "send_wallet_message",
         lambda **kwargs: (
-            '{"Header":{"Subject":"Echo@Domain","Algorithm":""}}',
+            '{"Header":{"Subject":"Echo@Domain","Selector":""}}',
             None,
             "vault.example.com",
         ))
@@ -2273,7 +2273,7 @@ def test_test_accepts_literal_double_quote_empty_marker_in_response(
             "  Subject: Echo@Domain\n"
             "Inbound:\n"
             "  Header:\n"
-            "    Algorithm: ''\n"
+            "    Selector: ''\n"
         ),
         encoding = "utf-8")
 
@@ -2286,7 +2286,7 @@ def test_test_accepts_literal_double_quote_empty_marker_in_response(
                 {
                     "Header": {
                         "Subject": "Echo@Domain",
-                        "Algorithm": "''",
+                        "Selector": "''",
                     }
                 }
             ),
@@ -2316,7 +2316,7 @@ def test_test_accepts_empty_object_as_empty_in_response(
             "  Subject: Echo@Domain\n"
             "Inbound:\n"
             "  Header:\n"
-            "    Algorithm: ''\n"
+            "    Selector: ''\n"
         ),
         encoding = "utf-8")
 
@@ -2330,7 +2330,7 @@ def test_test_accepts_empty_object_as_empty_in_response(
                 {
                     "Header": {
                         "Subject": "Echo@Domain",
-                        "Algorithm": {},
+                        "Selector": {},
                     }
                 }
             ),

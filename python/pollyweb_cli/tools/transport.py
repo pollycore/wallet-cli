@@ -148,7 +148,6 @@ def build_wallet_outbound_message(
             request_message,
             From = wallet.ID,
             Selector = "",
-            Algorithm = "",
             Hash = None,
             Signature = None)
 
