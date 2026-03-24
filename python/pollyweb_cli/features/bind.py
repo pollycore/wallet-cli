@@ -480,7 +480,6 @@ def send_bind_message(
         subject=BIND_SUBJECT,
         body={
             "Algorithm": algorithm,
-            "Domain": normalized_domain,
             "PublicKey": public_key,
         },
         key_pair=key_pair,

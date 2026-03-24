@@ -76,7 +76,7 @@ def test_bind_sends_unsigned_anonymous_message_and_stores_bind(
     assert '"To":"vault.example.com"' in body
     assert '"Subject":"Bind@Vault"' in body
     assert f'"Algorithm":"{TEST_BIND_ALGORITHM}"' in body
-    assert '"Domain":"vault.example.com"' in body
+    assert '"Domain":"' not in body
     assert "-----BEGIN PUBLIC KEY-----" not in body
     assert "-----END PUBLIC KEY-----" not in body
     assert '\\n' not in body.split('"PublicKey":"', 1)[1].split('"', 1)[0]
@@ -124,7 +124,7 @@ def test_bind_normalizes_dom_alias_when_using_wallet_send(
     assert '"To":"any-hoster.pollyweb.org"' in body
     assert '"Schema":"pollyweb.org/MSG:1.0"' in body
     assert f'"Algorithm":"{TEST_BIND_ALGORITHM}"' in body
-    assert '"Domain":"any-hoster.pollyweb.org"' in body
+    assert '"Domain":"' not in body
 
     captured = capsys.readouterr()
     assert captured.out == "✅ Bound to any-hoster.dom\n"
@@ -379,7 +379,7 @@ def test_bind_debug_prints_outbound_and_inbound_payloads(monkeypatch, tmp_path, 
     assert "From: Anonymous" in captured.out
     assert "Schema: pollyweb.org/MSG:1.0" in captured.out
     assert f"Algorithm: {TEST_BIND_ALGORITHM}" in captured.out
-    assert "Domain: vault.example.com" in captured.out
+    assert "Domain: vault.example.com" not in captured.out
     outbound = captured.out.split("\n\nInbound payload:\n", 1)[0]
     assert "Hash:" not in outbound
     assert "Signature:" not in outbound

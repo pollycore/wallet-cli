@@ -6,7 +6,7 @@ Bind your configured wallet to a domain:
 pw bind vault.example.com
 ```
 
-This sends a `Bind@Vault` message to `vault.example.com` with your configured public key in the body. `pw bind` derives the signing algorithm from the configured wallet key and sends that value in `Body.Algorithm`, so users only need to provide the target domain. The key is stored locally as PEM in `~/.pollyweb/public.pem`, but the outbound message sends only the compact key value without the PEM `BEGIN/END` wrapper lines.
+This sends a `Bind@Vault` message to `vault.example.com` with your configured public key in the body. `pw bind` derives the signing algorithm from the configured wallet key and sends that value in `Body.Algorithm`, while the target domain is carried by `Header.To` rather than duplicated in the body. The key is stored locally as PEM in `~/.pollyweb/public.pem`, but the outbound message sends only the compact key value without the PEM `BEGIN/END` wrapper lines.
 
 By default, the request uses a stored bind UUID from `~/.pollyweb/binds.yaml` when one already exists for that target domain; otherwise it falls back to `From: Anonymous`. The request also includes the standard PollyWeb schema header.
 
