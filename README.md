@@ -80,15 +80,15 @@ This writes your keys to:
 Bind your wallet to a domain:
 
 ```bash
-pw bind vault.example.com
+pw bind vault.example.com ed25519
 ```
 
-This sends a `Bind@Vault` request to `https://pw.vault.example.com/inbox` using the compact public-key value in the request body. The command reuses the stored bind UUID for that domain from `~/.pollyweb/binds.yaml` when one exists and otherwise falls back to `From: Anonymous`, while still storing only the UUID portion of the returned bind token in `~/.pollyweb/binds.yaml`. Rebinding the same domain replaces the existing bind for that domain unless the server returns a different `Schema`, in which case both entries are kept. Use `--anonymous` to ignore the stored bind and force `From: Anonymous`, or `--unsigned` to remove `Hash` and `Signature` before sending.
+This sends a `Bind@Vault` request to `https://pw.vault.example.com/inbox` using the compact public-key value in the request body. `pw bind` now requires an explicit algorithm name and sends it as `Body.Algorithm`, so a typical request is `pw bind vault.example.com ed25519`. The command reuses the stored bind UUID for that domain from `~/.pollyweb/binds.yaml` when one exists and otherwise falls back to `From: Anonymous`, while still storing only the UUID portion of the returned bind token in `~/.pollyweb/binds.yaml`. Rebinding the same domain replaces the existing bind for that domain unless the server returns a different `Schema`, in which case both entries are kept. Use `--anonymous` to ignore the stored bind and force `From: Anonymous`, or `--unsigned` to remove `Hash` and `Signature` before sending.
 
 You can also use the PollyWeb shorthand domain suffix:
 
 ```bash
-pw bind any-hoster.dom
+pw bind any-hoster.dom ed25519
 ```
 
 That alias is normalized to `any-hoster.pollyweb.org` before signing, delivery, and local bind storage.
@@ -154,7 +154,7 @@ This reads a YAML file with `Outbound` and optional `Inbound` sections. The CLI 
 Use `--debug` with `pw bind` to print the outbound request payload, the full inbox URL the POST is sent to, and the inbound response body as colorized, indented YAML:
 
 ```bash
-pw bind --debug vault.example.com
+pw bind --debug vault.example.com ed25519
 ```
 
 This is useful when you want to inspect the exact message contents being sent or troubleshoot an unexpected server response.
@@ -163,8 +163,8 @@ This is useful when you want to inspect the exact message contents being sent or
 
 - `pw config` generates a PollyWeb key pair in `~/.pollyweb`
 - `pw config --force` replaces an existing key pair
-- `pw bind <domain>` requests and stores a bind token for a domain
-- `pw bind --debug <domain>` shows the target inbox URL plus bind request and response payloads as colorized YAML
+- `pw bind <domain> <algorithm>` requests and stores a bind token for a domain while sending the algorithm in `Body.Algorithm`
+- `pw bind --debug <domain> <algorithm>` shows the target inbox URL plus bind request and response payloads as colorized YAML
 - `pw echo <domain>` sends `Echo@Domain` and verifies the signed synchronous response, accepting a reply `To` that matches either the target domain or its stored bind UUID
 - `pw echo --debug <domain>` shows the target inbox URL, echo request and response payloads, and DNS/DNSSEC diagnostics for the PollyWeb branch and DKIM lookup as colorized YAML; `.dom` may be used as shorthand for `.pollyweb.org`
 - `pw msg <message...>` sends a signed message from a YAML, JSON, or Python file, a JSON object string, or inline `Key:Value` fields

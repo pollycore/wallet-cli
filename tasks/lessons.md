@@ -1,5 +1,6 @@
 # Lessons
 
+- For `pw bind`, treat the bind algorithm as explicit request data: require it on the CLI and send it in `Body.Algorithm` on every `Bind@Vault` request instead of relying on server defaults.
 - When removing a CLI feature, sweep parser registration, dispatch wrappers, compatibility re-exports, docs, and focused tests together; in this repo, `pw shell` also left a tiny sender-normalization helper behind that `pw sync` still needed.
 - When removing a wallet-side notifier feature, split the concerns cleanly: delete notifier send/onboarding logic from shared wallet transport and `pw config`, but keep the read-only `Helpers.Notifier` config loader when `pw chat` still depends on it.
 - For `pw bind --debug`, preserve HTTP error bodies the same way as the shared wallet transport: show the inbound error payload in the debug output and append any server `error` detail to the final `Could not bind ...` message so 5xx failures are actionable without a traceback.

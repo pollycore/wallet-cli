@@ -14,7 +14,7 @@ Quick examples:
 ```bash
 pw version
 pw config
-pw bind vault.example.com
+pw bind vault.example.com ed25519
 pw echo vault.example.com
 pw msg ./message.yaml
 pw msg '{"To":"vault.example.com","Subject":"Echo@Domain","Body":{"Ping":"pong"}}'

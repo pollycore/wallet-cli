@@ -445,6 +445,7 @@ def cmd_config(
 
 def cmd_bind(
     domain: str,
+    algorithm: str,
     debug: bool = False,
     json_output: bool = False,
     unsigned: bool = False,
@@ -455,6 +456,7 @@ def cmd_bind(
     _sync_runtime_dependencies()
     return _cmd_bind(
         domain,
+        algorithm = algorithm,
         debug=debug,
         json_output=json_output,
         config_dir=CONFIG_DIR,
@@ -586,6 +588,7 @@ def _run_main(
         if args.command == "bind":
             return cmd_bind(
                 domain = args.domain,
+                algorithm = args.algorithm,
                 debug = args.debug,
                 json_output = args.json,
                 unsigned = args.unsigned,

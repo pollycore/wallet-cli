@@ -3,10 +3,10 @@
 Bind your configured wallet to a domain:
 
 ```bash
-pw bind vault.example.com
+pw bind vault.example.com ed25519
 ```
 
-This sends a `Bind@Vault` message to `vault.example.com` with your configured public key in the body. The key is stored locally as PEM in `~/.pollyweb/public.pem`, but the outbound message sends only the compact key value without the PEM `BEGIN/END` wrapper lines.
+This sends a `Bind@Vault` message to `vault.example.com` with your configured public key in the body. `pw bind` requires an explicit algorithm name and sends it in `Body.Algorithm`, for example `pw bind vault.example.com ed25519`. The key is stored locally as PEM in `~/.pollyweb/public.pem`, but the outbound message sends only the compact key value without the PEM `BEGIN/END` wrapper lines.
 
 By default, the request uses a stored bind UUID from `~/.pollyweb/binds.yaml` when one already exists for that target domain; otherwise it falls back to `From: Anonymous`. The request also includes the standard PollyWeb schema header.
 
@@ -23,5 +23,5 @@ Use `--anonymous` to ignore any stored bind and force `From: Anonymous`. Use `--
 Print the outbound request payload, the full inbox URL the POST is sent to, and the inbound response body during bind as colorized, indented YAML. When the inbox returns an HTTP error and includes a response body, `--debug` should still show that inbound error payload, and the final error line should append the server's reported `error` detail when one is present:
 
 ```bash
-pw bind --debug vault.example.com
+pw bind --debug vault.example.com ed25519
 ```

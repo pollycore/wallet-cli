@@ -459,6 +459,7 @@ def get_first_bind_for_domain(
 
 def send_bind_message(
     domain: str,
+    algorithm: str,
     key_pair: KeyPair,
     public_key_path: Path,
     binds_path: Path,
@@ -477,6 +478,7 @@ def send_bind_message(
         domain=normalized_domain,
         subject=BIND_SUBJECT,
         body={
+            "Algorithm": algorithm,
             "Domain": normalized_domain,
             "PublicKey": public_key,
         },
@@ -544,6 +546,7 @@ def describe_http_bind_error(exc: urllib.error.HTTPError) -> str:
 def cmd_bind(
     domain: str,
     *,
+    algorithm: str,
     debug: bool,
     json_output: bool,
     config_dir: Path,
@@ -564,6 +567,7 @@ def cmd_bind(
         try:
             bind_entry, raw_payload = send_bind_message(
                 normalized_domain,
+                algorithm,
                 key_pair,
                 public_key_path,
                 binds_path,
