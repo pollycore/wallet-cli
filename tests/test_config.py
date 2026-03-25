@@ -58,7 +58,7 @@ def _install_fake_onboard(
 
 
 def test_config_creates_keypair_files_and_registers_wallet(monkeypatch, tmp_path, capsys):
-    """config creates the wallet files and persists notifier onboarding details."""
+    """onboard creates the wallet files and persists notifier onboarding details."""
 
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
@@ -72,7 +72,7 @@ def test_config_creates_keypair_files_and_registers_wallet(monkeypatch, tmp_path
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
     monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
-    exit_code = cli.main(["config"])
+    exit_code = cli.main(["onboard"])
 
     assert exit_code == 0
     assert private_key_path.exists()
@@ -99,7 +99,7 @@ def test_config_creates_keypair_files_and_registers_wallet(monkeypatch, tmp_path
 
 
 def test_config_rechecks_existing_wallet_registration_idempotently(monkeypatch, tmp_path, capsys):
-    """config reuses a complete profile and expects the same wallet id back."""
+    """onboard reuses a complete profile and expects the same wallet id back."""
 
     config_dir = tmp_path / ".pollyweb"
     config_dir.mkdir()
@@ -122,7 +122,7 @@ def test_config_rechecks_existing_wallet_registration_idempotently(monkeypatch, 
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
     monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
-    exit_code = cli.main(["config"])
+    exit_code = cli.main(["onboard"])
 
     assert exit_code == 0
     assert len(onboard_calls) == 1
@@ -172,7 +172,7 @@ def test_onboard_transport_signs_anonymous_requests():
 
 
 def test_config_raises_drift_error_when_notifier_returns_different_wallet(monkeypatch, tmp_path, capsys):
-    """config fails when a repeated notifier onboard returns a different wallet id."""
+    """onboard fails when a repeated notifier onboard returns a different wallet id."""
 
     config_dir = tmp_path / ".pollyweb"
     config_dir.mkdir()
@@ -195,7 +195,7 @@ def test_config_raises_drift_error_when_notifier_returns_different_wallet(monkey
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
     monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
-    exit_code = cli.main(["config"])
+    exit_code = cli.main(["onboard"])
 
     assert exit_code == 1
     assert "Wallet registration drift detected." in capsys.readouterr().err
@@ -205,7 +205,7 @@ def test_config_raises_drift_error_when_notifier_returns_different_wallet(monkey
 
 
 def test_config_surfaces_http_onboard_failures_as_user_errors(monkeypatch, tmp_path, capsys):
-    """config renders notifier HTTP failures as a normal command error."""
+    """onboard renders notifier HTTP failures as a normal command error."""
 
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
@@ -233,7 +233,7 @@ def test_config_surfaces_http_onboard_failures_as_user_errors(monkeypatch, tmp_p
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
     monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
-    exit_code = cli.main(["config"])
+    exit_code = cli.main(["onboard"])
 
     assert exit_code == 1
     captured = capsys.readouterr()
@@ -244,7 +244,7 @@ def test_config_surfaces_http_onboard_failures_as_user_errors(monkeypatch, tmp_p
 
 
 def test_config_debug_shows_full_http_error_body(monkeypatch, tmp_path, capsys):
-    """config --debug includes the raw notifier error body when one exists."""
+    """onboard --debug includes the raw notifier error body when one exists."""
 
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
@@ -275,7 +275,7 @@ def test_config_debug_shows_full_http_error_body(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
     monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
-    exit_code = cli.main(["config", "--debug"])
+    exit_code = cli.main(["onboard", "--debug"])
 
     assert exit_code == 1
     captured = capsys.readouterr()
@@ -284,7 +284,7 @@ def test_config_debug_shows_full_http_error_body(monkeypatch, tmp_path, capsys):
 
 
 def test_config_refuses_partial_configuration_without_force(monkeypatch, tmp_path, capsys):
-    """config refuses partial profiles unless --force is supplied."""
+    """onboard refuses partial profiles unless --force is supplied."""
 
     config_dir = tmp_path / ".pollyweb"
     config_dir.mkdir()
@@ -298,7 +298,7 @@ def test_config_refuses_partial_configuration_without_force(monkeypatch, tmp_pat
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
     monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
-    exit_code = cli.main(["config"])
+    exit_code = cli.main(["onboard"])
 
     assert exit_code == 1
     assert private_key_path.read_text() == "existing-private"
@@ -309,7 +309,7 @@ def test_config_refuses_partial_configuration_without_force(monkeypatch, tmp_pat
 
 
 def test_config_force_overwrites_existing_keys(monkeypatch, tmp_path):
-    """config --force replaces keys and rewrites the config file from onboarding."""
+    """onboard --force replaces keys and rewrites the config file from onboarding."""
 
     config_dir = tmp_path / ".pollyweb"
     config_dir.mkdir()
@@ -329,7 +329,7 @@ def test_config_force_overwrites_existing_keys(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
     monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
-    exit_code = cli.main(["config", "--force"])
+    exit_code = cli.main(["onboard", "--force"])
 
     assert exit_code == 0
     assert private_key_path.read_text() != "existing-private"
@@ -343,7 +343,7 @@ def test_config_force_overwrites_existing_keys(monkeypatch, tmp_path):
 
 
 def test_config_sets_expected_permissions(monkeypatch, tmp_path):
-    """config applies the expected filesystem permissions."""
+    """onboard applies the expected filesystem permissions."""
 
     config_dir = tmp_path / ".pollyweb"
     private_key_path = config_dir / "private.pem"
@@ -357,7 +357,7 @@ def test_config_sets_expected_permissions(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "PUBLIC_KEY_PATH", public_key_path)
     monkeypatch.setattr(cli, "CONFIG_PATH", config_path)
 
-    exit_code = cli.main(["config"])
+    exit_code = cli.main(["onboard"])
 
     assert exit_code == 0
     assert stat.S_IMODE(private_key_path.stat().st_mode) == 0o600

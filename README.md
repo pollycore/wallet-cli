@@ -69,7 +69,7 @@ For more setup details, see [docs/install.md](docs/install.md).
 Create your local key pair:
 
 ```bash
-pw config
+pw onboard
 ```
 
 This writes your keys to:
@@ -161,8 +161,8 @@ This is useful when you want to inspect the exact message contents being sent or
 
 ## Command Summary
 
-- `pw config` generates a PollyWeb key pair in `~/.pollyweb`
-- `pw config --force` replaces an existing key pair
+- `pw onboard` generates a PollyWeb key pair in `~/.pollyweb`
+- `pw onboard --force` replaces an existing key pair
 - `pw bind <domain> <algorithm>` requests and stores a bind token for a domain while sending the algorithm in `Body.Algorithm`
 - `pw bind --debug <domain> <algorithm>` shows the target inbox URL plus bind request and response payloads as colorized YAML
 - `pw echo <domain>` sends `Echo@Domain` and verifies the signed synchronous response, accepting a reply `To` that matches either the target domain or its stored bind UUID

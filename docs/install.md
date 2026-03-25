@@ -12,7 +12,7 @@ You can also install it globally with `pip`:
 python3 -m pip install pollyweb-cli
 ```
 
-The CLI pulls in its runtime dependencies from PyPI, including `pollyweb`, `PyYAML`, and `rich`. You do not need to install or use `cryptography` serialization APIs directly when using `pw config`.
+The CLI pulls in its runtime dependencies from PyPI, including `pollyweb`, `PyYAML`, and `rich`. You do not need to install or use `cryptography` serialization APIs directly when using `pw onboard`.
 
 This project only supports running the published PyPI build of `pollyweb-cli`. Local editable or development installs are not supported as a runtime; the CLI will replace them with the latest published release before running commands.
 

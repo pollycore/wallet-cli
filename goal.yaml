@@ -7,6 +7,6 @@ Project goal:
     - load the library at https://pypi.org/project/pollyweb/
       - the dependency should always be from PyPi
       - it should not be from github or any other source
-    - on "pw config":
+    - on "pw onboard":
       - create a key pair at >> ~/.pollyweb/public.pem and ~/.pollyweb/private.pem
       - use the KeyPair class in the pollyweb library to create the key pair

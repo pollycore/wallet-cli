@@ -373,7 +373,7 @@ def load_wallet_id(
     """Read the configured wallet identifier from the wallet config."""
 
     if not config_path.exists():
-        raise UserFacingError("Missing wallet configuration. Run `pw config` first.")
+        raise UserFacingError("Missing wallet configuration. Run `pw onboard` first.")
 
     config_payload = yaml.safe_load(config_path.read_text(encoding = "utf-8")) or {}
     if not isinstance(config_payload, dict):
@@ -382,7 +382,7 @@ def load_wallet_id(
     wallet_id = config_payload.get("Wallet")
     if not isinstance(wallet_id, str) or not wallet_id.strip():
         raise UserFacingError(
-            "Missing Wallet in ~/.pollyweb/config.yaml. Run `pw config` again first."
+            "Missing Wallet in ~/.pollyweb/config.yaml. Run `pw onboard` again first."
         )
 
     return wallet_id.strip()

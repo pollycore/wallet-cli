@@ -340,7 +340,7 @@ def _resolve_echo_command(
         )
     except FileNotFoundError:
         raise UserFacingError(
-            f"Missing PollyWeb keys in {config_dir}. Run `pw config` first."
+            f"Missing PollyWeb keys in {config_dir}. Run `pw onboard` first."
         ) from None
     except urllib.error.HTTPError as exc:
         error_body = getattr(exc, "pollyweb_error_body", None)

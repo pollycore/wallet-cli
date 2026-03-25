@@ -254,7 +254,7 @@ def require_configured_keys(
     if private_key_path.exists() and public_key_path.exists():
         return
     raise FileNotFoundError(
-        f"Missing PollyWeb keys in {config_dir}. Run `pw config` first."
+        f"Missing PollyWeb keys in {config_dir}. Run `pw onboard` first."
     )
 
 

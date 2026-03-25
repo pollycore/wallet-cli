@@ -4,12 +4,12 @@ This folder is organized by CLI feature so future changes can stay local:
 
 - `test_cli_core.py`: parser, version, `pw upgrade`, automatic upgrade preflight, and generic CLI rendering helpers
 - `test_chat.py`: AppSync chat helpers and `pw chat`
-- `test_config.py`: `pw config` and config persistence behavior
+- `test_config.py`: `pw onboard` and config persistence behavior
 - `test_bind.py`: `pw bind`, bind storage, and bind-network error handling
 - `test_msg_command.py`: `pw msg` input parsing and wallet-backed sending
 - `test_test_command.py`: `pw test`
 - `test_echo.py`: `pw echo` transport and response verification
-- `test_onboard.py`: notifier onboarding helpers used by `pw config`
+- `test_onboard.py`: notifier onboarding helpers used by `pw onboard`
 - `cli_test_helpers.py`: shared constants, fake transport objects, and setup helpers
 - `conftest.py`: repo-wide pytest setup and the autouse upgrade-check skip fixture
 

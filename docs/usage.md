@@ -2,7 +2,7 @@
 
 Command-specific guides:
 
-- [commands/config.md](commands/config.md) for `pw config`
+- [commands/onboard.md](commands/onboard.md) for `pw onboard`
 - [commands/bind.md](commands/bind.md) for `pw bind`
 - [commands/echo.md](commands/echo.md) for `pw echo`
 - [commands/msg.md](commands/msg.md) for `pw msg`
@@ -13,7 +13,7 @@ Quick examples:
 
 ```bash
 pw version
-pw config
+pw onboard
 pw bind vault.example.com
 pw echo vault.example.com
 pw msg ./message.yaml

@@ -953,7 +953,7 @@ def test_test_reports_missing_public_key_for_placeholder(
         f"Missing PollyWeb public key in {config_dir / 'public.pem'}."
         in captured.err
     )
-    assert "Run `pw config` first." in captured.err
+    assert "Run `pw onboard` first." in captured.err
 
 
 def test_test_without_path_runs_pw_tests_yaml_files_in_alphabetical_order(

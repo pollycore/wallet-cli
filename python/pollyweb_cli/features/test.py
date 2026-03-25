@@ -841,7 +841,7 @@ def resolve_public_key_placeholder(
     except FileNotFoundError:
         raise UserFacingError(
             f"Missing PollyWeb public key in {public_key_path}. "
-            "Run `pw config` first."
+            "Run `pw onboard` first."
         ) from None
 
     return serialize_public_key_value(public_key_pem)
@@ -1834,7 +1834,7 @@ def run_message_test_fixture(
             ) from None
 
         raise UserFacingError(
-            f"Missing PollyWeb keys in {config_dir}. Run `pw config` first."
+            f"Missing PollyWeb keys in {config_dir}. Run `pw onboard` first."
         ) from None
     except urllib.error.HTTPError as exc:
         expected_http_status = None

@@ -581,7 +581,7 @@ def _run_main(
             return cmd_version()
         if args.command == "upgrade":
             return cmd_upgrade()
-        if args.command == "config":
+        if args.command == "onboard":
             return cmd_config(
                 force=args.force,
                 debug=args.debug,

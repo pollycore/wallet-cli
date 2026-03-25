@@ -569,7 +569,7 @@ def test_bind_requires_existing_keys(monkeypatch, tmp_path, capsys):
 
     captured = capsys.readouterr()
     assert exit_code == 1
-    assert "Run `pw config` first" in captured.err
+    assert "Run `pw onboard` first" in captured.err
 
     captured = capsys.readouterr()
     assert captured.out == ""

@@ -274,7 +274,7 @@ def cmd_msg(
                 f"Message file not found: {arguments[0]}"
             ) from None
         raise UserFacingError(
-            f"Missing PollyWeb keys in {config_dir}. Run `pw config` first."
+            f"Missing PollyWeb keys in {config_dir}. Run `pw onboard` first."
         ) from None
     except urllib.error.HTTPError as exc:
         raise UserFacingError(

@@ -39,19 +39,19 @@ def build_parser(get_cli_version) -> argparse.ArgumentParser:
         help="Force-install the latest published pollyweb-cli release.",
     )
 
-    config_parser = subparsers.add_parser(
-        "config",
+    onboard_parser = subparsers.add_parser(
+        "onboard",
         help="Generate a PollyWeb key pair in ~/.pollyweb.",
     )
-    config_parser.add_argument(
+    onboard_parser.add_argument(
         "--force",
         action="store_true",
         help="Overwrite an existing key pair.",
     )
-    config_parser.add_argument(
+    onboard_parser.add_argument(
         "--debug",
         action="store_true",
-        help="Print traceback details for unexpected config failures.",
+        help="Print traceback details for unexpected onboard failures.",
     )
 
     bind_parser = subparsers.add_parser(
