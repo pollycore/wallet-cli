@@ -1,93 +1,27 @@
-- Read the file at the absolute path "/Users/jorgemf/Git/wallet-cli/AGENTS-user.md" for general instructions on AGENTS development. Do not use Glob to check for its existence — read it directly by path, as it is a symlink and Glob may not find it.
-- Read `tasks/lessons.md` for historical lessons and maintenance gotchas that should inform new work without cluttering these active instructions.
+- Read `/Users/jorgemf/Git/wallet-cli/AGENTS-user.md` directly.
+- Read `goal.yaml`.
+- Read `tasks/lessons.md` for historical learnings and maintenance gotchas.
+- Keep `AGENTS.md` short; keep command behavior in `docs/commands/` and long operational history in `tasks/lessons.md`.
+- When changing `AGENTS.md`, `docs/`, or `tasks/lessons.md`, run `./tools/audit-llm-context.sh` and either trim touched routing docs or log follow-up work in `tasks/todo.md`.
 
-- Read the goal.yaml file
-- When answering questions about behavior, start by checking the written instructions and docs first, and be specific about what they do or do not say before using code to confirm runtime behavior.
-- `pw msg <path>` accepts YAML or JSON files in either a top-level `To`/`Subject`/`Body` shape or a `Header` plus top-level `Body` shape, sends the message with wallet-backed sender selection, and prints the synchronous response as YAML by default.
-- `pw msg <message...>` also accepts Python files that expose a message object, raw JSON object strings, and inline `Key:Value` fields where non-header keys are collected into `Body`.
-- `pw msg --json ...` keeps the old raw synchronous response output for scripts; without that flag, reuse the shared YAML formatter that powers `--debug` payload rendering.
-- When `pw msg` runs with both `--debug` and `--json`, keep the final response raw and switch the debug payload prints to raw JSON too instead of the default YAML-style formatter.
-- For `pw msg`, a `To` value ending in `.dom` is normalized to `.pollyweb.org` before signing the message and building the inbox URL.
-- `pw msg` should use the shared `pollyweb.normalize_domain_name()` helper for `.dom` expansion; `wallet-cli` now requires a published `pollyweb` release that includes that helper.
-- Wallet-backed CLI sends should go through `pollyweb.Wallet.send(...)` instead of custom signing and `urllib` transport helpers, so alias normalization and wire behavior stay aligned with the published library.
-- Because `Wallet.send(...)` is wallet-scoped, `pw msg` and `pw test` only support `From: Anonymous` or a UUID bind value; arbitrary domain `From` values are not valid wallet senders.
-- When a wallet-backed send would otherwise use `From: Anonymous`, first look up the target domain in `~/.pollyweb/binds.yaml` using canonical domain normalization and pass that bind UUID to the wallet; only fall back to the wallet library's own `Anonymous` default when no bind is stored.
-- `--anonymous` on wallet-backed send commands must bypass stored bind lookup and force `From: Anonymous`, even if the input payload or local binds would otherwise select a UUID sender.
-- `--unsigned` on wallet-backed send commands must keep the selected sender but strip `Hash` and `Signature` before transport; this includes UUID-backed senders as well as anonymous ones.
-- For inline `pw msg` arguments, header keys are case-insensitive for `to`, `subject`, `from`, `schema`, `body`, and `header`.
-- `pw test [path]` reads a wrapped YAML fixture, sends only its `Outbound` payload with the same signing rules as `pw msg`, and treats `Inbound` as an expected subset of the returned JSON payload.
-- `pw test` with no path looks for `./pw-tests`, then runs each `*.yaml` fixture there and in nested subfolders in deterministic alphabetical path order using the same wrapped fixture rules.
-- `parse_message_request()` must treat a single JSON-string argument as JSON before probing it as a filesystem path, because `pw test` serializes wrapped `Outbound` fixtures to JSON and long payloads can otherwise trip macOS `OSError: [Errno 63] File name too long`.
-- `pw test --json` should be accepted for parity with the shared wallet send path; it keeps the normal concise pass/fail output, and when combined with `--debug` it switches debug payload rendering to raw JSON.
-- `pw test` inbound validation should treat an expected empty scalar value such as `''` or `null` as satisfied by the same empty value, the literal string `''`, or no field at all, so fixtures can describe intentionally blank optional fields without failing when services serialize or omit them differently.
-- `pw test` inbound validation should treat the exact string `"<str>"` as a wildcard requiring that the response property exists and is a non-empty string; empty strings, non-strings, and missing fields must fail.
-- `pw test` also resolves any string exactly matching `{BindOf(<domain>)}` from `~/.pollyweb/binds.yaml` before sending, and the lookup should reuse canonical domain normalization so `.dom` and `.pollyweb.org` placeholders share the same stored bind.
-- `pw test` also resolves the exact string `"<PublicKey>"` from `~/.pollyweb/public.pem` before sending, using the same PEM-stripping serialization as `pw bind`.
-- Keep a pytest coverage hook that iterates every checked-in file under `test-msgs` and runs `cli.main(["test", <fixture>])`, so adding a new wrapped fixture automatically adds command coverage.
-- Keep pytest isolated from the real user profile: tests should run with CLI config paths redirected into a temp `.pollyweb`, patch `transport.DEFAULT_BINDS_PATH` alongside `cli.BINDS_PATH`, and pre-push smoke checks should also override `HOME` so no test can touch `~/.pollyweb`.
-- Successful `pw test` runs should stay concise: print one `✅ Passed: <filename-without-extension> (<total-ms> ms, <latency>% latency)` line for each passing fixture, including default directory sweeps, and do not print the received message outside `--debug`.
-- For interactive grouped `pw test` runs that already render the final pass/fail hierarchy in the live parallel status tree, do not print the same settled group or fixture results again after the renderer finishes; avoid duplicate final-result blocks such as a second `parallel messages` summary under the completed tree.
-- When a wrapped `pw test` response includes `Response.Meta.TotalMs`, use it as a timing hint for the displayed total duration and latency percentage, while keeping the concise success-line format unchanged.
-- `pw test` should fail the fixture whenever the response payload reports `Code >= 500`, even if the HTTP transport itself returned 200; during migrations, check both legacy top-level error fields and the newer `Meta.Code` / `Meta.Message` / `Meta.Details` form.
-- When a `pw test` send fails with an HTTP response whose body includes an `error` field, append that inbound error detail to the existing `Error: HTTP ...` output so the red failure area explains the server-side cause without requiring `--debug`.
-- `pw bind` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
-- `pw echo` should translate `urllib.error.URLError` DNS failures into a human-readable inbox-host message instead of exposing the raw `socket.gaierror(...)` text.
-- `pw echo --json` should print the raw synchronous response for scripts; without that flag, keep the normal concise verification line, and when combined with `--debug` switch the payload-style sections from YAML-style formatting to raw JSON.
-- Interactive `--json` output should keep the same compact raw JSON structure but add terminal syntax colors when stdout is a TTY; redirected/scripted output must stay plain JSON without ANSI noise.
-- For interactive `pw echo --debug --json`, apply JSON syntax coloring inside the final Textual section renderables too, not only in the pre-app console helper, or the mounted app will repaint those payloads back to plain white.
-- For interactive Rich/Textual `--json` views, prefer indented multi-line JSON so nested payload structure stays readable; keep the non-interactive/script path on compact JSON.
-- In the interactive `pw echo --debug` Textual viewer, keep both YAML and JSON payload section trees available so the UI can toggle formats in-app without closing the window or reissuing the request.
-- In the interactive `pw echo --debug` Textual viewer, open on the YAML payload view by default so the default debug experience matches the non-`--json` formatter; reserve JSON views for explicit toggles or `--debug --json`.
-- In interactive `pw echo --debug`, keep the request phase in the terminal with a concise `Sending message...` spinner, then open the Textual viewer only after the response or debug failure sections are fully prepared so the app paints instantly with final content.
-- In interactive `pw echo --debug`, do not print the outbound payload during the spinner/send phase; keep both outbound and inbound payload blocks inside the final Textual view.
-- In `pw echo --debug`, keep the top header box out of the spinner/send phase too; render it only with the final debug output or final Textual app once the response is ready.
-- In the interactive `pw echo --debug` Textual viewer, payload-style sections such as outbound/inbound payloads and DNS diagnostics should expose per-section clipboard actions near their titles so users can copy one block without exporting the whole screen.
-- In the interactive `pw echo --debug` Textual viewer, keep the main `VerticalScroll` body keyboard-scrollable with the arrow keys and `Page Up` / `Page Down` so long debug payloads remain navigable without leaving the app.
-- `pw echo --debug` should keep the underlying transport exception detail for network failures instead of collapsing it to the normal friendly resolver wording, so low-level troubleshooting remains available on demand.
-- Plain `pw echo` should also show the same concise `Sending message...` spinner during the request phase, then fall through to the normal one-line success or error output once the response resolves.
-- `pw echo` should prefer the published `pollyweb.Msg.parse(..., sync_response = True)` path once that API exists, but until a published `pollyweb` release exposes it the CLI must stay compatible with the current PyPI parser by validating wrapped `Meta`/`Request`/`Response` envelopes locally and then parsing the nested signed `Response`.
-- `pw echo --debug` should still show the inbound response payload whenever one was received, even if later parse or verification checks fail and the command ends in an `Error summary`.
-- `pw echo --debug` should also keep a reply-details/signature section visible on failure whenever a response payload was received, so users can still inspect the reported schema, selector, signature presence, and echoed headers next to the error summary.
-- `pw echo --debug` should print DNS verification diagnostics for the PollyWeb branch `DS` lookup and DKIM `TXT` lookup, including the DNS names queried, the collected record values, and whether each response carried the DNSSEC AD flag; keep those diagnostics visible even when verification fails after the response arrives.
-- `pw echo --debug` should always render a `DNS verification diagnostics` section on failure; when the library could not produce diagnostics, show an explicit unavailable status instead of omitting the section.
-- When `pw echo` assesses remote DKIM details from a wrapped synchronous payload, prefer the nested reply at `Response.Header.Selector` and `Response.Header.From` over any transport-wrapper header fields so the external DNS links match the actual signed message.
-- `pw echo --debug` should keep early request-construction and parsing failures inside the CLI app by rendering an `Error summary` section with the failure details and the usual debug footer instead of falling back to a top-level traceback.
-- `pw echo --debug` should label the click-through MXToolbox URL as an explicit DKIM test link for the verified `pw.<domain>` branch and selector so users can open it directly.
-- `pw echo --debug` should also label the DNSSEC Debugger URL as an explicit test link for the verified `pw.<domain>` branch so users can open the exact DNSSEC check directly.
-- `pw echo --debug` should also label the Google DNS URL as an explicit test link for the verified `pw.<domain>` branch so users can open the exact resolver view directly.
-- `pw echo --debug` should also include and label a Google DNS A-record test URL for the verified `pw.<domain>` branch so users can open the direct `type=A` resolver view.
-- `pw echo --debug` should keep timing details in a dedicated `Network timing` section instead of burying them in the verification bullet list, and it should also print a separate `Edge / CDN hints` section with best-effort transport clues such as the detected CDN provider, response headers, and PoP when headers like CloudFront's `X-Amz-Cf-Pop` are available.
-- `pw echo --debug` should treat wrapped sync `Meta.ColdMs` the same way as the other message-reported timing hints and include that cold-start value in the `Network timing` calculations/output when present.
-- `pw bind` expects a bare UUID bind value in successful responses and stores that UUID in `~/.pollyweb/binds.yaml`; keep the legacy `Bind:<UUID>` parser path compatible so older hosts still work.
-- `pw bind` should validate the normalized target domain before loading keys or sending the request, and malformed domains should fail with a direct user-facing error instead of a generic command failure.
-- `pw bind` should also translate raw resolver `socket.gaierror` / `OSError` failures from wallet transport into the same human-readable inbox-host message used for `urllib.error.URLError`.
-- `pw bind` should derive `Body.Algorithm` from the configured wallet key internally and must not require an `algorithm` CLI argument from the user.
-- `pw bind` should rely on `Header.To` for the target domain and must not duplicate that value into `Body.Domain`.
-- Persist bind domains in canonical form and normalize lookup input the same way, so `.dom` and `.pollyweb.org` refer to the same stored bind.
-- `pw bind` should append wallet-managed bind-change audit entries to `~/.pollyweb/binds.log` whenever it writes `~/.pollyweb/binds.yaml`, including the canonical domain plus the previous and new bind UUIDs for replacements.
-- `pw bind` should treat an unchanged canonical domain/schema bind UUID as a true no-op: do not rewrite `~/.pollyweb/binds.yaml`, do not append a normal bind log entry, and do not surface change notifications.
-- For discovery, if `pw bind` receives a different bind UUID for the same canonical domain and schema, raise an error instead of replacing the stored bind, append an `ALERT` entry to `~/.pollyweb/binds.log` including the triggering script path and CLI version, and attempt a local OS notification so concurrent churn is obvious.
-- Automated pytest runs should stay quiet even when they intentionally exercise bind-change alerts: keep the `ALERT` log and raised error, but suppress the local OS notification while `pytest` is running.
-- Plain successful `pw bind` runs should stay as terse as `pw echo` and `pw test`: without `--debug`, print only `✅ Bound to <domain>`.
-- PollyWeb `Msg.Header` no longer includes `Algorithm`, `Notifier`, or `Channel`; `wallet-cli` should neither serialize nor expect those header fields on outbound or inbound messages.
-- Plain `pw echo` should stay concise on success and print only the verification line with total duration and network-latency percentage.
-- Only `pw echo --debug` should show the top header and bottom summary box, and only interactive `--debug` TTY runs should switch to the Textual viewer so those boxes react to terminal resize.
-- The interactive `pw echo --debug` Textual body should keep Rich/Textual renderables such as `Static(Group(...))`; replacing that body with a plain `TextArea` strips the debug colors from the payload and verification sections.
-- The interactive `pw echo --debug` Textual viewer should bind common close keys directly to `quit` (`Ctrl+C`, `Ctrl+W`, `q`, `x`, `Esc`) so macOS and Linux users can leave the app with familiar terminal shortcuts instead of seeing Textual's inherited quit-help prompt.
-- The interactive `pw echo --debug` Textual viewer should disable Textual's kitty keyboard protocol after mount so terminal-managed macOS shortcuts such as `Cmd+=` and `Cmd+-` continue to control zoom instead of getting trapped inside the app.
-- When splitting `python/pollyweb_cli/features/echo.py`, keep `echo.py` as the command and compatibility facade while moving rendering code into a sibling presentation module; preserve the helper names and Textual widget hook points exported from `pollyweb_cli.features.echo` so focused tests and nearby imports do not need to know about the internal file split.
-- When splitting `pw echo` further into sub-feature modules, keep `pollyweb_cli.features.echo_presentation` as a thin facade too, and preserve the patchable `echo.py` helper surface including `send_wallet_message`, `DEBUG_CONSOLE`, payload renderers, section builders, and legacy internal helper signatures that tests monkeypatch directly.
-- The CLI reports its installed release via `pw version`; do not reintroduce a top-level `pw --version` flag without an explicit product change.
-- The CLI self-update preflight should upgrade automatically when PyPI has a newer release; do not ask for confirmation or persist declined versions unless the product requirement changes.
-- The CLI runtime itself must always come from a published PyPI release; if `pollyweb-cli` is running from an editable checkout, local path, direct URL, or dev version, replace it with the latest published release before executing the requested command.
-- For local development in this repo, prefer the editable-install `pw-dev` entry point instead of `pw`; `pw-dev` is the intentional shortcut for running checkout code without the published-runtime upgrade preflight.
-- From the repo root, keep a checked-in `./pw-dev` launcher available so local development does not depend on remembering the venv entry-point path.
-- When the installed `pw` runtime is at fault, patch and publish `/Users/jorgemf/Git/wallet-cli`; `/Users/jorgemf/Git/pollyweb-pypi` is the library package repo, not the CLI source tree.
-- Automatic self-upgrades should suppress pip's normal install output, show a transient spinner line reading `Upgrading from v<old> to v<new>`, and then leave the concise notice `ℹ️ Upgraded from v<old> to v<new>`.
-- Automatic self-upgrades should retry a failed pip install once before surfacing a notice, and when the CLI is not running inside a virtualenv, fall back to `python -m pip install --user ...` to avoid common permission failures.
-- In this repo, run tests through the project virtualenv such as `./.venv-tests/bin/python -m pytest`; the plain `pytest` on some machines resolves to a different interpreter and can hide or invent dependency failures.
-- The current tested PollyWeb floor in this repo is `pollyweb>=1.0.89`; when a newer published `pollyweb` release is required and the suite passes on it, bump the dependency floor immediately instead of relying on a locally upgraded environment.
-- For wallet-backed signing in this repo, do not call `Msg.sign(...)`; on current PollyWeb releases use `pollyweb.Wallet.sign(...)`, and use `Msg.sign_with(...)` only for explicit non-wallet helpers such as domain-signed fixture builders.
-- When `pw echo` verification logic moves into `pollyweb`, keep the wallet CLI limited to transport, debug rendering, and user-facing error phrasing; enforce reply-field policies and strict wire-field checks through published `Msg.parse()` / `Msg.verify_details()` behavior instead of reimplementing them locally.
-- Keep the shared wallet-send timeout in a named transport constant and verify it at the HTTPS pool boundary, so future `pw test` timeout adjustments do not get lost in duplicated `10.0` defaults.
-- Import `AppSyncConnection` and `build_auth_token` from `chat.py` lazily (inside the function body) to avoid the circular dependency: `transport → chat → config → bind → transport`.
+## Repo focus
+
+- `wallet-cli` is the source repo for the `pw` CLI.
+- Public command docs live in `docs/commands/`; usage routing lives in `docs/usage.md`.
+- When answering behavior questions, check the written instructions and docs first, then confirm in code.
+
+## Durable rules
+
+- Wallet-backed sends should go through published `pollyweb` wallet send/sign helpers instead of custom transport code.
+- Wallet-backed send commands only support `From: Anonymous` or a UUID bind value; reject arbitrary domain `From` values.
+- Keep command docs, parser/dispatch wiring, focused tests, and user-facing help aligned in the same change when a CLI feature changes.
+- Prefer the repo virtualenv for tests, such as `./.venv-tests/bin/python -m pytest`.
+- The CLI runtime used by `pw` should come from a published PyPI release; use `pw-dev` for local checkout development.
+
+## Docs
+
+- Usage router: [docs/usage.md](docs/usage.md)
+- Command guides: [docs/commands](docs/commands)
+- Token maintenance: [docs/llm-token-efficiency.md](docs/llm-token-efficiency.md)
+- Repo learnings: [tasks/lessons.md](tasks/lessons.md)
+- Backlog: [tasks/todo.md](tasks/todo.md)

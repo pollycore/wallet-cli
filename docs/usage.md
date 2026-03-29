@@ -8,6 +8,7 @@ Command-specific guides:
 - [commands/msg.md](commands/msg.md) for `pw msg`
 - [commands/test.md](commands/test.md) for `pw test`
 - [commands/chat.md](commands/chat.md) for `pw chat`
+- [llm-token-efficiency.md](llm-token-efficiency.md) for keeping shared CLI docs cheap to reload
 
 Quick examples:
 

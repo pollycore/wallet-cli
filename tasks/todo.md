@@ -3,6 +3,7 @@
 - [x] Remove `pw sync` from parser registration, CLI dispatch, and feature imports
 - [x] Delete the `sync` feature module and related docs/test scaffolding
 - [x] Add focused coverage for the updated command surface and verify in `./.venv-tests`
+- [ ] Run `./tools/audit-llm-context.sh` after changes to `AGENTS.md`, `docs/`, or `tasks/lessons.md`, and trim touched routing docs or log follow-up work.
 
 # Review
 
