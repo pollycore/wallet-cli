@@ -10,7 +10,8 @@ from importlib.metadata import (
 import json
 import os
 from pathlib import Path
-import subprocess
+# Bandit: this module launches trusted argv lists for pip/self-upgrade flows.
+import subprocess  # nosec B404
 import sys
 import time
 import traceback
@@ -179,7 +180,8 @@ def _get_latest_published_version() -> str | None:
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=5) as response:
+        # Bandit: this request targets the fixed HTTPS PyPI JSON endpoint.
+        with urllib.request.urlopen(request, timeout=5) as response:  # nosec B310
             payload = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError, urllib.error.URLError):
         return None
@@ -220,7 +222,8 @@ def _run_upgrade_install_command(
         run_kwargs["stdout"] = subprocess.DEVNULL
         run_kwargs["stderr"] = subprocess.DEVNULL
 
-    return subprocess.run(
+    # Bandit: this command is assembled as a trusted argv list.
+    return subprocess.run(  # nosec B603
         command,
         **run_kwargs,
     )
@@ -314,7 +317,8 @@ def _upgrade_and_restart(
 
     restart_env = os.environ.copy()
     restart_env[SKIP_UPGRADE_CHECK_ENV] = "1"
-    os.execve(
+    # Bandit: this re-executes the current interpreter with the current argv.
+    os.execve(  # nosec B606
         sys.executable,
         [sys.executable, "-m", "pollyweb_cli.cli", *argv],
         restart_env,

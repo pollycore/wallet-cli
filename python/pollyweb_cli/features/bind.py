@@ -7,7 +7,8 @@ import json
 import os
 import re
 import socket
-import subprocess
+# Bandit: local notifications use a fixed argv list without a shell.
+import subprocess  # nosec B404
 import sys
 from datetime import datetime
 import urllib.error
@@ -337,7 +338,8 @@ def notify_bind_change(
         f'with title "{MACOS_NOTIFICATION_TITLE}"'
     )
     try:
-        subprocess.run(
+        # Bandit: this invokes the system osascript binary with a fixed argv list.
+        subprocess.run(  # nosec B603 B607
             ["osascript", "-e", script],
             check = False,
             stdout = subprocess.DEVNULL,

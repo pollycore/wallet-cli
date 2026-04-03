@@ -231,7 +231,8 @@ class AppSyncConnection:
                     "type": "unsubscribe",
                 }
             )
-        except Exception:
+        # Bandit: shutdown cleanup should continue even if unsubscribe fails.
+        except Exception:  # nosec B110
             pass
 
         try:

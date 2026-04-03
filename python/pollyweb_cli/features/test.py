@@ -1659,7 +1659,8 @@ def group_parallel_test_targets(
 
     for target_run in target_runs:
         target_path = target_run["path"]
-        assert isinstance(target_path, Path)
+        if not isinstance(target_path, Path):
+            raise TypeError("Expected target run path to be a pathlib.Path instance.")
         match = PARALLEL_FIXTURE_PREFIX_PATTERN.match(target_path.name)
         prefix = match.group(1) if match is not None else None
 

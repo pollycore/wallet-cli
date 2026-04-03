@@ -22,8 +22,10 @@ printf '%s\n' "pre-push: running test suite..."
 test_home=".git/.pre-push-home"
 rm -rf "$test_home"
 mkdir -p "$test_home"
-HOME="$repo_root/$test_home" USERPROFILE="$repo_root/$test_home" "$venv_dir/bin/python" -m pytest
-printf '%s\n' "pre-push: tests passed."
+QUALITY_GATES_PYTHON="$venv_dir/bin/python" \
+QUALITY_GATES_HOME="$repo_root/$test_home" \
+  ./tools/run-quality-gates.sh
+printf '%s\n' "pre-push: quality gates passed."
 
 smoke_venv=".git/.pre-push-smoke-venv"
 trap 'rm -rf "$smoke_venv"' EXIT HUP INT TERM

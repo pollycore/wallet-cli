@@ -547,7 +547,7 @@ def send_wallet_message(
                             build_debug_http_error_payload(error_body))
                         setattr(exc, "pollyweb_debug_error_payload_printed", True)
                     except Exception:
-                        pass
+                        setattr(exc, "pollyweb_debug_error_payload_render_failed", True)
                 raise
             except Exception:
                 send_finished_at = time.perf_counter()
